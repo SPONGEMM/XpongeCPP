@@ -13,6 +13,8 @@ from ._core import (
     load_parmdat,
     load_pdb,
     register_ff14sb,
+    register_amber_frcmod_file,
+    register_amber_parmdat_file,
     register_residue_templates_from_mol2_file,
     register_tip3p,
     save_pdb,
@@ -24,12 +26,12 @@ from ._core import (
 __version__ = "0.1.0"
 
 
-def Add_Solvent_Box(molecule, solvent, distance, tolerance=2.5, n_solvent=None):
-    return add_solvent_box(molecule, solvent, distance, tolerance, n_solvent)
+def Add_Solvent_Box(molecule, solvent, distance, tolerance=2.5, n_solvent=None, seed=0):
+    return add_solvent_box(molecule, solvent, distance, tolerance, n_solvent, seed)
 
 
-def Add_Ions(molecule, counts):
-    return add_ions(molecule, counts)
+def Add_Ions(molecule, counts, seed=0):
+    return add_ions(molecule, counts, seed)
 
 
 def Set_Box_Padding(molecule, padding=0.5, center=True):
@@ -73,6 +75,8 @@ __all__ = [
     "save_pdb",
     "register_ff14sb",
     "register_tip3p",
+    "register_amber_parmdat_file",
+    "register_amber_frcmod_file",
     "register_residue_templates_from_mol2_file",
     "has_template",
     "template_atom_count",

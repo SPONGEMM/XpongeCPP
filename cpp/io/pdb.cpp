@@ -80,6 +80,32 @@ std::string pdb_atom_name(const std::string& name) {
     return out.str();
 }
 
+bool is_terminal_mappable(const Residue& residue) {
+    return residue.name != "WAT" && residue.name != "HOH" && residue.name != "NA" && residue.name != "CL" &&
+           residue.name.rfind("N", 0) != 0 && residue.name.rfind("C", 0) != 0;
+}
+
+void apply_template_atom_properties(Molecule& molecule) {
+    for (auto& residue : molecule.residues) {
+        if (!has_template(residue.name)) {
+            continue;
+        }
+        const auto& residue_type = get_residue_template(residue.name);
+        for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
+            auto& atom = molecule.atoms[residue.atom_begin + local];
+            try {
+                const auto template_index = residue_type.atom_index(atom.name);
+                const auto& template_atom = residue_type.atoms()[template_index];
+                atom.type = template_atom.type;
+                atom.element = template_atom.element;
+                atom.charge = template_atom.charge;
+                atom.mass = template_atom.mass;
+            } catch (const std::exception&) {
+            }
+        }
+    }
+}
+
 }  // namespace
 
 Molecule load_pdb_text(const std::string& text) {
@@ -102,6 +128,7 @@ Molecule load_pdb_text(const std::string& text) {
                     std::stod(trim_copy(line.substr(40, 7))),
                     std::stod(trim_copy(line.substr(47, 7))),
                 };
+                molecule.has_box = true;
             } catch (const std::exception&) {
                 throw std::invalid_argument("invalid CRYST1 record");
             }
@@ -139,9 +166,17 @@ Molecule load_pdb_text(const std::string& text) {
         molecule.atoms.push_back(std::move(atom));
         molecule.residues[current_residue_id].atom_count += 1;
     }
-    if (!molecule.atoms.empty() && molecule.box_length[0] == 0.0) {
-        molecule.set_box_padding(0.0, false);
+    if (!molecule.residues.empty()) {
+        if (is_terminal_mappable(molecule.residues.front())) {
+            molecule.residues.front().name = "N" + molecule.residues.front().name;
+            molecule.residues.front().type_name = molecule.residues.front().name;
+        }
+        if (molecule.residues.size() > 1 && is_terminal_mappable(molecule.residues.back())) {
+            molecule.residues.back().name = "C" + molecule.residues.back().name;
+            molecule.residues.back().type_name = molecule.residues.back().name;
+        }
     }
+    apply_template_atom_properties(molecule);
     return molecule;
 }
 
@@ -154,9 +189,11 @@ void save_pdb(const Molecule& molecule, const std::filesystem::path& filename) {
         throw std::runtime_error("failed to open PDB output: " + filename.string());
     }
     out << std::fixed << std::setprecision(3);
-    out << "CRYST1" << std::setw(9) << molecule.box_length[0] << std::setw(9) << molecule.box_length[1]
-        << std::setw(9) << molecule.box_length[2] << std::setw(7) << molecule.box_angle[0] << std::setw(7)
-        << molecule.box_angle[1] << std::setw(7) << molecule.box_angle[2] << " P 1           1\n";
+    if (molecule.has_box) {
+        out << "CRYST1" << std::setw(9) << molecule.box_length[0] << std::setw(9) << molecule.box_length[1]
+            << std::setw(9) << molecule.box_length[2] << std::setw(7) << molecule.box_angle[0] << std::setw(7)
+            << molecule.box_angle[1] << std::setw(7) << molecule.box_angle[2] << " P 1           1\n";
+    }
 
     std::size_t serial = 1;
     for (std::size_t residue_index = 0; residue_index < molecule.residues.size(); ++residue_index) {

@@ -27,8 +27,8 @@ def test_load_1kv2_h_pdb_preserves_protein_structure():
 
     assert mol.atom_count == 5793
     assert mol.residue_count == 360
-    assert mol.residues[0].name == "MET"
-    assert mol.residues[-1].name == "SER"
+    assert mol.residues[0].name == "NMET"
+    assert mol.residues[-1].name == "CSER"
     assert mol.residues[-1].name2atom("OXT").name == "OXT"
     assert mol.validate()
 
@@ -44,7 +44,7 @@ def test_1kv2_tip3p_ion_export_workflow(tmp_path):
     Xponge.Add_Ions(mol, {"NA": 4, "CL": 2})
 
     counts = mol.residue_counts()
-    assert counts["WAT"] == 58
+    assert counts["WAT"] == 12263
     assert counts["NA"] == 4
     assert counts["CL"] == 2
     assert mol.validate()

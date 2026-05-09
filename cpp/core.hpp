@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -69,6 +70,33 @@ struct NB14 {
     double k_ee{0.833333};
 };
 
+struct DihedralTerm {
+    int periodicity{1};
+    double k{0.0};
+    double phase{0.0};
+};
+
+struct NB14Scale {
+    double k_lj{0.5};
+    double k_ee{0.833333};
+};
+
+struct BondTerm {
+    double k{0.0};
+    double length{0.0};
+};
+
+struct AngleTerm {
+    double k{0.0};
+    double theta{0.0};
+};
+
+struct AmberImproperMatch {
+    DihedralTerm term;
+    bool exact{false};
+    int wildcard_count{0};
+};
+
 struct Topology {
     std::vector<Bond> bonds;
     std::vector<Angle> angles;
@@ -127,6 +155,7 @@ public:
     std::vector<ResidueLink> residue_links;
     std::array<double, 3> box_length{0.0, 0.0, 0.0};
     std::array<double, 3> box_angle{90.0, 90.0, 90.0};
+    bool has_box{false};
 
     std::size_t atom_count() const noexcept;
     std::size_t residue_count() const noexcept;
@@ -163,8 +192,9 @@ public:
 Molecule load_pdb_text(const std::string& text);
 Molecule load_mol2_text(const std::string& text);
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distance, double tolerance,
-                     std::int64_t n_solvent);
-void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts);
+                     std::int64_t n_solvent, std::uint64_t seed = 0);
+void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts,
+              std::uint64_t seed = 0);
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname);
@@ -174,6 +204,16 @@ Topology build_topology(const Molecule& molecule);
 
 void register_ff14sb();
 void register_tip3p();
+void register_amber_parmdat_file(const std::filesystem::path& filename);
+void register_amber_frcmod_file(const std::filesystem::path& filename);
+std::vector<DihedralTerm> find_amber_proper_terms(const std::array<std::string, 4>& atom_types);
+std::optional<DihedralTerm> find_amber_improper_term(const std::array<std::string, 4>& atom_types);
+std::optional<AmberImproperMatch> find_amber_improper_match(const std::array<std::string, 4>& atom_types);
+std::optional<NB14Scale> find_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4);
+std::optional<BondTerm> find_amber_bond_term(const std::string& atom_type1, const std::string& atom_type2);
+std::optional<AngleTerm> find_amber_angle_term(const std::array<std::string, 3>& atom_types);
+std::string find_amber_lj_type(const std::string& atom_type);
+std::optional<std::pair<double, double>> find_amber_lj_parameter(const std::string& lj_type);
 void register_residue_templates_from_mol2_text(const std::string& text);
 void register_residue_templates_from_mol2_file(const std::filesystem::path& filename);
 bool has_template(const std::string& name);

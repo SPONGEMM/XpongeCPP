@@ -95,17 +95,17 @@ void set_box_padding_object(const std::shared_ptr<Molecule>& molecule, double pa
 }
 
 void add_solvent_box_object(const std::shared_ptr<Molecule>& molecule, const std::shared_ptr<Molecule>& solvent,
-                            double distance, double tolerance, py::object n_solvent) {
+                            double distance, double tolerance, py::object n_solvent, std::uint64_t seed) {
     std::int64_t count = 0;
     if (!n_solvent.is_none()) {
         count = py::cast<std::int64_t>(n_solvent);
     }
-    add_solvent_box(*molecule, *solvent, distance, tolerance, count);
+    add_solvent_box(*molecule, *solvent, distance, tolerance, count, seed);
 }
 
 void add_ions_object(const std::shared_ptr<Molecule>& molecule,
-                     const std::unordered_map<std::string, std::int64_t>& counts) {
-    add_ions(*molecule, counts);
+                     const std::unordered_map<std::string, std::int64_t>& counts, std::uint64_t seed) {
+    add_ions(*molecule, counts, seed);
 }
 
 std::unordered_map<std::string, std::string> save_sponge_input_object(const std::shared_ptr<Molecule>& molecule,
@@ -189,11 +189,18 @@ PYBIND11_MODULE(_core, m) {
 
     m.def("load_pdb", &load_pdb_object);
     m.def("load_mol2", &load_mol2_object);
-    m.def("load_frcmod", [](py::object) { return py::dict(); });
-    m.def("load_parmdat", [](py::object) { return py::dict(); });
+    m.def("load_frcmod", [](const std::string& filename) {
+        register_amber_frcmod_file(filename);
+        return py::dict();
+    });
+    m.def("load_parmdat", [](const std::string& filename) {
+        register_amber_parmdat_file(filename);
+        return py::dict();
+    });
     m.def("add_solvent_box", &add_solvent_box_object, py::arg("molecule"), py::arg("solvent"),
-          py::arg("distance"), py::arg("tolerance") = 2.5, py::arg("n_solvent") = py::none());
-    m.def("add_ions", &add_ions_object, py::arg("molecule"), py::arg("counts"));
+          py::arg("distance"), py::arg("tolerance") = 2.5, py::arg("n_solvent") = py::none(),
+          py::arg("seed") = 0);
+    m.def("add_ions", &add_ions_object, py::arg("molecule"), py::arg("counts"), py::arg("seed") = 0);
     m.def("set_box_padding", &set_box_padding_object, py::arg("molecule"), py::arg("padding") = 0.5,
           py::arg("center") = true);
     m.def("save_sponge_input", &save_sponge_input_object, py::arg("molecule"), py::arg("prefix") = "",
@@ -202,6 +209,8 @@ PYBIND11_MODULE(_core, m) {
 
     m.def("register_ff14sb", &register_ff14sb);
     m.def("register_tip3p", &register_tip3p);
+    m.def("register_amber_parmdat_file", [](const std::string& filename) { register_amber_parmdat_file(filename); });
+    m.def("register_amber_frcmod_file", [](const std::string& filename) { register_amber_frcmod_file(filename); });
     m.def("register_residue_templates_from_mol2_file",
           [](const std::string& filename) { register_residue_templates_from_mol2_file(filename); });
     m.def("has_template", &has_template);

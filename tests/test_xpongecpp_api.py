@@ -34,7 +34,7 @@ def test_load_pdb_preserves_molecule_residue_atom_layers():
     assert mol.name == "PDB"
     assert mol.atom_count == 4
     assert mol.residue_count == 1
-    assert mol.residues[0].name == "ALA"
+    assert mol.residues[0].name == "NALA"
     assert mol.residues[0].atom_count == 4
     assert mol.residues[0].name2atom("CA").name == "CA"
 
@@ -52,7 +52,7 @@ def test_residue_type_is_writable_and_versioned():
     assert restype.bond_count == 1
 
 
-def test_add_solvent_box_appends_template_waters_and_sets_box():
+def test_add_solvent_box_appends_template_waters_and_exports_implicit_box(tmp_path):
     solute = Xponge.load_pdb(StringIO(PDB_TEXT))
     water = Xponge.load_mol2(StringIO(MOL2_TEXT))
 
@@ -60,8 +60,11 @@ def test_add_solvent_box_appends_template_waters_and_sets_box():
 
     assert solute.residue_count == 5
     assert solute.atom_count == 16
-    assert solute.box_length[0] > 0
+    assert solute.box_length[0] == 0.0
     assert solute.validate()
+    Xponge.Save_SPONGE_Input(solute, prefix="case", dirname=str(tmp_path))
+    box = [float(value) for value in (tmp_path / "case_coordinate.txt").read_text().splitlines()[-1].split()]
+    assert box[0] > 0
 
 
 def test_save_sponge_input_writes_core_files(tmp_path):
@@ -87,6 +90,22 @@ def test_save_sponge_input_writes_core_files(tmp_path):
     ]
     assert (tmp_path / "case_coordinate.txt").exists()
     assert (tmp_path / "case_residue.txt").read_text().splitlines()[0] == "4 1"
+
+
+def test_add_ions_randomly_replaces_waters_by_seed():
+    Xponge.register_tip3p()
+    solute = Xponge.load_pdb(StringIO(PDB_TEXT))
+    water = Xponge.load_mol2(StringIO(MOL2_TEXT))
+    Xponge.Add_Solvent_Box(solute, water, 4.0, tolerance=2.5, n_solvent=8)
+    first_water_oxygen = tuple(
+        getattr(solute.residues[1].atoms[0], axis) for axis in ("x", "y", "z")
+    )
+
+    Xponge.Add_Ions(solute, {"NA": 1}, seed=20260509)
+
+    assert solute.residues[1].name == "NA"
+    ion_position = tuple(getattr(solute.residues[1].atoms[0], axis) for axis in ("x", "y", "z"))
+    assert ion_position != first_water_oxygen
 
 
 def test_assign_builds_graph_markers_and_residue_type():

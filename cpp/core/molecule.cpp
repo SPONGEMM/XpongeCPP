@@ -220,6 +220,7 @@ void Molecule::set_box_padding(double padding, bool center) {
         maxv[1] - minv[1] + 2.0 * padding,
         maxv[2] - minv[2] + 2.0 * padding,
     };
+    has_box = true;
     if (center) {
         const std::array<double, 3> shift{padding - minv[0], padding - minv[1], padding - minv[2]};
         for (auto& atom : atoms) {
