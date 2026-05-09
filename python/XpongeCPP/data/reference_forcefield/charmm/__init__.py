@@ -1,0 +1,40 @@
+"""
+This **package** sets the basic configuration of CHARMM force field
+"""
+import os
+from ... import GlobalSetting, load_ffitp, AtomType, ResidueType, set_global_alternative_names
+from ..base import charge_base, mass_base, lj_base, bond_base, ub_angle_base, \
+    dihedral_base, nb14_base, nb14_extra_base, improper_base, \
+    virtual_atom_base, cmap_base, exclude_base
+
+lj_base.LJType.combining_method_A = lj_base.Lorentz_Berthelot_For_A
+lj_base.LJType.combining_method_B = lj_base.Lorentz_Berthelot_For_B
+
+GlobalSetting.Set_Invisible_Bonded_Forces(["improper"])
+
+dihedral_base.ProperType.New_From_String(r"""
+name        k reset  phi0 periodicity
+X-X-X-X     0 0      0    0
+""")
+exclude_base.Exclude(4)
+
+def load_parameter_from_ffitp(filename, folder):
+    """
+    This **function** is used to get charmm force field parameters from GROMACS ffitp
+
+    :param filename: the name of the input file
+    :param prefix: the folder of the file
+    :return: None
+    """
+    filename = os.path.join(folder, filename)
+    output = load_ffitp(filename)
+
+    AtomType.New_From_String(output["atomtypes"])
+    bond_base.BondType.New_From_String(output["bonds"])
+    dihedral_base.ProperType.New_From_String(output["dihedrals"])
+    lj_base.LJType.New_From_String(output["LJ"])
+    ub_angle_base.UreyBradleyType.New_From_String(output["Urey-Bradley"])
+    improper_base.ImproperType.New_From_String(output["impropers"])
+    nb14_extra_base.NB14Type.New_From_String(output["nb14_extra"])
+    nb14_base.NB14Type.New_From_String(output["nb14"])
+    cmap_base.CMapType.New_From_Dict(output["cmaps"])

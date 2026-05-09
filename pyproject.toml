@@ -1,0 +1,23 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "XpongeCPP"
+version = "0.1.0"
+description = "C++ core rewrite of common Xponge workflows with a Python compatibility layer"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "The XpongeCPP contributors" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=9"]
+
+[tool.scikit-build]
+cmake.version = ">=3.18"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["python/XpongeCPP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
