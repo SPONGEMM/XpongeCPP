@@ -63,6 +63,11 @@ void append_solvent_unit(Molecule& molecule, const Molecule& solvent, const std:
     molecule.atoms.reserve(molecule.atoms.size() + solvent.atoms.size());
     molecule.explicit_bonds.reserve(molecule.explicit_bonds.size() + solvent.explicit_bonds.size());
     molecule.residue_links.reserve(molecule.residue_links.size() + solvent.residue_links.size());
+    molecule.virtual_atoms.reserve(molecule.virtual_atoms.size() + solvent.virtual_atoms.size());
+    molecule.harmonic_impropers.reserve(molecule.harmonic_impropers.size() + solvent.harmonic_impropers.size());
+    molecule.cmap_types.reserve(molecule.cmap_types.size() + solvent.cmap_types.size());
+    molecule.cmaps.reserve(molecule.cmaps.size() + solvent.cmaps.size());
+    molecule.nb14_extras.reserve(molecule.nb14_extras.size() + solvent.nb14_extras.size());
 
     for (const auto& residue : solvent.residues) {
         Residue copied = residue;
@@ -82,6 +87,28 @@ void append_solvent_unit(Molecule& molecule, const Molecule& solvent, const std:
     }
     for (const auto& link : solvent.residue_links) {
         molecule.residue_links.push_back({link.atom1 + atom_offset, link.atom2 + atom_offset});
+    }
+    for (const auto& vatom : solvent.virtual_atoms) {
+        molecule.virtual_atoms.push_back({vatom.virtual_atom + atom_offset, vatom.atom0 + atom_offset,
+                                          vatom.atom1 + atom_offset, vatom.atom2 + atom_offset,
+                                          vatom.k1, vatom.k2});
+    }
+    for (const auto& improper : solvent.harmonic_impropers) {
+        molecule.harmonic_impropers.push_back({improper.atom0 + atom_offset, improper.atom1 + atom_offset,
+                                               improper.atom2 + atom_offset, improper.atom3 + atom_offset,
+                                               improper.k, improper.phi0});
+    }
+    const std::uint32_t cmap_type_offset = static_cast<std::uint32_t>(molecule.cmap_types.size());
+    for (const auto& type : solvent.cmap_types) {
+        molecule.cmap_types.push_back(type);
+    }
+    for (const auto& cmap : solvent.cmaps) {
+        molecule.cmaps.push_back({cmap.atom0 + atom_offset, cmap.atom1 + atom_offset, cmap.atom2 + atom_offset,
+                                  cmap.atom3 + atom_offset, cmap.atom4 + atom_offset, cmap.type + cmap_type_offset});
+    }
+    for (const auto& nb14 : solvent.nb14_extras) {
+        molecule.nb14_extras.push_back({nb14.atom1 + atom_offset, nb14.atom2 + atom_offset,
+                                        nb14.a, nb14.b, nb14.kee});
     }
 }
 
@@ -355,6 +382,55 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
             continue;
         }
         rebuilt.residue_links.push_back({atom1, atom2});
+    }
+    const auto mapped_atom = [&](AtomId old_atom_id) {
+        if (old_atom_id >= old_to_new_atom.size()) {
+            return invalid_atom_id;
+        }
+        return old_to_new_atom[old_atom_id];
+    };
+    for (const auto& vatom : molecule.virtual_atoms) {
+        const AtomId virtual_atom = mapped_atom(vatom.virtual_atom);
+        const AtomId atom0 = mapped_atom(vatom.atom0);
+        const AtomId atom1 = mapped_atom(vatom.atom1);
+        const AtomId atom2 = mapped_atom(vatom.atom2);
+        if (virtual_atom == invalid_atom_id || atom0 == invalid_atom_id ||
+            atom1 == invalid_atom_id || atom2 == invalid_atom_id) {
+            continue;
+        }
+        rebuilt.virtual_atoms.push_back({virtual_atom, atom0, atom1, atom2, vatom.k1, vatom.k2});
+    }
+    for (const auto& improper : molecule.harmonic_impropers) {
+        const AtomId atom0 = mapped_atom(improper.atom0);
+        const AtomId atom1 = mapped_atom(improper.atom1);
+        const AtomId atom2 = mapped_atom(improper.atom2);
+        const AtomId atom3 = mapped_atom(improper.atom3);
+        if (atom0 == invalid_atom_id || atom1 == invalid_atom_id ||
+            atom2 == invalid_atom_id || atom3 == invalid_atom_id) {
+            continue;
+        }
+        rebuilt.harmonic_impropers.push_back({atom0, atom1, atom2, atom3, improper.k, improper.phi0});
+    }
+    rebuilt.cmap_types = molecule.cmap_types;
+    for (const auto& cmap : molecule.cmaps) {
+        const AtomId atom0 = mapped_atom(cmap.atom0);
+        const AtomId atom1 = mapped_atom(cmap.atom1);
+        const AtomId atom2 = mapped_atom(cmap.atom2);
+        const AtomId atom3 = mapped_atom(cmap.atom3);
+        const AtomId atom4 = mapped_atom(cmap.atom4);
+        if (atom0 == invalid_atom_id || atom1 == invalid_atom_id || atom2 == invalid_atom_id ||
+            atom3 == invalid_atom_id || atom4 == invalid_atom_id) {
+            continue;
+        }
+        rebuilt.cmaps.push_back({atom0, atom1, atom2, atom3, atom4, cmap.type});
+    }
+    for (const auto& nb14 : molecule.nb14_extras) {
+        const AtomId atom1 = mapped_atom(nb14.atom1);
+        const AtomId atom2 = mapped_atom(nb14.atom2);
+        if (atom1 == invalid_atom_id || atom2 == invalid_atom_id) {
+            continue;
+        }
+        rebuilt.nb14_extras.push_back({atom1, atom2, nb14.a, nb14.b, nb14.kee});
     }
 
     molecule = std::move(rebuilt);

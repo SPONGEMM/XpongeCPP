@@ -187,6 +187,24 @@ PYBIND11_MODULE(_core, m) {
         .def("Set_Box_Padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
         .def("add_molecule", &Molecule::add_molecule, py::arg("other"))
         .def("Add_Molecule", &Molecule::add_molecule, py::arg("other"))
+        .def("add_virtual_atom2", &Molecule::add_virtual_atom2, py::arg("virtual_atom"), py::arg("atom0"),
+             py::arg("atom1"), py::arg("atom2"), py::arg("k1"), py::arg("k2"))
+        .def("Add_Virtual_Atom2", &Molecule::add_virtual_atom2, py::arg("virtual_atom"), py::arg("atom0"),
+             py::arg("atom1"), py::arg("atom2"), py::arg("k1"), py::arg("k2"))
+        .def("add_improper_dihedral", &Molecule::add_improper_dihedral, py::arg("atom0"), py::arg("atom1"),
+             py::arg("atom2"), py::arg("atom3"), py::arg("k"), py::arg("phi0"))
+        .def("Add_Improper_Dihedral", &Molecule::add_improper_dihedral, py::arg("atom0"), py::arg("atom1"),
+             py::arg("atom2"), py::arg("atom3"), py::arg("k"), py::arg("phi0"))
+        .def("add_cmap_type", &Molecule::add_cmap_type, py::arg("resolution"), py::arg("parameters"))
+        .def("Add_CMap_Type", &Molecule::add_cmap_type, py::arg("resolution"), py::arg("parameters"))
+        .def("add_cmap", &Molecule::add_cmap, py::arg("atom0"), py::arg("atom1"), py::arg("atom2"),
+             py::arg("atom3"), py::arg("atom4"), py::arg("type"))
+        .def("Add_CMap", &Molecule::add_cmap, py::arg("atom0"), py::arg("atom1"), py::arg("atom2"),
+             py::arg("atom3"), py::arg("atom4"), py::arg("type"))
+        .def("add_nb14_extra", &Molecule::add_nb14_extra, py::arg("atom1"), py::arg("atom2"), py::arg("a"),
+             py::arg("b"), py::arg("kee"))
+        .def("Add_NB14_Extra", &Molecule::add_nb14_extra, py::arg("atom1"), py::arg("atom2"), py::arg("a"),
+             py::arg("b"), py::arg("kee"))
         .def("validate", &Molecule::validate)
         .def("residue_counts", &Molecule::residue_counts);
 

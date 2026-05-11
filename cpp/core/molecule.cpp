@@ -226,6 +226,11 @@ void Molecule::add_molecule(const Molecule& other) {
     residues.reserve(residues.size() + other.residues.size());
     explicit_bonds.reserve(explicit_bonds.size() + other.explicit_bonds.size());
     residue_links.reserve(residue_links.size() + other.residue_links.size());
+    virtual_atoms.reserve(virtual_atoms.size() + other.virtual_atoms.size());
+    harmonic_impropers.reserve(harmonic_impropers.size() + other.harmonic_impropers.size());
+    cmap_types.reserve(cmap_types.size() + other.cmap_types.size());
+    cmaps.reserve(cmaps.size() + other.cmaps.size());
+    nb14_extras.reserve(nb14_extras.size() + other.nb14_extras.size());
 
     for (const auto& residue : other.residues) {
         Residue copied = residue;
@@ -245,10 +250,84 @@ void Molecule::add_molecule(const Molecule& other) {
     for (const auto& link : other.residue_links) {
         residue_links.push_back({link.atom1 + atom_offset, link.atom2 + atom_offset});
     }
+    for (const auto& vatom : other.virtual_atoms) {
+        virtual_atoms.push_back({vatom.virtual_atom + atom_offset, vatom.atom0 + atom_offset,
+                                 vatom.atom1 + atom_offset, vatom.atom2 + atom_offset,
+                                 vatom.k1, vatom.k2});
+    }
+    for (const auto& improper : other.harmonic_impropers) {
+        harmonic_impropers.push_back({improper.atom0 + atom_offset, improper.atom1 + atom_offset,
+                                      improper.atom2 + atom_offset, improper.atom3 + atom_offset,
+                                      improper.k, improper.phi0});
+    }
+    const std::uint32_t cmap_type_offset = static_cast<std::uint32_t>(cmap_types.size());
+    for (const auto& type : other.cmap_types) {
+        cmap_types.push_back(type);
+    }
+    for (const auto& cmap : other.cmaps) {
+        cmaps.push_back({cmap.atom0 + atom_offset, cmap.atom1 + atom_offset, cmap.atom2 + atom_offset,
+                         cmap.atom3 + atom_offset, cmap.atom4 + atom_offset, cmap.type + cmap_type_offset});
+    }
+    for (const auto& nb14 : other.nb14_extras) {
+        nb14_extras.push_back({nb14.atom1 + atom_offset, nb14.atom2 + atom_offset, nb14.a, nb14.b, nb14.kee});
+    }
 
     if (!validate()) {
         throw std::runtime_error("internal error: invalid molecule after merge");
     }
+}
+
+void Molecule::add_virtual_atom2(AtomId virtual_atom, AtomId atom0, AtomId atom1, AtomId atom2,
+                                 double k1, double k2) {
+    ensure_atom_id(*this, virtual_atom);
+    ensure_atom_id(*this, atom0);
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    virtual_atoms.push_back({virtual_atom, atom0, atom1, atom2, k1, k2});
+}
+
+void Molecule::add_improper_dihedral(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3,
+                                     double k, double phi0) {
+    ensure_atom_id(*this, atom0);
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    ensure_atom_id(*this, atom3);
+    harmonic_impropers.push_back({atom0, atom1, atom2, atom3, k, phi0});
+}
+
+std::uint32_t Molecule::add_cmap_type(std::uint32_t resolution, const std::vector<double>& parameters) {
+    if (resolution == 0) {
+        throw std::invalid_argument("cmap resolution should be positive");
+    }
+    const auto expected = static_cast<std::size_t>(resolution) * resolution;
+    if (parameters.size() != expected) {
+        throw std::invalid_argument("cmap parameter count should equal resolution * resolution");
+    }
+    const auto index = static_cast<std::uint32_t>(cmap_types.size());
+    cmap_types.push_back({resolution, parameters});
+    return index;
+}
+
+void Molecule::add_cmap(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3, AtomId atom4,
+                        std::uint32_t type) {
+    ensure_atom_id(*this, atom0);
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    ensure_atom_id(*this, atom3);
+    ensure_atom_id(*this, atom4);
+    if (type >= cmap_types.size()) {
+        throw std::out_of_range("cmap type out of range");
+    }
+    cmaps.push_back({atom0, atom1, atom2, atom3, atom4, type});
+}
+
+void Molecule::add_nb14_extra(AtomId atom1, AtomId atom2, double a, double b, double kee) {
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    if (atom1 == atom2) {
+        throw std::invalid_argument("nb14_extra atoms should be different");
+    }
+    nb14_extras.push_back({atom1, atom2, a, b, kee});
 }
 
 void Molecule::set_box_padding(double padding, bool center) {
@@ -296,6 +375,35 @@ bool Molecule::validate() const {
     }
     for (const auto& bond : explicit_bonds) {
         if (bond.atom1 >= atoms.size() || bond.atom2 >= atoms.size() || bond.atom1 == bond.atom2) {
+            return false;
+        }
+    }
+    for (const auto& vatom : virtual_atoms) {
+        if (vatom.virtual_atom >= atoms.size() || vatom.atom0 >= atoms.size() ||
+            vatom.atom1 >= atoms.size() || vatom.atom2 >= atoms.size()) {
+            return false;
+        }
+    }
+    for (const auto& improper : harmonic_impropers) {
+        if (improper.atom0 >= atoms.size() || improper.atom1 >= atoms.size() ||
+            improper.atom2 >= atoms.size() || improper.atom3 >= atoms.size()) {
+            return false;
+        }
+    }
+    for (const auto& type : cmap_types) {
+        if (type.resolution == 0 ||
+            type.parameters.size() != static_cast<std::size_t>(type.resolution) * type.resolution) {
+            return false;
+        }
+    }
+    for (const auto& cmap : cmaps) {
+        if (cmap.atom0 >= atoms.size() || cmap.atom1 >= atoms.size() || cmap.atom2 >= atoms.size() ||
+            cmap.atom3 >= atoms.size() || cmap.atom4 >= atoms.size() || cmap.type >= cmap_types.size()) {
+            return false;
+        }
+    }
+    for (const auto& nb14 : nb14_extras) {
+        if (nb14.atom1 >= atoms.size() || nb14.atom2 >= atoms.size() || nb14.atom1 == nb14.atom2) {
             return false;
         }
     }

@@ -71,6 +71,46 @@ struct NB14 {
     double k_ee{0.833333};
 };
 
+struct VirtualAtom2 {
+    AtomId virtual_atom{0};
+    AtomId atom0{0};
+    AtomId atom1{0};
+    AtomId atom2{0};
+    double k1{0.0};
+    double k2{0.0};
+};
+
+struct HarmonicImproper {
+    AtomId atom0{0};
+    AtomId atom1{0};
+    AtomId atom2{0};
+    AtomId atom3{0};
+    double k{0.0};
+    double phi0{0.0};
+};
+
+struct CMapType {
+    std::uint32_t resolution{0};
+    std::vector<double> parameters;
+};
+
+struct CMap {
+    AtomId atom0{0};
+    AtomId atom1{0};
+    AtomId atom2{0};
+    AtomId atom3{0};
+    AtomId atom4{0};
+    std::uint32_t type{0};
+};
+
+struct NB14Extra {
+    AtomId atom1{0};
+    AtomId atom2{0};
+    double a{0.0};
+    double b{0.0};
+    double kee{0.0};
+};
+
 struct DihedralTerm {
     int periodicity{1};
     double k{0.0};
@@ -155,6 +195,11 @@ public:
     std::vector<Residue> residues;
     std::vector<ResidueLink> explicit_bonds;
     std::vector<ResidueLink> residue_links;
+    std::vector<VirtualAtom2> virtual_atoms;
+    std::vector<HarmonicImproper> harmonic_impropers;
+    std::vector<CMapType> cmap_types;
+    std::vector<CMap> cmaps;
+    std::vector<NB14Extra> nb14_extras;
     std::array<double, 3> box_length{0.0, 0.0, 0.0};
     std::array<double, 3> box_angle{90.0, 90.0, 90.0};
     bool has_box{false};
@@ -167,6 +212,11 @@ public:
     Residue& residue(ResidueId id);
     void append_residue_from_type(const ResidueType& type, double dx, double dy, double dz);
     void add_molecule(const Molecule& other);
+    void add_virtual_atom2(AtomId virtual_atom, AtomId atom0, AtomId atom1, AtomId atom2, double k1, double k2);
+    void add_improper_dihedral(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3, double k, double phi0);
+    std::uint32_t add_cmap_type(std::uint32_t resolution, const std::vector<double>& parameters);
+    void add_cmap(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3, AtomId atom4, std::uint32_t type);
+    void add_nb14_extra(AtomId atom1, AtomId atom2, double a, double b, double kee);
     void set_box_padding(double padding, bool center);
     bool validate() const;
     std::unordered_map<std::string, std::size_t> residue_counts() const;

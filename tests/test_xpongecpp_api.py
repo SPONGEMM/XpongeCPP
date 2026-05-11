@@ -177,6 +177,88 @@ def test_save_sponge_input_writes_core_files(tmp_path):
     assert (tmp_path / "case_residue.txt").read_text().splitlines()[0] == "4 1"
 
 
+def test_save_sponge_input_writes_xponge_extra_bonded_force_files(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+
+    mol.add_virtual_atom2(0, 1, 2, 3, 0.25, 0.75)
+    mol.add_improper_dihedral(1, 2, 3, 4, 5.5, 180.0)
+    mol.add_cmap_type(2, [9.0, 9.0, 9.0, 9.0])
+    cmap_type = mol.add_cmap_type(2, [0.1, 0.2, 0.3, 0.4])
+    mol.add_cmap(4, 3, 2, 1, 0, cmap_type)
+    mol.add_nb14_extra(4, 1, 1.25, 2.5, 0.75)
+
+    out = Xponge.Save_SPONGE_Input(mol, prefix="extra", dirname=str(tmp_path))
+
+    assert {"virtual_atom", "improper_dihedral", "cmap", "nb14_extra"}.issubset(out)
+    assert (tmp_path / "extra_virtual_atom.txt").read_text().splitlines() == [
+        "2 0 1 2 3 0.250000 0.750000",
+    ]
+    assert (tmp_path / "extra_improper_dihedral.txt").read_text().splitlines() == [
+        "1",
+        "3 1 2 4 5.500000 180.000000",
+    ]
+    assert (tmp_path / "extra_nb14_extra.txt").read_text().splitlines() == [
+        "1",
+        "1 4 1.250000e+00 2.500000e+00 7.500000e-01",
+    ]
+    assert (tmp_path / "extra_cmap.txt").read_text().splitlines() == [
+        "1 1",
+        "2 ",
+        "0.100000 0.200000 ",
+        "0.300000 0.400000 ",
+        "",
+        "4 3 2 1 0 0",
+    ]
+
+
+def test_extra_bonded_force_indices_are_remapped_when_molecules_are_copied(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    Xponge.register_tip3p()
+    target = Xponge.load_pdb(StringIO(PDB_TEXT))
+    source = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+    source.add_virtual_atom2(0, 1, 2, 3, 0.25, 0.75)
+    source.add_improper_dihedral(1, 2, 3, 4, 5.5, 180.0)
+    source.add_nb14_extra(4, 1, 1.25, 2.5, 0.75)
+    cmap_type = source.add_cmap_type(2, [0.1, 0.2, 0.3, 0.4])
+    source.add_cmap(4, 3, 2, 1, 0, cmap_type)
+
+    Xponge.Add_Molecule(target, source)
+    Xponge.Save_SPONGE_Input(target, prefix="merged_extra", dirname=str(tmp_path))
+
+    assert target.validate()
+    assert (tmp_path / "merged_extra_virtual_atom.txt").read_text().splitlines() == [
+        "2 4 5 6 7 0.250000 0.750000",
+    ]
+    assert (tmp_path / "merged_extra_improper_dihedral.txt").read_text().splitlines() == [
+        "1",
+        "7 5 6 8 5.500000 180.000000",
+    ]
+    assert (tmp_path / "merged_extra_nb14_extra.txt").read_text().splitlines() == [
+        "1",
+        "5 8 1.250000e+00 2.500000e+00 7.500000e-01",
+    ]
+    assert (tmp_path / "merged_extra_cmap.txt").read_text().splitlines()[-1] == "8 7 6 5 4 0"
+
+
+def test_extra_bonded_force_entries_on_removed_solvent_are_dropped_during_ion_replacement(tmp_path):
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+    mol.add_virtual_atom2(0, 1, 2, 3, 0.25, 0.75)
+    mol.add_improper_dihedral(1, 2, 3, 4, 5.5, 180.0)
+    mol.add_nb14_extra(4, 1, 1.25, 2.5, 0.75)
+
+    Xponge.Add_Ions(mol, {"NA": 1}, seed=20260509, solvent="FAR")
+    out = Xponge.Save_SPONGE_Input(mol, prefix="ion_extra", dirname=str(tmp_path))
+
+    assert mol.validate()
+    assert "virtual_atom" not in out
+    assert "improper_dihedral" not in out
+    assert "nb14_extra" not in out
+
+
 def test_add_ions_randomly_replaces_waters_by_seed():
     Xponge.register_tip3p()
     solute = Xponge.load_pdb(StringIO(PDB_TEXT))

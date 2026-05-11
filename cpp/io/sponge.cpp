@@ -10,6 +10,7 @@
 #include <map>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 #include <unordered_map>
 
 namespace xpongecpp {
@@ -355,6 +356,131 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
             out << nb14.atom1 << " " << nb14.atom2 << " " << nb14.k_lj << " " << nb14.k_ee << "\n";
         }
         remember(outputs, "nb14", path);
+    }
+    if (!molecule.virtual_atoms.empty()) {
+        const auto path = output_path(dirname, actual_prefix, "virtual_atom");
+        std::ofstream out(path);
+        out << std::fixed << std::setprecision(6);
+        for (const auto& vatom : molecule.virtual_atoms) {
+            out << "2 " << vatom.virtual_atom << " " << vatom.atom0 << " " << vatom.atom1 << " "
+                << vatom.atom2 << " " << vatom.k1 << " " << vatom.k2 << "\n";
+        }
+        remember(outputs, "virtual_atom", path);
+    }
+    if (!molecule.harmonic_impropers.empty()) {
+        struct ImproperRow {
+            AtomId atom0{0};
+            AtomId atom1{0};
+            AtomId atom2{0};
+            AtomId atom3{0};
+            double k{0.0};
+            double phi0{0.0};
+        };
+        std::vector<ImproperRow> rows;
+        rows.reserve(molecule.harmonic_impropers.size());
+        for (const auto& improper : molecule.harmonic_impropers) {
+            if (improper.k != 0.0) {
+                rows.push_back({improper.atom2, improper.atom0, improper.atom1, improper.atom3,
+                                improper.k, improper.phi0});
+            }
+        }
+        if (!rows.empty()) {
+            std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+                return std::tuple(left.atom0, left.atom1, left.atom2, left.atom3, left.k, left.phi0) <
+                       std::tuple(right.atom0, right.atom1, right.atom2, right.atom3, right.k, right.phi0);
+            });
+            const auto path = output_path(dirname, actual_prefix, "improper_dihedral");
+            std::ofstream out(path);
+            out << rows.size() << "\n";
+            out << std::fixed << std::setprecision(6);
+            for (const auto& row : rows) {
+                out << row.atom0 << " " << row.atom1 << " " << row.atom2 << " " << row.atom3 << " "
+                    << row.k << " " << row.phi0 << "\n";
+            }
+            remember(outputs, "improper_dihedral", path);
+        }
+    }
+    if (!molecule.nb14_extras.empty()) {
+        struct NB14ExtraRow {
+            AtomId atom1{0};
+            AtomId atom2{0};
+            double a{0.0};
+            double b{0.0};
+            double kee{0.0};
+        };
+        std::vector<NB14ExtraRow> rows;
+        rows.reserve(molecule.nb14_extras.size());
+        for (const auto& nb14 : molecule.nb14_extras) {
+            if (nb14.a != 0.0 || nb14.b != 0.0 || nb14.kee != 0.0) {
+                const auto atom1 = std::min(nb14.atom1, nb14.atom2);
+                const auto atom2 = std::max(nb14.atom1, nb14.atom2);
+                rows.push_back({atom1, atom2, nb14.a, nb14.b, nb14.kee});
+            }
+        }
+        if (!rows.empty()) {
+            std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+                return std::tie(left.atom1, left.atom2) < std::tie(right.atom1, right.atom2);
+            });
+            const auto path = output_path(dirname, actual_prefix, "nb14_extra");
+            std::ofstream out(path);
+            out << rows.size() << "\n";
+            out << std::scientific << std::setprecision(6);
+            for (const auto& row : rows) {
+                out << row.atom1 << " " << row.atom2 << " " << row.a << " " << row.b << " " << row.kee << "\n";
+            }
+            remember(outputs, "nb14_extra", path);
+        }
+    }
+    if (!molecule.cmaps.empty()) {
+        struct CMapRow {
+            AtomId atom0{0};
+            AtomId atom1{0};
+            AtomId atom2{0};
+            AtomId atom3{0};
+            AtomId atom4{0};
+            std::uint32_t type{0};
+        };
+        std::vector<CMapRow> rows;
+        rows.reserve(molecule.cmaps.size());
+        std::vector<std::uint32_t> used_types;
+        std::unordered_map<std::uint32_t, std::uint32_t> output_type_by_source_type;
+        for (const auto& cmap : molecule.cmaps) {
+            auto it = output_type_by_source_type.find(cmap.type);
+            if (it == output_type_by_source_type.end()) {
+                const auto output_type = static_cast<std::uint32_t>(used_types.size());
+                it = output_type_by_source_type.emplace(cmap.type, output_type).first;
+                used_types.push_back(cmap.type);
+            }
+            rows.push_back({cmap.atom0, cmap.atom1, cmap.atom2, cmap.atom3, cmap.atom4, it->second});
+        }
+        std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+            return std::tuple(left.atom0, left.atom1, left.atom2, left.atom3, left.atom4) <
+                   std::tuple(right.atom0, right.atom1, right.atom2, right.atom3, right.atom4);
+        });
+        const auto path = output_path(dirname, actual_prefix, "cmap");
+        std::ofstream out(path);
+        out << molecule.cmaps.size() << " " << used_types.size() << "\n";
+        for (const auto type_id : used_types) {
+            const auto& type = molecule.cmap_types[type_id];
+            out << type.resolution << " ";
+        }
+        out << "\n";
+        out << std::fixed << std::setprecision(6);
+        for (const auto type_id : used_types) {
+            const auto& type = molecule.cmap_types[type_id];
+            for (std::size_t i = 0; i < type.parameters.size(); ++i) {
+                out << type.parameters[i] << " ";
+                if ((i + 1) % type.resolution == 0) {
+                    out << "\n";
+                }
+            }
+            out << "\n";
+        }
+        for (const auto& row : rows) {
+            out << row.atom0 << " " << row.atom1 << " " << row.atom2 << " " << row.atom3 << " "
+                << row.atom4 << " " << row.type << "\n";
+        }
+        remember(outputs, "cmap", path);
     }
 
     return outputs;
