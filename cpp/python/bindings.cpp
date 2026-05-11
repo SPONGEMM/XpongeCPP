@@ -327,8 +327,17 @@ PYBIND11_MODULE(_core, m) {
     m.def("register_tip3p", &register_tip3p);
     m.def("register_amber_parmdat_file", [](const std::string& filename) { register_amber_parmdat_file(filename); });
     m.def("register_amber_frcmod_file", [](const std::string& filename) { register_amber_frcmod_file(filename); });
+    m.def("register_amber_lj_parameter", &register_amber_lj_parameter, py::arg("atom_type"), py::arg("lj_type"),
+          py::arg("epsilon"), py::arg("rmin"));
+    m.def("register_amber_bond_parameter", &register_amber_bond_parameter, py::arg("atom_type1"),
+          py::arg("atom_type2"), py::arg("k"), py::arg("length"));
     m.def("register_residue_templates_from_mol2_file",
           [](const std::string& filename) { register_residue_templates_from_mol2_file(filename); });
+    m.def("register_template_molecule_from_mol2_file",
+          [](const std::string& filename) { register_template_molecule_from_mol2_file(filename); });
+    m.def("register_template_virtual_atom2", &register_template_virtual_atom2, py::arg("template_name"),
+          py::arg("virtual_atom"), py::arg("atom0"), py::arg("atom1"), py::arg("atom2"), py::arg("k1"),
+          py::arg("k2"));
     m.def("has_template", &has_template);
     m.def("template_atom_count", &template_atom_count);
     m.def("get_template_molecule", &get_template_molecule_object);

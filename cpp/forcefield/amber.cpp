@@ -19,6 +19,11 @@ std::unordered_map<std::string, ResidueType>& templates() {
     return registry;
 }
 
+std::unordered_map<std::string, Molecule>& molecule_templates() {
+    static std::unordered_map<std::string, Molecule> registry;
+    return registry;
+}
+
 std::mutex& registry_mutex() {
     static std::mutex mutex;
     return mutex;
@@ -41,6 +46,11 @@ struct NB14Parameter {
     std::string atom_type4;
     NB14Scale scale;
     std::size_t order{0};
+};
+
+struct AmberCMapParameter {
+    std::uint32_t resolution{0};
+    std::vector<double> parameters;
 };
 
 struct BondParameter {
@@ -81,6 +91,11 @@ std::vector<NB14Parameter>& nb14_parameters() {
     return parameters;
 }
 
+std::unordered_map<std::string, AmberCMapParameter>& amber_cmap_parameters() {
+    static std::unordered_map<std::string, AmberCMapParameter> parameters;
+    return parameters;
+}
+
 std::unordered_map<std::string, std::string>& lj_type_by_atom_type() {
     static std::unordered_map<std::string, std::string> parameters;
     return parameters;
@@ -93,6 +108,22 @@ std::unordered_map<std::string, std::pair<double, double>>& lj_parameters() {
 
 void put_template(ResidueType residue_type) {
     templates().insert_or_assign(residue_type.name(), std::move(residue_type));
+}
+
+ResidueType residue_type_from_molecule_residue(const Molecule& molecule, const Residue& residue) {
+    ResidueType residue_type(residue.name);
+    for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
+        const auto& atom = molecule.atoms[residue.atom_begin + local];
+        residue_type.add_atom(atom.name, atom.type, atom.x, atom.y, atom.z, atom.charge, atom.mass);
+    }
+    for (const auto& bond : molecule.explicit_bonds) {
+        if (bond.atom1 < residue.atom_begin || bond.atom1 >= residue.atom_begin + residue.atom_count ||
+            bond.atom2 < residue.atom_begin || bond.atom2 >= residue.atom_begin + residue.atom_count) {
+            continue;
+        }
+        residue_type.add_connectivity(molecule.atoms[bond.atom1].name, molecule.atoms[bond.atom2].name);
+    }
+    return residue_type;
 }
 
 std::vector<std::string> split_ws(const std::string& line) {
@@ -214,6 +245,23 @@ void upsert_lj_parameter(const std::string& lj_type, double epsilon, double rmin
     lj_parameters()[lj_type] = {epsilon, rmin};
 }
 
+void upsert_amber_cmap_parameter(const std::string& residue, std::uint32_t resolution,
+                                 const std::vector<double>& parameters) {
+    amber_cmap_parameters().insert_or_assign(
+        "C-N-" + residue + "@XC-C-N",
+        AmberCMapParameter{resolution, parameters});
+}
+
+void flush_amber_cmap_block(const std::vector<std::string>& residues, std::uint32_t resolution,
+                            const std::vector<double>& parameters) {
+    if (residues.empty() || parameters.empty()) {
+        return;
+    }
+    for (const auto& residue : residues) {
+        upsert_amber_cmap_parameter(residue, resolution, parameters);
+    }
+}
+
 std::optional<NB14Scale> parse_nb14_scale(const std::string& line) {
     const auto scee_pos = line.find("SCEE=");
     const auto scnb_pos = line.find("SCNB=");
@@ -286,6 +334,16 @@ void add_minimal_protein_template(const std::string& name) {
     residue.add_connectivity("CA", "C");
     residue.add_connectivity("C", "O");
     put_template(std::move(residue));
+}
+
+AtomId find_residue_atom_by_name(const Molecule& molecule, const Residue& residue, const std::string& name) {
+    for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
+        const AtomId atom_id = residue.atom_begin + local;
+        if (molecule.atoms[atom_id].name == name) {
+            return atom_id;
+        }
+    }
+    return static_cast<AtomId>(molecule.atoms.size());
 }
 
 }  // namespace
@@ -392,6 +450,10 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
 
     std::string line;
     std::string flag;
+    std::string cmap_flag;
+    std::vector<std::string> cmap_residues;
+    std::uint32_t cmap_resolution = 24;
+    std::vector<double> cmap_parameters;
     bool reset = true;
     std::getline(input, line);
     while (std::getline(input, line)) {
@@ -400,7 +462,7 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
             continue;
         }
         const auto words0 = split_ws(line);
-        if (words0.size() == 1) {
+        if (flag.rfind("CMAP", 0) != 0 && words0.size() == 1) {
             flag = trimmed;
             continue;
         }
@@ -447,7 +509,94 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
                 upsert_lj_atom_type(words0[0], words0[0]);
                 upsert_lj_parameter(words0[0], std::stod(words0[2]), std::stod(words0[1]));
             }
+        } else if (flag.rfind("CMAP", 0) == 0) {
+            if (trimmed.rfind("%FLAG", 0) == 0) {
+                if (trimmed.find("CMAP_COUNT") != std::string::npos) {
+                    flush_amber_cmap_block(cmap_residues, cmap_resolution, cmap_parameters);
+                    cmap_residues.clear();
+                    cmap_parameters.clear();
+                    cmap_resolution = 24;
+                    cmap_flag = "CMAP_COUNT";
+                } else if (trimmed.find("CMAP_RESLIST") != std::string::npos) {
+                    cmap_flag = "CMAP_RESLIST";
+                } else if (trimmed.find("CMAP_RESOLUTION") != std::string::npos) {
+                    if (!words0.empty()) {
+                        cmap_resolution = static_cast<std::uint32_t>(std::stoul(words0.back()));
+                    }
+                    cmap_flag = "CMAP_RESOLUTION";
+                } else if (trimmed.find("CMAP_PARAMETER") != std::string::npos) {
+                    cmap_flag = "CMAP_PARAMETER";
+                } else if (trimmed.find("CMAP_TITLE") != std::string::npos) {
+                    cmap_flag = "CMAP_TITLE";
+                }
+            } else if (cmap_flag == "CMAP_RESLIST") {
+                cmap_residues.insert(cmap_residues.end(), words0.begin(), words0.end());
+            } else if (cmap_flag == "CMAP_PARAMETER") {
+                for (const auto& word : words0) {
+                    cmap_parameters.push_back(std::stod(word));
+                }
+            }
         }
+    }
+    if (flag.rfind("CMAP", 0) == 0) {
+        flush_amber_cmap_block(cmap_residues, cmap_resolution, cmap_parameters);
+    }
+}
+
+void register_amber_lj_parameter(const std::string& atom_type, const std::string& lj_type, double epsilon,
+                                 double rmin) {
+    std::scoped_lock lock(registry_mutex());
+    upsert_lj_atom_type(atom_type, lj_type);
+    upsert_lj_parameter(lj_type, epsilon, rmin);
+}
+
+void register_amber_bond_parameter(const std::string& atom_type1, const std::string& atom_type2, double k,
+                                   double length) {
+    std::scoped_lock lock(registry_mutex());
+    upsert_bond_parameter(atom_type1, atom_type2, {k, length});
+}
+
+bool has_amber_cmap_parameters() {
+    std::scoped_lock lock(registry_mutex());
+    return !amber_cmap_parameters().empty();
+}
+
+void apply_amber_cmaps(Molecule& molecule) {
+    if (!molecule.cmaps.empty()) {
+        return;
+    }
+    std::scoped_lock lock(registry_mutex());
+    if (amber_cmap_parameters().empty() || molecule.residues.size() < 3) {
+        return;
+    }
+
+    std::unordered_map<std::string, std::uint32_t> type_by_key;
+    for (std::size_t residue_id = 1; residue_id + 1 < molecule.residues.size(); ++residue_id) {
+        const auto& previous = molecule.residues[residue_id - 1];
+        const auto& current = molecule.residues[residue_id];
+        const auto& next = molecule.residues[residue_id + 1];
+        const AtomId atom0 = find_residue_atom_by_name(molecule, previous, "C");
+        const AtomId atom1 = find_residue_atom_by_name(molecule, current, "N");
+        const AtomId atom2 = find_residue_atom_by_name(molecule, current, "CA");
+        const AtomId atom3 = find_residue_atom_by_name(molecule, current, "C");
+        const AtomId atom4 = find_residue_atom_by_name(molecule, next, "N");
+        if (atom0 >= molecule.atoms.size() || atom1 >= molecule.atoms.size() || atom2 >= molecule.atoms.size() ||
+            atom3 >= molecule.atoms.size() || atom4 >= molecule.atoms.size()) {
+            continue;
+        }
+        const std::string key = molecule.atoms[atom0].type + "-" + molecule.atoms[atom1].type + "-" +
+                                current.name + "@" + molecule.atoms[atom2].type + "-" +
+                                molecule.atoms[atom3].type + "-" + molecule.atoms[atom4].type;
+        const auto cmap_it = amber_cmap_parameters().find(key);
+        if (cmap_it == amber_cmap_parameters().end()) {
+            continue;
+        }
+        auto type_it = type_by_key.find(key);
+        if (type_it == type_by_key.end()) {
+            type_it = type_by_key.emplace(
+                key, molecule.add_cmap_type(cmap_it->second.resolution, cmap_it->second.parameters)).first;
+        }
+        molecule.add_cmap(atom0, atom1, atom2, atom3, atom4, type_it->second);
     }
 }
 
@@ -686,6 +835,51 @@ void register_residue_templates_from_mol2_file(const std::filesystem::path& file
     register_residue_templates_from_mol2_text(buffer.str());
 }
 
+void register_template_molecule_from_mol2_file(const std::filesystem::path& filename) {
+    std::ifstream input(filename);
+    if (!input) {
+        throw std::runtime_error("failed to open mol2 template file: " + filename.string());
+    }
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    auto molecule = load_mol2_text(buffer.str());
+    if (molecule.residues.empty()) {
+        throw std::invalid_argument("mol2 template file contains no residues: " + filename.string());
+    }
+
+    std::scoped_lock lock(registry_mutex());
+    for (const auto& residue : molecule.residues) {
+        put_template(residue_type_from_molecule_residue(molecule, residue));
+    }
+    molecule_templates().insert_or_assign(molecule.residues.front().name, std::move(molecule));
+}
+
+void register_template_virtual_atom2(const std::string& template_name, const std::string& virtual_atom,
+                                     const std::string& atom0, const std::string& atom1, const std::string& atom2,
+                                     double k1, double k2) {
+    std::scoped_lock lock(registry_mutex());
+    auto it = molecule_templates().find(template_name);
+    if (it == molecule_templates().end()) {
+        throw std::out_of_range("molecule template not found: " + template_name);
+    }
+    auto& molecule = it->second;
+    if (molecule.residues.empty()) {
+        throw std::invalid_argument("molecule template contains no residues: " + template_name);
+    }
+    const auto& residue = molecule.residues.front();
+    const auto find_atom_by_name = [&](const std::string& name) {
+        for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
+            const AtomId atom_id = residue.atom_begin + local;
+            if (molecule.atoms[atom_id].name == name) {
+                return atom_id;
+            }
+        }
+        throw std::out_of_range("atom name not found in molecule template " + template_name + ": " + name);
+    };
+    molecule.add_virtual_atom2(find_atom_by_name(virtual_atom), find_atom_by_name(atom0),
+                               find_atom_by_name(atom1), find_atom_by_name(atom2), k1, k2);
+}
+
 bool has_template(const std::string& name) {
     std::scoped_lock lock(registry_mutex());
     return templates().find(name) != templates().end();
@@ -710,6 +904,13 @@ const ResidueType& get_residue_template(const std::string& name) {
 }
 
 Molecule get_template_molecule(const std::string& name) {
+    {
+        std::scoped_lock lock(registry_mutex());
+        const auto molecule_it = molecule_templates().find(name);
+        if (molecule_it != molecule_templates().end()) {
+            return molecule_it->second;
+        }
+    }
     const auto& residue_type = get_residue_template(name);
     Molecule molecule(name);
     molecule.append_residue_from_type(residue_type, 0.0, 0.0, 0.0);

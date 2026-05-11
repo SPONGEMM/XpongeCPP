@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <limits>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <tuple>
@@ -185,9 +186,15 @@ std::vector<std::string> real_lj_types(const std::vector<std::string>& lj_types,
 
 }  // namespace
 
-std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& molecule,
+std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& input_molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname) {
+    std::optional<Molecule> molecule_with_generated_cmaps;
+    if (input_molecule.cmaps.empty() && has_amber_cmap_parameters()) {
+        molecule_with_generated_cmaps = input_molecule;
+        apply_amber_cmaps(*molecule_with_generated_cmaps);
+    }
+    const Molecule& molecule = molecule_with_generated_cmaps ? *molecule_with_generated_cmaps : input_molecule;
     if (!molecule.validate()) {
         throw std::invalid_argument("cannot export invalid molecule");
     }

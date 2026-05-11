@@ -379,6 +379,11 @@ void register_ff14sb();
 void register_tip3p();
 void register_amber_parmdat_file(const std::filesystem::path& filename);
 void register_amber_frcmod_file(const std::filesystem::path& filename);
+void register_amber_lj_parameter(const std::string& atom_type, const std::string& lj_type, double epsilon, double rmin);
+void register_amber_bond_parameter(const std::string& atom_type1, const std::string& atom_type2, double k,
+                                   double length);
+bool has_amber_cmap_parameters();
+void apply_amber_cmaps(Molecule& molecule);
 std::vector<DihedralTerm> find_amber_proper_terms(const std::array<std::string, 4>& atom_types);
 std::optional<DihedralTerm> find_amber_improper_term(const std::array<std::string, 4>& atom_types);
 std::optional<AmberImproperMatch> find_amber_improper_match(const std::array<std::string, 4>& atom_types);
@@ -389,6 +394,10 @@ std::string find_amber_lj_type(const std::string& atom_type);
 std::optional<std::pair<double, double>> find_amber_lj_parameter(const std::string& lj_type);
 void register_residue_templates_from_mol2_text(const std::string& text);
 void register_residue_templates_from_mol2_file(const std::filesystem::path& filename);
+void register_template_molecule_from_mol2_file(const std::filesystem::path& filename);
+void register_template_virtual_atom2(const std::string& template_name, const std::string& virtual_atom,
+                                     const std::string& atom0, const std::string& atom1, const std::string& atom2,
+                                     double k1, double k2);
 bool has_template(const std::string& name);
 std::size_t template_atom_count(const std::string& name);
 Molecule get_template_molecule(const std::string& name);
