@@ -33,6 +33,8 @@ from ._core import (
     register_amber_cmap_parameter,
     register_amber_parmdat_file,
     register_residue_templates_from_mol2_file,
+    register_pdb_residue_alias_mapping,
+    register_pdb_residue_name_mapping,
     register_template_molecule_from_mol2_file,
     register_template_virtual_atom2,
     register_tip3p,
@@ -66,8 +68,8 @@ def Save_SPONGE_Input(molecule, prefix=None, dirname="."):
     return save_sponge_input(molecule, "" if prefix is None else prefix, dirname)
 
 
-def Save_PDB(molecule, filename):
-    return save_pdb(molecule, filename)
+def Save_PDB(molecule, filename, write_cryst1=True):
+    return save_pdb(molecule, filename, write_cryst1)
 
 
 def Save_Mol2(molecule, filename):
@@ -243,6 +245,8 @@ __all__ = [
     "register_amber_cmap_parameter",
     "register_amber_bond_parameter",
     "register_residue_templates_from_mol2_file",
+    "register_pdb_residue_alias_mapping",
+    "register_pdb_residue_name_mapping",
     "register_template_molecule_from_mol2_file",
     "register_template_virtual_atom2",
     "has_template",

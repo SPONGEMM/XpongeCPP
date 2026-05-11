@@ -125,11 +125,22 @@ void append_atom(Molecule& molecule, std::unordered_map<int, ResidueId>& residue
     if (residue_it == residue_id_by_number.end()) {
         const auto residue_id = static_cast<ResidueId>(molecule.residues.size());
         residue_it = residue_id_by_number.emplace(residue_number, residue_id).first;
-        molecule.residues.push_back({residue_name, residue_name, static_cast<AtomId>(molecule.atoms.size()), 0});
+        Residue residue;
+        residue.name = residue_name;
+        residue.type_name = residue_name;
+        residue.original_name = residue_name;
+        residue.atom_begin = static_cast<AtomId>(molecule.atoms.size());
+        molecule.residues.push_back(std::move(residue));
     }
     auto& residue = molecule.residues[residue_it->second];
-    molecule.atoms.push_back({atom_name, atom_type, infer_element(atom_name, atom_type), residue_it->second,
-                              0.0, 0.0, 0.0, charge, mass});
+    Atom atom;
+    atom.name = atom_name;
+    atom.type = atom_type;
+    atom.element = infer_element(atom_name, atom_type);
+    atom.residue = residue_it->second;
+    atom.charge = charge;
+    atom.mass = mass;
+    molecule.atoms.push_back(std::move(atom));
     ++residue.atom_count;
 }
 

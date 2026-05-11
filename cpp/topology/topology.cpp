@@ -286,6 +286,9 @@ Topology build_topology(const Molecule& molecule) {
             residue_has_explicit_bond[molecule.atoms[bond.atom2].residue] = true;
         }
     }
+    for (const auto& link : molecule.residue_links) {
+        add_bond(topology.bonds, seen_bonds, link.atom1, link.atom2, molecule);
+    }
     for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
         const auto& residue = molecule.residues[residue_id];
         if (residue_has_explicit_bond[residue_id]) {
@@ -308,30 +311,8 @@ Topology build_topology(const Molecule& molecule) {
         if (residue.name == "NA" || residue.name == "CL") {
             continue;
         }
-        for (std::uint32_t local1 = 0; local1 < residue.atom_count; ++local1) {
-            const AtomId atom1 = residue.atom_begin + local1;
-            for (std::uint32_t local2 = local1 + 1; local2 < residue.atom_count; ++local2) {
-                const AtomId atom2 = residue.atom_begin + local2;
-                if (likely_bonded(molecule.atoms[atom1], molecule.atoms[atom2])) {
-                    add_bond(topology.bonds, seen_bonds, atom1, atom2, molecule);
-                }
-            }
-        }
-    }
-
-    for (std::size_t residue_index = 0; residue_index + 1 < molecule.residues.size(); ++residue_index) {
-        const auto& current = molecule.residues[residue_index];
-        const auto& next = molecule.residues[residue_index + 1];
-        if (residue_has_explicit_bond[residue_index] || residue_has_explicit_bond[residue_index + 1]) {
-            continue;
-        }
-        if (is_solvent_or_ion(current) || is_solvent_or_ion(next)) {
-            continue;
-        }
-        const AtomId carbon = find_atom(molecule, current, "C");
-        const AtomId nitrogen = find_atom(molecule, next, "N");
-        if (carbon < molecule.atoms.size() && nitrogen < molecule.atoms.size()) {
-            add_bond(topology.bonds, seen_bonds, carbon, nitrogen, molecule);
+        if (residue.atom_count > 1) {
+            throw std::runtime_error("missing residue template/connectivity for residue: " + residue.name);
         }
     }
 

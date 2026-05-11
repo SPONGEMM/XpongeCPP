@@ -21,6 +21,11 @@ struct Atom {
     std::string type;
     std::string element;
     ResidueId residue{0};
+    std::int32_t serial{0};
+    char altloc{' '};
+    double occupancy{1.0};
+    double temp_factor{0.0};
+    std::string record_name{"ATOM"};
     double x{0.0};
     double y{0.0};
     double z{0.0};
@@ -39,6 +44,13 @@ struct Atom {
 struct Residue {
     std::string name;
     std::string type_name;
+    std::string original_name;
+    char chain_id{' '};
+    char effective_chain_id{' '};
+    std::uint32_t segment_id{0};
+    std::int32_t pdb_resseq{0};
+    char insertion_code{' '};
+    bool is_hetero{false};
     AtomId atom_begin{0};
     std::uint32_t atom_count{0};
 };
@@ -245,11 +257,21 @@ public:
     std::size_t bond_count() const noexcept;
     const std::vector<ResidueTypeAtom>& atoms() const noexcept;
     const std::vector<ResidueTypeBond>& bonds() const noexcept;
+    const std::string& head() const noexcept;
+    const std::string& tail() const noexcept;
+    const std::string& head_next() const noexcept;
+    const std::string& tail_next() const noexcept;
+    double head_length() const noexcept;
+    double tail_length() const noexcept;
+    const std::unordered_map<std::string, std::string>& connect_atoms() const noexcept;
 
     void add_atom(const std::string& name, const std::string& type, double x, double y, double z,
                   double charge, double mass);
     void add_connectivity(const std::string& atom1, const std::string& atom2);
     std::uint32_t atom_index(const std::string& name) const;
+    void set_head(const std::string& atom, double length = 1.5, const std::string& next = "");
+    void set_tail(const std::string& atom, double length = 1.5, const std::string& next = "");
+    void set_connect_atom(const std::string& key, const std::string& atom);
 
 private:
     std::string name_;
@@ -257,6 +279,24 @@ private:
     std::vector<ResidueTypeAtom> atoms_;
     std::vector<ResidueTypeBond> bonds_;
     std::unordered_map<std::string, std::uint32_t> atom_name_to_index_;
+    std::string head_;
+    std::string tail_;
+    std::string head_next_;
+    std::string tail_next_;
+    double head_length_{1.5};
+    double tail_length_{1.5};
+    std::unordered_map<std::string, std::string> connect_atoms_;
+};
+
+struct PdbLoadOptions {
+    bool judge_histone{true};
+    char position_need{'A'};
+    bool ignore_hydrogen{false};
+    bool ignore_unknown_name{false};
+    bool ignore_seqres{true};
+    bool ignore_conect{true};
+    bool read_cryst1{true};
+    std::vector<std::string> unterminal_residues;
 };
 
 class Molecule {
@@ -296,6 +336,8 @@ public:
     Residue& residue(ResidueId id);
     void append_residue_from_type(const ResidueType& type, double dx, double dy, double dz);
     void add_molecule(const Molecule& other);
+    void add_molecule_linked(const Molecule& other, bool link);
+    void add_residue_link(AtomId atom1, AtomId atom2);
     void add_virtual_atom2(AtomId virtual_atom, AtomId atom0, AtomId atom1, AtomId atom2, double k1, double k2);
     void add_improper_dihedral(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3, double k, double phi0);
     std::uint32_t add_cmap_type(std::uint32_t resolution, const std::vector<double>& parameters);
@@ -360,6 +402,7 @@ public:
 };
 
 Molecule load_pdb_text(const std::string& text);
+Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options);
 Molecule load_mol2_text(const std::string& text);
 Assign get_assignment_from_mol2_text(const std::string& text,
                                      std::optional<int> total_charge = std::nullopt,
@@ -422,6 +465,11 @@ bool has_template(const std::string& name);
 std::size_t template_atom_count(const std::string& name);
 Molecule get_template_molecule(const std::string& name);
 const ResidueType& get_residue_template(const std::string& name);
+void register_pdb_residue_name_mapping(const std::string& place, const std::string& pdb_name,
+                                       const std::string& real_name);
+void register_pdb_residue_alias_mapping(const std::string& pdb_name, const std::string& real_name);
+void register_his_mapping(const std::string& residue_name, const std::string& hid, const std::string& hie,
+                          const std::string& hip);
 
 double default_mass_for_element(const std::string& element);
 std::string guess_element(const std::string& atom_name, const std::string& explicit_element = "");

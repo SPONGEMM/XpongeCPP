@@ -119,6 +119,15 @@ std::size_t ResidueType::atom_count() const noexcept { return atoms_.size(); }
 std::size_t ResidueType::bond_count() const noexcept { return bonds_.size(); }
 const std::vector<ResidueTypeAtom>& ResidueType::atoms() const noexcept { return atoms_; }
 const std::vector<ResidueTypeBond>& ResidueType::bonds() const noexcept { return bonds_; }
+const std::string& ResidueType::head() const noexcept { return head_; }
+const std::string& ResidueType::tail() const noexcept { return tail_; }
+const std::string& ResidueType::head_next() const noexcept { return head_next_; }
+const std::string& ResidueType::tail_next() const noexcept { return tail_next_; }
+double ResidueType::head_length() const noexcept { return head_length_; }
+double ResidueType::tail_length() const noexcept { return tail_length_; }
+const std::unordered_map<std::string, std::string>& ResidueType::connect_atoms() const noexcept {
+    return connect_atoms_;
+}
 
 void ResidueType::add_atom(const std::string& name, const std::string& type, double x, double y, double z,
                            double charge, double mass) {
@@ -164,6 +173,25 @@ std::uint32_t ResidueType::atom_index(const std::string& name) const {
     return it->second;
 }
 
+void ResidueType::set_head(const std::string& atom, double length, const std::string& next) {
+    head_ = atom;
+    head_length_ = length;
+    head_next_ = next;
+    ++version_;
+}
+
+void ResidueType::set_tail(const std::string& atom, double length, const std::string& next) {
+    tail_ = atom;
+    tail_length_ = length;
+    tail_next_ = next;
+    ++version_;
+}
+
+void ResidueType::set_connect_atom(const std::string& key, const std::string& atom) {
+    connect_atoms_[key] = atom;
+    ++version_;
+}
+
 Molecule::Molecule(std::string molecule_name) : name(std::move(molecule_name)) {}
 std::size_t Molecule::atom_count() const noexcept { return atoms.size(); }
 std::size_t Molecule::residue_count() const noexcept { return residues.size(); }
@@ -193,6 +221,7 @@ void Molecule::append_residue_from_type(const ResidueType& type, double dx, doub
     Residue residue;
     residue.name = type.name();
     residue.type_name = type.name();
+    residue.original_name = type.name();
     residue.atom_begin = static_cast<AtomId>(atoms.size());
     residue.atom_count = static_cast<std::uint32_t>(type.atom_count());
     residues.push_back(residue);
@@ -216,8 +245,38 @@ void Molecule::append_residue_from_type(const ResidueType& type, double dx, doub
 }
 
 void Molecule::add_molecule(const Molecule& other) {
+    add_molecule_linked(other, false);
+}
+
+void Molecule::add_molecule_linked(const Molecule& other, bool link) {
     if (!other.validate()) {
         throw std::invalid_argument("source molecule is invalid");
+    }
+    std::optional<AtomId> link_atom1;
+    std::optional<AtomId> link_atom2;
+    if (link && !residues.empty() && !other.residues.empty()) {
+        const auto& left = residues.back();
+        const auto& right = other.residues.front();
+        if (has_template(left.name) && has_template(right.name)) {
+            const auto& left_type = get_residue_template(left.name);
+            const auto& right_type = get_residue_template(right.name);
+            if (!left_type.tail().empty() && !right_type.head().empty()) {
+                for (std::uint32_t local = 0; local < left.atom_count; ++local) {
+                    const AtomId atom_id = left.atom_begin + local;
+                    if (atoms[atom_id].name == left_type.tail()) {
+                        link_atom1 = atom_id;
+                        break;
+                    }
+                }
+                for (std::uint32_t local = 0; local < right.atom_count; ++local) {
+                    const AtomId atom_id = right.atom_begin + local;
+                    if (other.atoms[atom_id].name == right_type.head()) {
+                        link_atom2 = atom_id;
+                        break;
+                    }
+                }
+            }
+        }
     }
     const AtomId atom_offset = static_cast<AtomId>(atoms.size());
     const ResidueId residue_offset = static_cast<ResidueId>(residues.size());
@@ -302,6 +361,28 @@ void Molecule::add_molecule(const Molecule& other) {
     if (!validate()) {
         throw std::runtime_error("internal error: invalid molecule after merge");
     }
+    if (link_atom1 && link_atom2) {
+        add_residue_link(*link_atom1, *link_atom2 + atom_offset);
+    }
+}
+
+void Molecule::add_residue_link(AtomId atom1, AtomId atom2) {
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    if (atom1 == atom2) {
+        return;
+    }
+    if (atoms[atom1].residue == atoms[atom2].residue) {
+        return;
+    }
+    const auto lo = std::min(atom1, atom2);
+    const auto hi = std::max(atom1, atom2);
+    for (const auto& link : residue_links) {
+        if (std::min(link.atom1, link.atom2) == lo && std::max(link.atom1, link.atom2) == hi) {
+            return;
+        }
+    }
+    residue_links.push_back({lo, hi});
 }
 
 void Molecule::add_virtual_atom2(AtomId virtual_atom, AtomId atom0, AtomId atom1, AtomId atom2,
