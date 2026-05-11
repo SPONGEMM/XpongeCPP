@@ -331,6 +331,47 @@ def test_save_sponge_input_writes_xponge_special_state_files(tmp_path):
     assert (tmp_path / "special_fake_LJ.txt").read_text().splitlines()[0] == "5 1"
 
 
+def test_save_sponge_input_writes_xponge_pairwise_and_softcore_files(tmp_path):
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+    for residue in mol.residues:
+        for atom in residue.atoms:
+            atom.sw_type = "S"
+            atom.edip_type = "E"
+    mol.add_sw_type("S-S", 1.1, 2.2, 3.3, 4.0, 5.0, 6.6, 7.7, 8.8, 0.0, 0.0)
+    mol.add_sw_type("S-S-S", 0.0, 0.0, 3.3, 0.0, 0.0, 0.0, 0.0, 0.0, 9.9, 10.1)
+    mol.add_edip_type("E-E", 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 0.0, 0.0, 0.0, 12.12, 0.0, 0.0, 0.0, 0.0, 0.0)
+    mol.add_edip_type("E-E-E", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 9.9, 10.1, 11.11, 12.12, 13.13, 0.0, 14.14, 15.15, 16.16, 17.17, 18.18)
+    mol.enable_lj_soft_core()
+
+    out = Xponge.Save_SPONGE_Input(mol, prefix="pairwise", dirname=str(tmp_path))
+
+    assert {"SW", "EDIP", "LJ_soft_core", "subsys_division"}.issubset(out)
+    assert "LJ" not in out
+    assert (tmp_path / "pairwise_SW.txt").read_text().splitlines() == [
+        "5 1",
+        "# type1 type2 A B epsilon[kcal/mol] p q a gamma sigma[Angstrom] (This is the first required comment line)",
+        "0 0 1.1 2.2 3.3 4.0 5.0 6.6 7.7 8.8",
+        "# type1 type2 type3 lambda epsilon[kcal/mol] b (This is the second required comment line)",
+        "0 0 0 9.9 3.3 10.1",
+        "# atom type from the zeroth atom (This is the third required comment line)",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+    ]
+    assert (tmp_path / "pairwise_EDIP.txt").read_text().splitlines()[:5] == [
+        "5 1",
+        "# type1 type2 alpha c[A] a[A] A[kcal/mol] B[A] rho beta sigma[A] (This is the first required comment line)",
+        "0 0 5.5 4.4 3.3 1.1 2.2 0.0 6.6 12.12",
+        "# type1 type2 type3 eta gamma[A] l[kcal/mol] Q0 mu u1 u2 u3 u4 (This is the second required comment line)",
+        "0 0 0 9.9 10.1 11.11 14.14 12.12 15.15 16.16 17.17 18.18",
+    ]
+    assert (tmp_path / "pairwise_LJ_soft_core.txt").read_text().splitlines()[0] == "5 2 2"
+
+
 def test_add_ions_randomly_replaces_waters_by_seed():
     Xponge.register_tip3p()
     solute = Xponge.load_pdb(StringIO(PDB_TEXT))

@@ -71,6 +71,17 @@ std::string formatted_scientific(double value) {
     return out.str();
 }
 
+std::string python_float(double value) {
+    std::ostringstream out;
+    out << std::defaultfloat << std::setprecision(12) << value;
+    std::string text = out.str();
+    if (text.find('.') == std::string::npos && text.find('e') == std::string::npos &&
+        text.find('E') == std::string::npos) {
+        text += ".0";
+    }
+    return text;
+}
+
 const char* ryckaert_bellemans_listed_definition() {
     return R"([[[ Ryckaert_Bellemans ]]]
 [[ parameters ]]
@@ -254,7 +265,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         out << box[0] << " " << box[1] << " " << box[2] << " " << box[3] << " " << box[4] << " " << box[5] << "\n";
         remember(outputs, "coordinate", path);
     }
-    {
+    if (!molecule.write_lj_soft_core) {
         std::vector<std::string> lj_types;
         std::unordered_map<std::string, std::uint32_t> lj_type_index;
         lj_type_index.reserve(32);
@@ -684,6 +695,209 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
             out << atom.subsys << "\n";
         }
         remember(outputs, "subsys_division", path);
+    }
+    if (!molecule.sw_parameters.empty()) {
+        std::vector<std::string> sw_types;
+        std::unordered_map<std::string, std::uint32_t> sw_type_index;
+        std::vector<std::uint32_t> atom_type_lines;
+        atom_type_lines.reserve(molecule.atoms.size());
+        for (const auto& atom : molecule.atoms) {
+            if (atom.sw_type.empty()) {
+                throw std::runtime_error("missing SW type for atom: " + atom.name);
+            }
+            auto it = sw_type_index.find(atom.sw_type);
+            if (it == sw_type_index.end()) {
+                const auto index = static_cast<std::uint32_t>(sw_types.size());
+                it = sw_type_index.emplace(atom.sw_type, index).first;
+                sw_types.push_back(atom.sw_type);
+            }
+            atom_type_lines.push_back(it->second);
+        }
+        const auto path = output_path(dirname, actual_prefix, "SW");
+        std::ofstream out(path);
+        out << molecule.atoms.size() << " " << sw_types.size() << "\n";
+        out << "# type1 type2 A B epsilon[kcal/mol] p q a gamma sigma[Angstrom] "
+               "(This is the first required comment line)\n";
+        for (const auto& type1 : sw_types) {
+            for (const auto& type2 : sw_types) {
+                const auto key = type1 + "-" + type2;
+                const auto parameter = molecule.sw_parameters.find(key);
+                if (parameter == molecule.sw_parameters.end()) {
+                    throw std::runtime_error("missing SW parameter: " + key);
+                }
+                out << sw_type_index.at(type1) << " " << sw_type_index.at(type2) << " "
+                    << python_float(parameter->second.a_big) << " " << python_float(parameter->second.b_big) << " "
+                    << python_float(parameter->second.epsilon) << " " << python_float(parameter->second.p) << " "
+                    << python_float(parameter->second.q) << " " << python_float(parameter->second.a) << " "
+                    << python_float(parameter->second.gamma) << " " << python_float(parameter->second.sigma) << "\n";
+            }
+        }
+        out << "# type1 type2 type3 lambda epsilon[kcal/mol] b "
+               "(This is the second required comment line)\n";
+        for (const auto& type1 : sw_types) {
+            for (const auto& type2 : sw_types) {
+                for (const auto& type3 : sw_types) {
+                    const auto key = type1 + "-" + type2 + "-" + type3;
+                    const auto parameter = molecule.sw_parameters.find(key);
+                    if (parameter == molecule.sw_parameters.end()) {
+                        throw std::runtime_error("missing SW parameter: " + key);
+                    }
+                    out << sw_type_index.at(type1) << " " << sw_type_index.at(type2) << " "
+                        << sw_type_index.at(type3) << " " << python_float(parameter->second.lambda) << " "
+                        << python_float(parameter->second.epsilon) << " " << python_float(parameter->second.b) << "\n";
+                }
+            }
+        }
+        out << "# atom type from the zeroth atom (This is the third required comment line)\n";
+        for (const auto atom_type : atom_type_lines) {
+            out << atom_type << "\n";
+        }
+        remember(outputs, "SW", path);
+    }
+    if (!molecule.edip_parameters.empty()) {
+        std::vector<std::string> edip_types;
+        std::unordered_map<std::string, std::uint32_t> edip_type_index;
+        std::vector<std::uint32_t> atom_type_lines;
+        atom_type_lines.reserve(molecule.atoms.size());
+        for (const auto& atom : molecule.atoms) {
+            if (atom.edip_type.empty()) {
+                throw std::runtime_error("missing EDIP type for atom: " + atom.name);
+            }
+            auto it = edip_type_index.find(atom.edip_type);
+            if (it == edip_type_index.end()) {
+                const auto index = static_cast<std::uint32_t>(edip_types.size());
+                it = edip_type_index.emplace(atom.edip_type, index).first;
+                edip_types.push_back(atom.edip_type);
+            }
+            atom_type_lines.push_back(it->second);
+        }
+        const auto path = output_path(dirname, actual_prefix, "EDIP");
+        std::ofstream out(path);
+        out << molecule.atoms.size() << " " << edip_types.size() << "\n";
+        out << "# type1 type2 alpha c[A] a[A] A[kcal/mol] B[A] rho beta sigma[A] "
+               "(This is the first required comment line)\n";
+        for (const auto& type1 : edip_types) {
+            for (const auto& type2 : edip_types) {
+                const auto key = type1 + "-" + type2;
+                const auto parameter = molecule.edip_parameters.find(key);
+                if (parameter == molecule.edip_parameters.end()) {
+                    throw std::runtime_error("missing EDIP parameter: " + key);
+                }
+                out << edip_type_index.at(type1) << " " << edip_type_index.at(type2) << " "
+                    << python_float(parameter->second.alpha) << " " << python_float(parameter->second.c) << " "
+                    << python_float(parameter->second.a) << " " << python_float(parameter->second.a_big) << " "
+                    << python_float(parameter->second.b_big) << " " << python_float(parameter->second.rho) << " "
+                    << python_float(parameter->second.beta) << " " << python_float(parameter->second.sigma) << "\n";
+            }
+        }
+        out << "# type1 type2 type3 eta gamma[A] l[kcal/mol] Q0 mu u1 u2 u3 u4 "
+               "(This is the second required comment line)\n";
+        for (const auto& type1 : edip_types) {
+            for (const auto& type2 : edip_types) {
+                for (const auto& type3 : edip_types) {
+                    const auto key = type1 + "-" + type2 + "-" + type3;
+                    const auto parameter = molecule.edip_parameters.find(key);
+                    if (parameter == molecule.edip_parameters.end()) {
+                        throw std::runtime_error("missing EDIP parameter: " + key);
+                    }
+                    out << edip_type_index.at(type1) << " " << edip_type_index.at(type2) << " "
+                        << edip_type_index.at(type3) << " " << python_float(parameter->second.eta) << " "
+                        << python_float(parameter->second.gamma) << " " << python_float(parameter->second.lambda)
+                        << " " << python_float(parameter->second.q0) << " " << python_float(parameter->second.mu)
+                        << " " << python_float(parameter->second.u1) << " " << python_float(parameter->second.u2)
+                        << " " << python_float(parameter->second.u3) << " " << python_float(parameter->second.u4)
+                        << "\n";
+                }
+            }
+        }
+        out << "# atom type from the zeroth atom (This is the third required comment line)\n";
+        for (const auto atom_type : atom_type_lines) {
+            out << atom_type << "\n";
+        }
+        remember(outputs, "EDIP", path);
+    }
+    if (molecule.write_lj_soft_core) {
+        std::vector<std::string> lj_types;
+        std::unordered_map<std::string, std::uint32_t> lj_type_index;
+        std::vector<std::string> lj_type_b;
+        std::unordered_map<std::string, std::uint32_t> lj_type_b_index;
+        for (const auto& atom : molecule.atoms) {
+            const auto lj_type = find_amber_lj_type(atom.type);
+            if (lj_type_index.find(lj_type) == lj_type_index.end()) {
+                lj_type_index[lj_type] = static_cast<std::uint32_t>(lj_types.size());
+                lj_types.push_back(lj_type);
+            }
+            const auto type_b = atom.lj_type_b.empty() ? atom.type : atom.lj_type_b;
+            const auto lj_b = find_amber_lj_type(type_b);
+            if (lj_type_b_index.find(lj_b) == lj_type_b_index.end()) {
+                lj_type_b_index[lj_b] = static_cast<std::uint32_t>(lj_type_b.size());
+                lj_type_b.push_back(lj_b);
+            }
+        }
+
+        const auto [full_a, full_b] = find_ab_lj(lj_types, true);
+        const auto [full_ab, full_bb] = find_ab_lj(lj_type_b, true);
+        const auto checks = lj_check_rows(lj_types, full_a, full_b);
+        auto same_type = judge_same_lj_type(lj_types, checks);
+        const auto real_types = real_lj_types(lj_types, same_type);
+        const auto [real_a, real_b] = find_ab_lj(real_types, false);
+
+        const auto checks_b = lj_check_rows(lj_type_b, full_ab, full_bb);
+        auto same_type_b = judge_same_lj_type(lj_type_b, checks_b);
+        const auto real_types_b = real_lj_types(lj_type_b, same_type_b);
+        const auto [real_ab, real_bb] = find_ab_lj(real_types_b, false);
+
+        const auto path = output_path(dirname, actual_prefix, "LJ_soft_core");
+        std::ofstream out(path);
+        out << molecule.atoms.size() << " " << real_types.size() << " " << real_types_b.size() << "\n\n";
+        std::size_t count = 0;
+        for (std::size_t i = 0; i < real_types.size(); ++i) {
+            for (std::size_t j = 0; j <= i; ++j) {
+                (void)j;
+                out << formatted_scientific(real_a[count]) << " ";
+                ++count;
+            }
+            out << "\n";
+        }
+        out << "\n";
+        count = 0;
+        for (std::size_t i = 0; i < real_types.size(); ++i) {
+            for (std::size_t j = 0; j <= i; ++j) {
+                (void)j;
+                out << formatted_scientific(real_b[count]) << " ";
+                ++count;
+            }
+            out << "\n";
+        }
+        out << "\n";
+        count = 0;
+        for (std::size_t i = 0; i < real_types_b.size(); ++i) {
+            for (std::size_t j = 0; j <= i; ++j) {
+                (void)j;
+                out << formatted_scientific(real_ab[count]) << " ";
+                ++count;
+            }
+            out << "\n";
+        }
+        out << "\n";
+        count = 0;
+        for (std::size_t i = 0; i < real_types_b.size(); ++i) {
+            for (std::size_t j = 0; j <= i; ++j) {
+                (void)j;
+                out << formatted_scientific(real_bb[count]) << " ";
+                ++count;
+            }
+            out << "\n";
+        }
+        out << "\n";
+        for (const auto& atom : molecule.atoms) {
+            const auto lj_type = find_amber_lj_type(atom.type);
+            const auto type_b = atom.lj_type_b.empty() ? atom.type : atom.lj_type_b;
+            const auto lj_b = find_amber_lj_type(type_b);
+            out << same_type[lj_type_index.at(lj_type)] << " "
+                << same_type_b[lj_type_b_index.at(lj_b)] << "\n";
+        }
+        remember(outputs, "LJ_soft_core", path);
     }
 
     return outputs;

@@ -165,6 +165,12 @@ PYBIND11_MODULE(_core, m) {
                       [](AtomView& self, double value) { self.molecule->atom(self.id).z = value; })
         .def_property_readonly("charge", [](const AtomView& self) { return self.get().charge; })
         .def_property_readonly("mass", [](const AtomView& self) { return self.get().mass; })
+        .def_property("lj_type_b", [](const AtomView& self) { return self.get().lj_type_b; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).lj_type_b = value; })
+        .def_property("sw_type", [](const AtomView& self) { return self.get().sw_type; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).sw_type = value; })
+        .def_property("edip_type", [](const AtomView& self) { return self.get().edip_type; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).edip_type = value; })
         .def_property("gb_radius", [](const AtomView& self) { return self.get().gb_radius; },
                       [](AtomView& self, double value) { self.molecule->atom(self.id).gb_radius = value; })
         .def_property("gb_scaler", [](const AtomView& self) { return self.get().gb_scaler; },
@@ -237,6 +243,22 @@ PYBIND11_MODULE(_core, m) {
         .def("Enable_Min_Bonded_Parameters", &Molecule::enable_min_bonded_parameters, py::arg("enabled") = true)
         .def("enable_subsys_division", &Molecule::enable_subsys_division, py::arg("enabled") = true)
         .def("Enable_Subsys_Division", &Molecule::enable_subsys_division, py::arg("enabled") = true)
+        .def("enable_lj_soft_core", &Molecule::enable_lj_soft_core, py::arg("enabled") = true)
+        .def("Enable_LJ_Soft_Core", &Molecule::enable_lj_soft_core, py::arg("enabled") = true)
+        .def("add_sw_type", &Molecule::add_sw_type, py::arg("name"), py::arg("A"), py::arg("B"),
+             py::arg("epsilon"), py::arg("p"), py::arg("q"), py::arg("a"), py::arg("gamma"),
+             py::arg("sigma"), py::arg("lambda_"), py::arg("b"))
+        .def("Add_SW_Type", &Molecule::add_sw_type, py::arg("name"), py::arg("A"), py::arg("B"),
+             py::arg("epsilon"), py::arg("p"), py::arg("q"), py::arg("a"), py::arg("gamma"),
+             py::arg("sigma"), py::arg("lambda_"), py::arg("b"))
+        .def("add_edip_type", &Molecule::add_edip_type, py::arg("name"), py::arg("A"), py::arg("B"),
+             py::arg("a"), py::arg("c"), py::arg("alpha"), py::arg("beta"), py::arg("eta"),
+             py::arg("gamma"), py::arg("lambda_"), py::arg("mu"), py::arg("rho"), py::arg("sigma"),
+             py::arg("Q0"), py::arg("u1"), py::arg("u2"), py::arg("u3"), py::arg("u4"))
+        .def("Add_EDIP_Type", &Molecule::add_edip_type, py::arg("name"), py::arg("A"), py::arg("B"),
+             py::arg("a"), py::arg("c"), py::arg("alpha"), py::arg("beta"), py::arg("eta"),
+             py::arg("gamma"), py::arg("lambda_"), py::arg("mu"), py::arg("rho"), py::arg("sigma"),
+             py::arg("Q0"), py::arg("u1"), py::arg("u2"), py::arg("u3"), py::arg("u4"))
         .def("validate", &Molecule::validate)
         .def("residue_counts", &Molecule::residue_counts);
 

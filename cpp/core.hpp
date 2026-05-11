@@ -25,6 +25,9 @@ struct Atom {
     double z{0.0};
     double charge{0.0};
     double mass{0.0};
+    std::string lj_type_b;
+    std::string sw_type;
+    std::string edip_type;
     double gb_radius{0.0};
     double gb_scaler{0.0};
     int subsys{0};
@@ -147,6 +150,39 @@ struct SoftBond {
     int from_a_or_b{0};
 };
 
+struct StillingerWeberParameter {
+    double a_big{0.0};
+    double b_big{0.0};
+    double epsilon{0.0};
+    double p{0.0};
+    double q{0.0};
+    double a{0.0};
+    double gamma{0.0};
+    double sigma{0.0};
+    double lambda{0.0};
+    double b{0.0};
+};
+
+struct EDIPParameter {
+    double a_big{0.0};
+    double b_big{0.0};
+    double a{0.0};
+    double c{0.0};
+    double alpha{0.0};
+    double beta{0.0};
+    double eta{0.0};
+    double gamma{0.0};
+    double lambda{0.0};
+    double mu{0.0};
+    double rho{0.0};
+    double sigma{0.0};
+    double q0{0.0};
+    double u1{0.0};
+    double u2{0.0};
+    double u3{0.0};
+    double u4{0.0};
+};
+
 struct DihedralTerm {
     int periodicity{1};
     double k{0.0};
@@ -240,12 +276,15 @@ public:
     std::vector<RyckaertBellemans> ryckaert_bellemans;
     std::vector<SoftBond> soft_bonds;
     std::vector<std::string> listed_force_definitions;
+    std::unordered_map<std::string, StillingerWeberParameter> sw_parameters;
+    std::unordered_map<std::string, EDIPParameter> edip_parameters;
     std::array<double, 3> box_length{0.0, 0.0, 0.0};
     std::array<double, 3> box_angle{90.0, 90.0, 90.0};
     bool has_box{false};
     bool has_gb_parameters{false};
     bool write_min_bonded_parameters{false};
     bool write_subsys_division{false};
+    bool write_lj_soft_core{false};
 
     std::size_t atom_count() const noexcept;
     std::size_t residue_count() const noexcept;
@@ -268,6 +307,12 @@ public:
     void set_gb_radius(const std::string& radius_set = "modified_bondi_radii");
     void enable_min_bonded_parameters(bool enabled = true) noexcept;
     void enable_subsys_division(bool enabled = true) noexcept;
+    void enable_lj_soft_core(bool enabled = true) noexcept;
+    void add_sw_type(const std::string& name, double a_big, double b_big, double epsilon, double p, double q,
+                     double a, double gamma, double sigma, double lambda, double b);
+    void add_edip_type(const std::string& name, double a_big, double b_big, double a, double c, double alpha,
+                       double beta, double eta, double gamma, double lambda, double mu, double rho, double sigma,
+                       double q0, double u1, double u2, double u3, double u4);
     void set_box_padding(double padding, bool center);
     bool validate() const;
     std::unordered_map<std::string, std::size_t> residue_counts() const;

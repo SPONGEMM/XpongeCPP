@@ -132,6 +132,12 @@ void append_solvent_unit(Molecule& molecule, const Molecule& solvent, const std:
     for (const auto& definition : solvent.listed_force_definitions) {
         molecule.listed_force_definitions.push_back(definition);
     }
+    for (const auto& [name, parameter] : solvent.sw_parameters) {
+        molecule.sw_parameters[name] = parameter;
+    }
+    for (const auto& [name, parameter] : solvent.edip_parameters) {
+        molecule.edip_parameters[name] = parameter;
+    }
 }
 
 }  // namespace
@@ -308,6 +314,9 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
     rebuilt.has_gb_parameters = molecule.has_gb_parameters;
     rebuilt.write_min_bonded_parameters = molecule.write_min_bonded_parameters;
     rebuilt.write_subsys_division = molecule.write_subsys_division;
+    rebuilt.write_lj_soft_core = molecule.write_lj_soft_core;
+    rebuilt.sw_parameters = molecule.sw_parameters;
+    rebuilt.edip_parameters = molecule.edip_parameters;
     rebuilt.atoms.reserve(molecule.atoms.size());
     rebuilt.residues.reserve(molecule.residues.size());
 

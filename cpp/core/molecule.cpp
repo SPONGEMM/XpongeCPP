@@ -292,6 +292,12 @@ void Molecule::add_molecule(const Molecule& other) {
     for (const auto& definition : other.listed_force_definitions) {
         listed_force_definitions.push_back(definition);
     }
+    for (const auto& [name, parameter] : other.sw_parameters) {
+        sw_parameters[name] = parameter;
+    }
+    for (const auto& [name, parameter] : other.edip_parameters) {
+        edip_parameters[name] = parameter;
+    }
 
     if (!validate()) {
         throw std::runtime_error("internal error: invalid molecule after merge");
@@ -441,6 +447,31 @@ void Molecule::enable_min_bonded_parameters(bool enabled) noexcept {
 
 void Molecule::enable_subsys_division(bool enabled) noexcept {
     write_subsys_division = enabled;
+}
+
+void Molecule::enable_lj_soft_core(bool enabled) noexcept {
+    write_lj_soft_core = enabled;
+    if (enabled) {
+        write_subsys_division = true;
+    }
+}
+
+void Molecule::add_sw_type(const std::string& name, double a_big, double b_big, double epsilon, double p, double q,
+                           double a, double gamma, double sigma, double lambda, double b) {
+    if (name.empty()) {
+        throw std::invalid_argument("SW type name should not be empty");
+    }
+    sw_parameters[name] = {a_big, b_big, epsilon, p, q, a, gamma, sigma, lambda, b};
+}
+
+void Molecule::add_edip_type(const std::string& name, double a_big, double b_big, double a, double c, double alpha,
+                             double beta, double eta, double gamma, double lambda, double mu, double rho,
+                             double sigma, double q0, double u1, double u2, double u3, double u4) {
+    if (name.empty()) {
+        throw std::invalid_argument("EDIP type name should not be empty");
+    }
+    edip_parameters[name] = {a_big, b_big, a, c, alpha, beta, eta, gamma, lambda, mu, rho, sigma,
+                             q0, u1, u2, u3, u4};
 }
 
 void Molecule::set_box_padding(double padding, bool center) {
