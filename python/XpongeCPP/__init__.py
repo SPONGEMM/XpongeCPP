@@ -115,8 +115,108 @@ def _assign_calculate_charge(self, method, **parameters):
     raise ValueError("methods should be one of the following: 'RESP', 'GASTEIGER', 'TPACM4' (case-insensitive)")
 
 
+def _first_neighbor(assignment, atom):
+    return next(iter(assignment.bonds[atom]))
+
+
+def _is_carboxylic_acid_hydrogen(assignment, atom):
+    if assignment.atoms[atom] != "H":
+        return False
+    oxygen = _first_neighbor(assignment, atom)
+    if assignment.atoms[oxygen] != "O":
+        return False
+    carbon = None
+    for neighbor in assignment.bonds[oxygen]:
+        if neighbor != atom:
+            carbon = neighbor
+            break
+    if carbon is None or not assignment.atoms[carbon] == "C" or len(assignment.bonds[carbon]) != 3:
+        return False
+    for neighbor, order in assignment.bonds[carbon].items():
+        if neighbor != oxygen and assignment.atoms[neighbor] == "O" and int(order) == 2:
+            return True
+    return False
+
+
+def _is_carboxylate_oxygen(assignment, atom):
+    if assignment.atoms[atom] != "O" or assignment.formal_charges[atom] != -1:
+        return False
+    carbon = _first_neighbor(assignment, atom)
+    for neighbor, order in assignment.bonds[carbon].items():
+        if neighbor != atom and assignment.atoms[neighbor] == "O" and int(order) == 2:
+            return True
+    return False
+
+
+def _is_phenol_hydrogen(assignment, atom):
+    if assignment.atoms[atom] != "H":
+        return False
+    oxygen = _first_neighbor(assignment, atom)
+    if assignment.atoms[oxygen] != "O":
+        return False
+    for neighbor in assignment.bonds[oxygen]:
+        if neighbor != atom and assignment.has_atom_marker(neighbor, "AR0"):
+            return True
+    return False
+
+
+def _is_phenolate_oxygen(assignment, atom):
+    if assignment.atoms[atom] != "O" or assignment.formal_charges[atom] != -1:
+        return False
+    return assignment.has_atom_marker(_first_neighbor(assignment, atom), "AR0")
+
+
+def _hydrogen_position_for(assignment, atom):
+    x = y = z = 0.0
+    coord = assignment.coordinates[atom]
+    count = 0
+    for neighbor in assignment.bonds[atom]:
+        ncoord = assignment.coordinates[neighbor]
+        dx = coord[0] - ncoord[0]
+        dy = coord[1] - ncoord[1]
+        dz = coord[2] - ncoord[2]
+        norm = (dx * dx + dy * dy + dz * dz) ** 0.5 or 1.0
+        x += coord[0] + dx / norm
+        y += coord[1] + dy / norm
+        z += coord[2] + dz / norm
+        count += 1
+    if count == 0:
+        return coord
+    return x / count, y / count, z / count
+
+
+def _assign_set_ph(self, ph):
+    self.kekulize()
+    to_delete = []
+    to_add = []
+    for atom in range(self.atom_count):
+        if _is_carboxylic_acid_hydrogen(self, atom) and 4.0 < ph:
+            to_delete.append(atom)
+        elif _is_phenol_hydrogen(self, atom) and 10.0 < ph:
+            to_delete.append(atom)
+        elif self.atoms[atom] == "H" and self.atoms[_first_neighbor(self, atom)] == "O" and 15.9 < ph:
+            to_delete.append(atom)
+        elif _is_carboxylate_oxygen(self, atom) and 4.0 > ph:
+            to_add.append(atom)
+        elif _is_phenolate_oxygen(self, atom) and 10.0 > ph:
+            to_add.append(atom)
+        elif self.atoms[atom] == "O" and self.formal_charges[atom] == -1 and 15.9 > ph:
+            to_add.append(atom)
+
+    for atom in to_add:
+        x, y, z = _hydrogen_position_for(self, atom)
+        self.add_atom("H", x, y, z)
+        self.add_bond(self.atom_count - 1, atom, 1)
+    for atom in sorted(set(to_delete), reverse=True):
+        self.delete_atom(atom)
+    self.determine_bond_order(True, None)
+    return int(round(sum(self.formal_charges)))
+
+
 Assign.calculate_charge = _assign_calculate_charge
 Assign.Calculate_Charge = _assign_calculate_charge
+Assign.set_ph = _assign_set_ph
+Assign.Set_PH = _assign_set_ph
 
 
 def Add_Solvent_Box(molecule, solvent, distance, tolerance=2.5, n_solvent=None, seed=0):

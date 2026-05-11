@@ -45,6 +45,47 @@ void Assign::add_bond(std::uint32_t atom1, std::uint32_t atom2, int order) {
     built = false;
 }
 
+void Assign::delete_atom(std::uint32_t atom) {
+    if (atom >= elements.size()) {
+        throw std::out_of_range("Assign delete atom index out of range");
+    }
+    elements.erase(elements.begin() + atom);
+    element_details.erase(element_details.begin() + atom);
+    names.erase(names.begin() + atom);
+    coordinates.erase(coordinates.begin() + atom);
+    charges.erase(charges.begin() + atom);
+    formal_charges.erase(formal_charges.begin() + atom);
+    bonds.erase(bonds.begin() + atom);
+    bond_markers.erase(bond_markers.begin() + atom);
+    atom_markers.erase(atom_markers.begin() + atom);
+    atom_types.erase(atom_types.begin() + atom);
+
+    for (auto& atom_bonds : bonds) {
+        std::unordered_map<std::uint32_t, int> remapped;
+        remapped.reserve(atom_bonds.size());
+        for (const auto& [neighbor, order] : atom_bonds) {
+            if (neighbor == atom) {
+                continue;
+            }
+            remapped[neighbor > atom ? neighbor - 1 : neighbor] = order;
+        }
+        atom_bonds = std::move(remapped);
+    }
+    for (auto& atom_markers_by_bond : bond_markers) {
+        std::unordered_map<std::uint32_t, std::set<std::string>> remapped;
+        remapped.reserve(atom_markers_by_bond.size());
+        for (const auto& [neighbor, markers] : atom_markers_by_bond) {
+            if (neighbor == atom) {
+                continue;
+            }
+            remapped[neighbor > atom ? neighbor - 1 : neighbor] = markers;
+        }
+        atom_markers_by_bond = std::move(remapped);
+    }
+    rings.clear();
+    built = false;
+}
+
 void Assign::set_charge(std::uint32_t atom, double charge) {
     if (atom >= charges.size()) {
         throw std::out_of_range("Assign charge atom index out of range");

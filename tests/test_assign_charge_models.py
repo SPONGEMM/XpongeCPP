@@ -173,3 +173,18 @@ C1 H1 1.0
     assert assignment.atoms == ["C", "H"]
     assert lattice["cell_length"] == [10.0, 11.0, 12.0]
     assert lattice["cell_angle"] == [90.0, 91.0, 92.0]
+
+
+def test_set_ph_deprotonates_carboxylic_acid_like_xponge_phmodel():
+    acetic_acid = _assignment(
+        "acetic_acid",
+        ["C", "C", "O", "O", "H", "H", "H", "H"],
+        [(0, 1, 1), (0, 4, 1), (0, 5, 1), (0, 6, 1), (1, 2, 2), (1, 3, 1), (3, 7, 1)],
+    )
+
+    total_charge = acetic_acid.set_ph(7.0)
+
+    assert total_charge == -1
+    assert acetic_acid.atoms == ["C", "C", "O", "O", "H", "H", "H"]
+    assert acetic_acid.formal_charges == [0, 0, 0, -1, 0, 0, 0]
+    assert acetic_acid.bond_count == 6
