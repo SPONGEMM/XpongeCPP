@@ -25,6 +25,11 @@ struct Atom {
     double z{0.0};
     double charge{0.0};
     double mass{0.0};
+    double gb_radius{0.0};
+    double gb_scaler{0.0};
+    int subsys{0};
+    bool bad_coordinate{false};
+    bool zero_lj_atom{false};
 };
 
 struct Residue {
@@ -238,6 +243,9 @@ public:
     std::array<double, 3> box_length{0.0, 0.0, 0.0};
     std::array<double, 3> box_angle{90.0, 90.0, 90.0};
     bool has_box{false};
+    bool has_gb_parameters{false};
+    bool write_min_bonded_parameters{false};
+    bool write_subsys_division{false};
 
     std::size_t atom_count() const noexcept;
     std::size_t residue_count() const noexcept;
@@ -257,6 +265,9 @@ public:
                                 double c0, double c1, double c2, double c3, double c4, double c5);
     void add_bond_soft(AtomId atom1, AtomId atom2, double k, double b, int from_a_or_b);
     void add_listed_force_definition(const std::string& definition);
+    void set_gb_radius(const std::string& radius_set = "modified_bondi_radii");
+    void enable_min_bonded_parameters(bool enabled = true) noexcept;
+    void enable_subsys_division(bool enabled = true) noexcept;
     void set_box_padding(double padding, bool center);
     bool validate() const;
     std::unordered_map<std::string, std::size_t> residue_counts() const;

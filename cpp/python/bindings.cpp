@@ -164,7 +164,17 @@ PYBIND11_MODULE(_core, m) {
         .def_property("z", [](const AtomView& self) { return self.get().z; },
                       [](AtomView& self, double value) { self.molecule->atom(self.id).z = value; })
         .def_property_readonly("charge", [](const AtomView& self) { return self.get().charge; })
-        .def_property_readonly("mass", [](const AtomView& self) { return self.get().mass; });
+        .def_property_readonly("mass", [](const AtomView& self) { return self.get().mass; })
+        .def_property("gb_radius", [](const AtomView& self) { return self.get().gb_radius; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).gb_radius = value; })
+        .def_property("gb_scaler", [](const AtomView& self) { return self.get().gb_scaler; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).gb_scaler = value; })
+        .def_property("subsys", [](const AtomView& self) { return self.get().subsys; },
+                      [](AtomView& self, int value) { self.molecule->atom(self.id).subsys = value; })
+        .def_property("bad_coordinate", [](const AtomView& self) { return self.get().bad_coordinate; },
+                      [](AtomView& self, bool value) { self.molecule->atom(self.id).bad_coordinate = value; })
+        .def_property("zero_lj_atom", [](const AtomView& self) { return self.get().zero_lj_atom; },
+                      [](AtomView& self, bool value) { self.molecule->atom(self.id).zero_lj_atom = value; });
 
     py::class_<ResidueView>(m, "Residue")
         .def_property_readonly("name", [](const ResidueView& self) { return self.get().name; })
@@ -221,6 +231,12 @@ PYBIND11_MODULE(_core, m) {
              py::arg("k"), py::arg("b"), py::arg("from_AorB"))
         .def("add_listed_force_definition", &Molecule::add_listed_force_definition, py::arg("definition"))
         .def("Add_Listed_Force_Definition", &Molecule::add_listed_force_definition, py::arg("definition"))
+        .def("set_gb_radius", &Molecule::set_gb_radius, py::arg("radius_set") = "modified_bondi_radii")
+        .def("Set_GB_Radius", &Molecule::set_gb_radius, py::arg("radius_set") = "modified_bondi_radii")
+        .def("enable_min_bonded_parameters", &Molecule::enable_min_bonded_parameters, py::arg("enabled") = true)
+        .def("Enable_Min_Bonded_Parameters", &Molecule::enable_min_bonded_parameters, py::arg("enabled") = true)
+        .def("enable_subsys_division", &Molecule::enable_subsys_division, py::arg("enabled") = true)
+        .def("Enable_Subsys_Division", &Molecule::enable_subsys_division, py::arg("enabled") = true)
         .def("validate", &Molecule::validate)
         .def("residue_counts", &Molecule::residue_counts);
 

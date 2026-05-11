@@ -612,7 +612,8 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
     if (!molecule.ryckaert_bellemans.empty() || !molecule.listed_force_definitions.empty()) {
         std::vector<std::string> definitions;
         const auto append_unique = [&](const std::string& definition) {
-            if (!definition.empty() && std::find(definitions.begin(), definitions.end(), definition) == definitions.end()) {
+            if (!definition.empty() &&
+                std::find(definitions.begin(), definitions.end(), definition) == definitions.end()) {
                 definitions.push_back(definition);
             }
         };
@@ -630,6 +631,59 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
             }
             remember(outputs, "listed_forces", path);
         }
+    }
+    if (molecule.has_gb_parameters) {
+        const auto path = output_path(dirname, actual_prefix, "gb");
+        std::ofstream out(path);
+        out << molecule.atoms.size() << "\n";
+        out << std::fixed << std::setprecision(4);
+        for (const auto& atom : molecule.atoms) {
+            out << atom.gb_radius << " " << atom.gb_scaler << "\n";
+        }
+        remember(outputs, "gb", path);
+    }
+    if (molecule.write_min_bonded_parameters) {
+        {
+            const auto path = output_path(dirname, actual_prefix, "fake_mass");
+            std::ofstream out(path);
+            out << molecule.atoms.size() << "\n";
+            out << std::fixed << std::setprecision(3);
+            for (const auto& atom : molecule.atoms) {
+                const double frozen = (atom.mass < 3.999 || atom.zero_lj_atom || atom.bad_coordinate) ? 1.0 : 0.0;
+                out << frozen << "\n";
+            }
+            remember(outputs, "fake_mass", path);
+        }
+        {
+            const auto path = output_path(dirname, actual_prefix, "fake_LJ");
+            std::ofstream out(path);
+            out << molecule.atoms.size() << " " << 1 << "\n\n";
+            out << formatted_scientific(0.0) << " \n\n";
+            out << formatted_scientific(0.0) << " \n\n";
+            for (std::size_t i = 0; i < molecule.atoms.size(); ++i) {
+                out << 0 << "\n";
+            }
+            remember(outputs, "fake_LJ", path);
+        }
+        {
+            const auto path = output_path(dirname, actual_prefix, "fake_charge");
+            std::ofstream out(path);
+            out << molecule.atoms.size() << "\n";
+            out << std::fixed << std::setprecision(6);
+            for (std::size_t i = 0; i < molecule.atoms.size(); ++i) {
+                out << 0.0 << "\n";
+            }
+            remember(outputs, "fake_charge", path);
+        }
+    }
+    if (molecule.write_subsys_division) {
+        const auto path = output_path(dirname, actual_prefix, "subsys_division");
+        std::ofstream out(path);
+        out << molecule.atoms.size() << "\n";
+        for (const auto& atom : molecule.atoms) {
+            out << atom.subsys << "\n";
+        }
+        remember(outputs, "subsys_division", path);
     }
 
     return outputs;

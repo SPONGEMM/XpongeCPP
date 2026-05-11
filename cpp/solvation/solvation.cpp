@@ -305,6 +305,9 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
     rebuilt.box_length = molecule.box_length;
     rebuilt.box_angle = molecule.box_angle;
     rebuilt.has_box = molecule.has_box;
+    rebuilt.has_gb_parameters = molecule.has_gb_parameters;
+    rebuilt.write_min_bonded_parameters = molecule.write_min_bonded_parameters;
+    rebuilt.write_subsys_division = molecule.write_subsys_division;
     rebuilt.atoms.reserve(molecule.atoms.size());
     rebuilt.residues.reserve(molecule.residues.size());
 

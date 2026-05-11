@@ -383,6 +383,66 @@ void Molecule::add_listed_force_definition(const std::string& definition) {
     }
 }
 
+namespace {
+
+std::pair<double, double> bondi_radius_and_scaler(const std::string& element) {
+    if (element == "H") return {1.2, 0.85};
+    if (element == "C") return {1.7, 0.72};
+    if (element == "N") return {1.55, 0.79};
+    if (element == "O") return {1.52, 0.85};
+    if (element == "F") return {1.47, 0.88};
+    if (element == "P") return {1.8, 0.86};
+    if (element == "S") return {1.8, 0.96};
+    if (element == "Cl") return {1.75, 0.8};
+    if (element == "Br") return {1.85, 0.8};
+    if (element == "I") return {1.98, 0.8};
+    return {1.5, 0.8};
+}
+
+std::pair<double, double> modified_bondi_radius_and_scaler(const std::string& element) {
+    if (element == "H") return {1.2, 0.85};
+    if (element == "C") return {1.7, 0.72};
+    if (element == "N") return {1.55, 0.79};
+    if (element == "O") return {1.5, 0.85};
+    if (element == "F") return {1.5, 0.88};
+    if (element == "Si") return {2.1, 0.8};
+    if (element == "P") return {1.85, 0.86};
+    if (element == "S") return {1.8, 0.96};
+    if (element == "Cl") return {1.7, 0.8};
+    if (element == "Br") return {1.85, 0.8};
+    if (element == "I") return {1.98, 0.8};
+    return {1.5, 0.8};
+}
+
+}  // namespace
+
+void Molecule::set_gb_radius(const std::string& radius_set) {
+    for (auto& atom : atoms) {
+        if (radius_set == "bondi_radii") {
+            const auto [radius, scaler] = bondi_radius_and_scaler(atom.element);
+            atom.gb_radius = radius;
+            atom.gb_scaler = scaler;
+        } else if (radius_set == "modified_bondi_radii") {
+            const auto [radius, scaler] = modified_bondi_radius_and_scaler(atom.element);
+            atom.gb_radius = radius;
+            atom.gb_scaler = scaler;
+        } else {
+            throw std::invalid_argument("unknown GB radius set: " + radius_set);
+        }
+    }
+    box_length = {999.0, 999.0, 999.0};
+    has_box = true;
+    has_gb_parameters = true;
+}
+
+void Molecule::enable_min_bonded_parameters(bool enabled) noexcept {
+    write_min_bonded_parameters = enabled;
+}
+
+void Molecule::enable_subsys_division(bool enabled) noexcept {
+    write_subsys_division = enabled;
+}
+
 void Molecule::set_box_padding(double padding, bool center) {
     if (padding < 0.0) {
         throw std::invalid_argument("padding should be non-negative");

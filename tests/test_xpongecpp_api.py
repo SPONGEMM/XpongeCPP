@@ -285,6 +285,52 @@ def test_save_sponge_input_writes_xponge_general_bonded_force_files(tmp_path):
     assert (tmp_path / "general_listed_forces.txt").read_text().startswith("[[[ Ryckaert_Bellemans ]]]")
 
 
+def test_save_sponge_input_writes_xponge_special_state_files(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+
+    mol.set_gb_radius("bondi_radii")
+    mol.enable_min_bonded_parameters()
+    mol.enable_subsys_division()
+    mol.residues[0].atoms[0].subsys = 2
+    mol.residues[0].atoms[1].bad_coordinate = True
+    mol.residues[1].atoms[0].zero_lj_atom = True
+
+    out = Xponge.Save_SPONGE_Input(mol, prefix="special", dirname=str(tmp_path))
+
+    assert {"gb", "fake_mass", "fake_LJ", "fake_charge", "subsys_division"}.issubset(out)
+    assert (tmp_path / "special_gb.txt").read_text().splitlines()[:3] == [
+        "5",
+        "1.5200 0.8500",
+        "1.2000 0.8500",
+    ]
+    assert (tmp_path / "special_fake_mass.txt").read_text().splitlines() == [
+        "5",
+        "0.000",
+        "1.000",
+        "1.000",
+        "1.000",
+        "1.000",
+    ]
+    assert (tmp_path / "special_fake_charge.txt").read_text().splitlines() == [
+        "5",
+        "0.000000",
+        "0.000000",
+        "0.000000",
+        "0.000000",
+        "0.000000",
+    ]
+    assert (tmp_path / "special_subsys_division.txt").read_text().splitlines() == [
+        "5",
+        "2",
+        "0",
+        "0",
+        "0",
+        "0",
+    ]
+    assert (tmp_path / "special_fake_LJ.txt").read_text().splitlines()[0] == "5 1"
+
+
 def test_add_ions_randomly_replaces_waters_by_seed():
     Xponge.register_tip3p()
     solute = Xponge.load_pdb(StringIO(PDB_TEXT))
