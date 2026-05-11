@@ -77,12 +77,6 @@ std::vector<std::string> deterministic_ion_order(const std::unordered_map<std::s
     return order;
 }
 
-void append_atom_copy(Molecule& target, const Atom& source, ResidueId residue_id) {
-    Atom atom = source;
-    atom.residue = residue_id;
-    target.atoms.push_back(std::move(atom));
-}
-
 }  // namespace
 
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distance, double tolerance,
@@ -252,6 +246,17 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
     rebuilt.atoms.reserve(molecule.atoms.size());
     rebuilt.residues.reserve(molecule.residues.size());
 
+    constexpr AtomId invalid_atom_id = std::numeric_limits<AtomId>::max();
+    std::vector<AtomId> old_to_new_atom(molecule.atoms.size(), invalid_atom_id);
+
+    const auto append_atom_copy = [&](const Atom& source, AtomId old_atom_id, ResidueId residue_id) {
+        Atom atom = source;
+        atom.residue = residue_id;
+        const AtomId new_atom_id = static_cast<AtomId>(rebuilt.atoms.size());
+        rebuilt.atoms.push_back(std::move(atom));
+        old_to_new_atom[old_atom_id] = new_atom_id;
+    };
+
     const auto append_residue_copy = [&](const Residue& residue) {
         const ResidueId new_residue_id = static_cast<ResidueId>(rebuilt.residues.size());
         Residue new_residue;
@@ -261,7 +266,8 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
         new_residue.atom_count = residue.atom_count;
         rebuilt.residues.push_back(new_residue);
         for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
-            append_atom_copy(rebuilt, molecule.atoms[residue.atom_begin + local], new_residue_id);
+            const AtomId old_atom_id = residue.atom_begin + local;
+            append_atom_copy(molecule.atoms[old_atom_id], old_atom_id, new_residue_id);
         }
     };
 
@@ -309,6 +315,32 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
         if (residue.name == "WAT" && replacement_by_residue.find(residue_id) == replacement_by_residue.end()) {
             append_residue_copy(residue);
         }
+    }
+
+    rebuilt.explicit_bonds.reserve(molecule.explicit_bonds.size());
+    for (const auto& bond : molecule.explicit_bonds) {
+        if (bond.atom1 >= old_to_new_atom.size() || bond.atom2 >= old_to_new_atom.size()) {
+            continue;
+        }
+        const AtomId atom1 = old_to_new_atom[bond.atom1];
+        const AtomId atom2 = old_to_new_atom[bond.atom2];
+        if (atom1 == invalid_atom_id || atom2 == invalid_atom_id) {
+            continue;
+        }
+        rebuilt.explicit_bonds.push_back({atom1, atom2});
+    }
+
+    rebuilt.residue_links.reserve(molecule.residue_links.size());
+    for (const auto& link : molecule.residue_links) {
+        if (link.atom1 >= old_to_new_atom.size() || link.atom2 >= old_to_new_atom.size()) {
+            continue;
+        }
+        const AtomId atom1 = old_to_new_atom[link.atom1];
+        const AtomId atom2 = old_to_new_atom[link.atom2];
+        if (atom1 == invalid_atom_id || atom2 == invalid_atom_id) {
+            continue;
+        }
+        rebuilt.residue_links.push_back({atom1, atom2});
     }
 
     molecule = std::move(rebuilt);

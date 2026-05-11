@@ -1,6 +1,8 @@
 #include "core.hpp"
 
 #include <algorithm>
+#include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 
@@ -98,6 +100,51 @@ Molecule load_mol2_text(const std::string& text) {
         }
     }
     return molecule;
+}
+
+void save_mol2(const Molecule& molecule, const std::filesystem::path& filename) {
+    if (!molecule.validate()) {
+        throw std::invalid_argument("cannot export invalid molecule as mol2");
+    }
+    std::ofstream out(filename);
+    if (!out) {
+        throw std::runtime_error("failed to open MOL2 output: " + filename.string());
+    }
+    out << "@<TRIPOS>MOLECULE\n";
+    out << molecule.name << "\n";
+    out << std::setw(6) << molecule.atoms.size() << std::setw(6) << molecule.explicit_bonds.size()
+        << std::setw(6) << molecule.residues.size() << "     0     1\n";
+    out << "SMALL\nUSER_CHARGES\n";
+    out << "@<TRIPOS>ATOM\n";
+    out << std::fixed << std::setprecision(4);
+    std::vector<ResidueId> atom_residue_number(molecule.atoms.size(), 0);
+    for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
+        const auto& residue = molecule.residues[residue_id];
+        for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
+            atom_residue_number[residue.atom_begin + local] = residue_id + 1;
+        }
+    }
+    for (AtomId atom_id = 0; atom_id < molecule.atoms.size(); ++atom_id) {
+        const auto& atom = molecule.atoms[atom_id];
+        const auto& residue = molecule.residues[atom.residue];
+        out << std::setw(6) << atom_id + 1 << " " << std::setw(4) << atom.name << " " << std::setw(10) << atom.x
+            << " " << std::setw(10) << atom.y << " " << std::setw(10) << atom.z << " " << std::setw(4)
+            << atom.type << " " << std::setw(5) << atom_residue_number[atom_id] << " " << std::setw(8)
+            << residue.name << " " << std::setw(10) << std::setprecision(6) << atom.charge << std::setprecision(4)
+            << "\n";
+    }
+    out << "@<TRIPOS>BOND\n";
+    for (std::size_t i = 0; i < molecule.explicit_bonds.size(); ++i) {
+        const auto& bond = molecule.explicit_bonds[i];
+        out << std::setw(6) << i + 1 << std::setw(6) << bond.atom1 + 1 << std::setw(6) << bond.atom2 + 1
+            << " 1\n";
+    }
+    out << "@<TRIPOS>SUBSTRUCTURE\n";
+    for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
+        const auto& residue = molecule.residues[residue_id];
+        out << std::setw(5) << residue_id + 1 << " " << std::setw(8) << residue.name << std::setw(6)
+            << residue.atom_begin + 1 << " ****               0 ****  **** \n";
+    }
 }
 
 }  // namespace xpongecpp

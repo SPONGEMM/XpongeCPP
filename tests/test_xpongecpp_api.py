@@ -47,6 +47,30 @@ USER_CHARGES
 """
 
 
+FAR_WAT_MOL2_TEXT = """\
+@<TRIPOS>MOLECULE
+FAR_WAT_SYSTEM
+8 5 3
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 O1 0.0000 0.0000 0.0000 OW 1 FAR -0.500
+2 H1 8.0000 0.0000 0.0000 HW 1 FAR 0.500
+3 O2 10.0000 0.0000 0.0000 OW 2 WAT -0.834
+4 H2 10.9572 0.0000 0.0000 HW 2 WAT 0.417
+5 H3 9.7610 0.9270 0.0000 HW 2 WAT 0.417
+6 O3 14.0000 0.0000 0.0000 OW 3 WAT -0.834
+7 H4 14.9572 0.0000 0.0000 HW 3 WAT 0.417
+8 H5 13.7610 0.9270 0.0000 HW 3 WAT 0.417
+@<TRIPOS>BOND
+1 1 2 1
+2 3 4 1
+3 3 5 1
+4 6 7 1
+5 6 8 1
+"""
+
+
 def test_load_pdb_preserves_molecule_residue_atom_layers():
     mol = Xponge.load_pdb(StringIO(PDB_TEXT))
 
@@ -72,6 +96,9 @@ def test_residue_type_is_writable_and_versioned():
 
 
 def test_add_solvent_box_appends_template_waters_and_exports_implicit_box(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
     solute = Xponge.load_pdb(StringIO(PDB_TEXT))
     water = Xponge.load_mol2(StringIO(MOL2_TEXT))
 
@@ -109,6 +136,8 @@ def test_load_mol2_declared_bonds_drive_topology_even_when_far(tmp_path):
 
 
 def test_save_sponge_input_writes_core_files(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
     mol = Xponge.load_pdb(StringIO(PDB_TEXT))
     Xponge.Set_Box_Padding(mol, 3.0)
 
@@ -147,6 +176,36 @@ def test_add_ions_randomly_replaces_waters_by_seed():
     assert solute.residues[1].name == "NA"
     ion_position = tuple(getattr(solute.residues[1].atoms[0], axis) for axis in ("x", "y", "z"))
     assert ion_position != first_water_oxygen
+
+
+def test_add_ions_preserves_mol2_explicit_bonds_after_rebuild(tmp_path):
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    mol = Xponge.load_mol2(StringIO(FAR_WAT_MOL2_TEXT))
+
+    Xponge.Add_Ions(mol, {"NA": 1}, seed=20260509)
+    Xponge.Save_SPONGE_Input(mol, prefix="farwat", dirname=str(tmp_path))
+
+    assert mol.validate()
+    assert [res.name for res in mol.residues] == ["FAR", "NA", "WAT"]
+    assert (tmp_path / "farwat_bond.txt").read_text().splitlines()[0] == "3"
+
+
+def test_add_molecule_preserves_source_explicit_bonds(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    Xponge.register_tip3p()
+    target = Xponge.load_pdb(StringIO(PDB_TEXT))
+    source = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+
+    Xponge.Add_Molecule(target, source)
+    Xponge.Save_SPONGE_Input(target, prefix="merged", dirname=str(tmp_path))
+
+    assert target.validate()
+    assert target.atom_count == 9
+    assert target.residue_count == 3
+    assert [res.name for res in target.residues] == ["NALA", "FAR", "LIG"]
+    assert (tmp_path / "merged_bond.txt").read_text().splitlines()[0] == "6"
 
 
 def test_assign_builds_graph_markers_and_residue_type():

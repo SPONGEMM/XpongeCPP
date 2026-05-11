@@ -9,6 +9,11 @@ set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
 
 pybind11_add_module(_core
+    cpp/assign/assign.cpp
+    cpp/assign/bond_order.cpp
+    cpp/assign/gaff.cpp
+    cpp/assign/mol2_assignment.cpp
+    cpp/assign/ring.cpp
     cpp/core/molecule.cpp
     cpp/forcefield/amber.cpp
     cpp/io/mol2.cpp
@@ -19,7 +24,7 @@ pybind11_add_module(_core
     cpp/topology/topology.cpp
 )
 
-target_include_directories(_core PRIVATE cpp cpp/core cpp/forcefield cpp/io cpp/solvation cpp/topology)
+target_include_directories(_core PRIVATE cpp cpp/assign cpp/core cpp/forcefield cpp/io cpp/solvation cpp/topology)
 target_compile_options(_core PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
 )

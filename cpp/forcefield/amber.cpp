@@ -619,9 +619,10 @@ void register_tip3p() {
     ResidueType wat("WAT");
     wat.add_atom("O", "OW", 0.0000, 0.0000, 0.0000, -0.834, 16.0);
     wat.add_atom("H1", "HW", 0.9572, 0.0000, 0.0000, 0.417, 1.008);
-    wat.add_atom("H2", "HW", -0.2390, 0.9270, 0.0000, 0.417, 1.008);
+    wat.add_atom("H2", "HW", -0.239988, 0.926627, 0.0000, 0.417, 1.008);
     wat.add_connectivity("O", "H1");
     wat.add_connectivity("O", "H2");
+    wat.add_connectivity("H1", "H2");
     put_template(std::move(wat));
     upsert_lj_atom_type("OW", "OW");
     upsert_lj_atom_type("HW", "HW");

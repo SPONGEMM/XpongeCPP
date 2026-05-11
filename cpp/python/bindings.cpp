@@ -86,6 +86,24 @@ std::shared_ptr<Molecule> load_mol2_object(py::object source) {
     return std::make_shared<Molecule>(load_mol2_text(read_python_input(source)));
 }
 
+std::shared_ptr<Assign> get_assignment_from_mol2_object(py::object source, py::object total_charge) {
+    std::optional<int> charge;
+    bool charge_from_sum = false;
+    if (!total_charge.is_none()) {
+        if (py::isinstance<py::str>(total_charge)) {
+            const auto value = py::cast<std::string>(total_charge);
+            if (value == "sum") {
+                charge_from_sum = true;
+            } else {
+                throw std::invalid_argument("total_charge string must be 'sum'");
+            }
+        } else {
+            charge = py::cast<int>(total_charge);
+        }
+    }
+    return std::make_shared<Assign>(get_assignment_from_mol2_text(read_python_input(source), charge, charge_from_sum));
+}
+
 std::shared_ptr<Molecule> get_template_molecule_object(const std::string& name) {
     return std::make_shared<Molecule>(get_template_molecule(name));
 }
@@ -108,6 +126,10 @@ void add_ions_object(const std::shared_ptr<Molecule>& molecule,
     add_ions(*molecule, counts, seed);
 }
 
+void add_molecule_object(const std::shared_ptr<Molecule>& molecule, const std::shared_ptr<Molecule>& other) {
+    molecule->add_molecule(*other);
+}
+
 std::unordered_map<std::string, std::string> save_sponge_input_object(const std::shared_ptr<Molecule>& molecule,
                                                                       const std::string& prefix,
                                                                       const std::string& dirname) {
@@ -121,6 +143,10 @@ std::unordered_map<std::string, std::string> save_sponge_input_object(const std:
 
 void save_pdb_object(const std::shared_ptr<Molecule>& molecule, const std::string& filename) {
     save_pdb(*molecule, filename);
+}
+
+void save_mol2_object(const std::shared_ptr<Molecule>& molecule, const std::string& filename) {
+    save_mol2(*molecule, filename);
 }
 
 }  // namespace
@@ -158,6 +184,8 @@ PYBIND11_MODULE(_core, m) {
         .def_readwrite("box_angle", &Molecule::box_angle)
         .def("set_box_padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
         .def("Set_Box_Padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
+        .def("add_molecule", &Molecule::add_molecule, py::arg("other"))
+        .def("Add_Molecule", &Molecule::add_molecule, py::arg("other"))
         .def("validate", &Molecule::validate)
         .def("residue_counts", &Molecule::residue_counts);
 
@@ -174,9 +202,11 @@ PYBIND11_MODULE(_core, m) {
         .def("add_connectivity", &ResidueType::add_connectivity)
         .def("Add_Connectivity", &ResidueType::add_connectivity);
 
-    py::class_<Assign>(m, "Assign")
+    py::class_<Assign, std::shared_ptr<Assign>>(m, "Assign")
         .def(py::init<std::string>(), py::arg("name") = "ASN")
         .def_readwrite("name", &Assign::name)
+        .def_property_readonly("atom_count", &Assign::atom_count)
+        .def_property_readonly("bond_count", &Assign::bond_count)
         .def_readonly("atom_types", &Assign::atom_types)
         .def("add_atom", &Assign::add_atom, py::arg("element"), py::arg("x"), py::arg("y"), py::arg("z"),
              py::arg("name") = "", py::arg("charge") = 0.0)
@@ -184,11 +214,18 @@ PYBIND11_MODULE(_core, m) {
              py::arg("name") = "", py::arg("charge") = 0.0)
         .def("add_bond", &Assign::add_bond, py::arg("atom1"), py::arg("atom2"), py::arg("order") = 1)
         .def("determine_connectivity", &Assign::determine_connectivity, py::arg("simple_cutoff"))
+        .def("determine_bond_order", &Assign::determine_bond_order, py::arg("check_formal_charge") = true,
+             py::arg("total_charge") = py::none())
         .def("determine_atom_type", &Assign::determine_atom_type, py::arg("rule"))
-        .def("to_residuetype", &Assign::to_residuetype, py::arg("name"));
+        .def("to_residuetype", &Assign::to_residuetype, py::arg("name"))
+        .def("to_molecule", [](const std::shared_ptr<Assign>& self, const std::string& name) {
+            return std::make_shared<Molecule>(self->to_molecule(name));
+        }, py::arg("name"));
 
     m.def("load_pdb", &load_pdb_object);
     m.def("load_mol2", &load_mol2_object);
+    m.def("get_assignment_from_mol2", &get_assignment_from_mol2_object, py::arg("source"),
+          py::arg("total_charge") = py::none());
     m.def("load_frcmod", [](const std::string& filename) {
         register_amber_frcmod_file(filename);
         return py::dict();
@@ -201,11 +238,14 @@ PYBIND11_MODULE(_core, m) {
           py::arg("distance"), py::arg("tolerance") = 2.5, py::arg("n_solvent") = py::none(),
           py::arg("seed") = 0);
     m.def("add_ions", &add_ions_object, py::arg("molecule"), py::arg("counts"), py::arg("seed") = 0);
+    m.def("add_molecule", &add_molecule_object, py::arg("molecule"), py::arg("other"));
     m.def("set_box_padding", &set_box_padding_object, py::arg("molecule"), py::arg("padding") = 0.5,
           py::arg("center") = true);
     m.def("save_sponge_input", &save_sponge_input_object, py::arg("molecule"), py::arg("prefix") = "",
           py::arg("dirname") = ".");
     m.def("save_pdb", &save_pdb_object, py::arg("molecule"), py::arg("filename"));
+    m.def("save_mol2", &save_mol2_object, py::arg("molecule"), py::arg("filename"));
+    m.def("implemented_gaff_assign_types", &implemented_gaff_assign_types);
 
     m.def("register_ff14sb", &register_ff14sb);
     m.def("register_tip3p", &register_tip3p);

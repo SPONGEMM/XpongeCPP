@@ -133,3 +133,104 @@ def test_b96_sponge_output_matches_xponge_reference(tmp_path):
     assert _numeric_rows(cpp_dir / "b96_nb14.txt", (0, 1), (2, 3)) == _numeric_rows(
         ref_dir / "b96_nb14.txt", (0, 1), (2, 3)
     )
+
+
+def test_1kv2_b96_no_solvent_assembly_headers_match_xponge_reference(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
+
+    Xponge.load_frcmod(str(B96_FRCMOD))
+    protein = Xponge.load_pdb(str(DATA_DIR / "1KV2_H.pdb"))
+    ligand = Xponge.load_mol2(str(B96_MOL2))
+
+    Xponge.Add_Molecule(protein, ligand)
+    Xponge.Save_SPONGE_Input(protein, prefix="b96", dirname=str(tmp_path))
+
+    assert protein.validate()
+    assert protein.atom_count == 5869
+    assert protein.residue_count == 361
+    assert protein.residues[-1].name == "B"
+    expected_headers = {
+        "residue": "5869 361",
+        "resname": "361",
+        "atom_name": "5869",
+        "atom_type_name": "5869",
+        "coordinate": "5869",
+        "mass": "5869",
+        "charge": "5869",
+        "LJ": "5869 15",
+        "bond": "5939",
+        "angle": "10746",
+        "dihedral": "20248",
+        "exclude": "5869 32150",
+        "nb14": "15465",
+    }
+    for key, header in expected_headers.items():
+        assert _header(tmp_path, key) == header
+
+
+def test_1kv2_b96_10a_water_ion_headers_match_xponge_reference(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    Xponge.load_frcmod(str(B96_FRCMOD))
+    protein = Xponge.load_pdb(str(DATA_DIR / "1KV2_H.pdb"))
+    ligand = Xponge.load_mol2(str(B96_MOL2))
+    Xponge.Add_Molecule(protein, ligand)
+    Xponge.Add_Solvent_Box(
+        protein,
+        Xponge.get_template_molecule("WAT"),
+        10.0,
+        tolerance=2.5,
+        seed=20260509,
+    )
+    Xponge.Add_Ions(protein, {"NA": 64, "CL": 52}, seed=20260509)
+    Xponge.Save_SPONGE_Input(protein, prefix="b96", dirname=str(tmp_path))
+
+    assert protein.validate()
+    assert protein.atom_count == 51963
+    assert protein.residue_count == 15803
+    assert protein.residue_counts()["B"] == 1
+    expected_headers = {
+        "residue": "51963 15803",
+        "resname": "15803",
+        "atom_name": "51963",
+        "atom_type_name": "51963",
+        "coordinate": "51963",
+        "mass": "51963",
+        "charge": "51963",
+        "LJ": "51963 18",
+        "bond": "51917",
+        "angle": "10746",
+        "dihedral": "20248",
+        "exclude": "51963 78128",
+        "nb14": "15465",
+    }
+    for key, header in expected_headers.items():
+        assert _header(tmp_path, key) == header
+
+
+def test_b96_h_mol2_gaff_assign_matches_xponge_atom_types(tmp_path):
+    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
+
+    assignment = Xponge.get_assignment_from_mol2(str(DATA_DIR / "B96_H.mol2"), total_charge="sum")
+    assignment.determine_atom_type("gaff")
+
+    assert assignment.atom_count == 76
+    assert assignment.bond_count == 80
+    assert assignment.atom_types == [
+        "c", "o", "n", "ca", "ca", "ca", "ca", "ca", "ca", "ca", "ca", "ca", "ca", "n",
+        "c2", "c2", "c2", "n2", "na", "ca", "c3", "c3", "c3", "c3", "ca", "ca", "ca",
+        "ca", "ca", "c3", "os", "c3", "c3", "n3", "c3", "c3", "os", "c3", "c3", "hn",
+        "ha", "ha", "ha", "ha", "ha", "ha", "hn", "ha", "hc", "hc", "hc", "hc", "hc",
+        "hc", "hc", "hc", "hc", "ha", "ha", "ha", "ha", "hc", "hc", "hc", "h1", "h1",
+        "h1", "h1", "h1", "h1", "h1", "h1", "h1", "h1", "h1", "h1",
+    ]
+
+    typed = assignment.to_molecule("B")
+    Xponge.Save_Mol2(typed, str(tmp_path / "typed_b96.mol2"))
+    reloaded = Xponge.load_mol2(str(tmp_path / "typed_b96.mol2"))
+    assert reloaded.atom_count == 76
+    assert reloaded.residue_count == 1
+    assert [atom.type for atom in reloaded.residues[0].atoms] == assignment.atom_types

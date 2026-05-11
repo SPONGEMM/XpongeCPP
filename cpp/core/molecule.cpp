@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cmath>
 #include <limits>
 #include <stdexcept>
 
@@ -216,6 +215,42 @@ void Molecule::append_residue_from_type(const ResidueType& type, double dx, doub
     }
 }
 
+void Molecule::add_molecule(const Molecule& other) {
+    if (!other.validate()) {
+        throw std::invalid_argument("source molecule is invalid");
+    }
+    const AtomId atom_offset = static_cast<AtomId>(atoms.size());
+    const ResidueId residue_offset = static_cast<ResidueId>(residues.size());
+
+    atoms.reserve(atoms.size() + other.atoms.size());
+    residues.reserve(residues.size() + other.residues.size());
+    explicit_bonds.reserve(explicit_bonds.size() + other.explicit_bonds.size());
+    residue_links.reserve(residue_links.size() + other.residue_links.size());
+
+    for (const auto& residue : other.residues) {
+        Residue copied = residue;
+        copied.atom_begin += atom_offset;
+        residues.push_back(std::move(copied));
+    }
+
+    for (const auto& source_atom : other.atoms) {
+        Atom atom = source_atom;
+        atom.residue += residue_offset;
+        atoms.push_back(std::move(atom));
+    }
+
+    for (const auto& bond : other.explicit_bonds) {
+        explicit_bonds.push_back({bond.atom1 + atom_offset, bond.atom2 + atom_offset});
+    }
+    for (const auto& link : other.residue_links) {
+        residue_links.push_back({link.atom1 + atom_offset, link.atom2 + atom_offset});
+    }
+
+    if (!validate()) {
+        throw std::runtime_error("internal error: invalid molecule after merge");
+    }
+}
+
 void Molecule::set_box_padding(double padding, bool center) {
     if (padding < 0.0) {
         throw std::invalid_argument("padding should be non-negative");
@@ -273,71 +308,6 @@ std::unordered_map<std::string, std::size_t> Molecule::residue_counts() const {
         counts[residue.name] += 1;
     }
     return counts;
-}
-
-Assign::Assign(std::string assign_name) : name(std::move(assign_name)) {}
-
-void Assign::add_atom(const std::string& element, double x, double y, double z,
-                      const std::string& atom_name, double charge) {
-    elements.push_back(element);
-    names.push_back(atom_name.empty() ? element : atom_name);
-    coordinates.push_back({x, y, z});
-    charges.push_back(charge);
-    bonds.emplace_back();
-    atom_types.emplace_back();
-}
-
-void Assign::add_bond(std::uint32_t atom1, std::uint32_t atom2, int order) {
-    if (atom1 >= elements.size() || atom2 >= elements.size()) {
-        throw std::out_of_range("Assign bond atom index out of range");
-    }
-    if (atom1 == atom2) {
-        throw std::invalid_argument("Assign self bond");
-    }
-    bonds[atom1][atom2] = order;
-    bonds[atom2][atom1] = order;
-}
-
-void Assign::determine_connectivity(double simple_cutoff) {
-    if (simple_cutoff <= 0.0) {
-        throw std::invalid_argument("simple_cutoff should be positive");
-    }
-    const double cutoff2 = simple_cutoff * simple_cutoff;
-    for (std::uint32_t i = 0; i < coordinates.size(); ++i) {
-        for (std::uint32_t j = i + 1; j < coordinates.size(); ++j) {
-            const double dx = coordinates[i][0] - coordinates[j][0];
-            const double dy = coordinates[i][1] - coordinates[j][1];
-            const double dz = coordinates[i][2] - coordinates[j][2];
-            const double d2 = dx * dx + dy * dy + dz * dz;
-            if (d2 < cutoff2) {
-                add_bond(i, j, 1);
-            }
-        }
-    }
-}
-
-void Assign::determine_atom_type(const std::string&) {
-    for (std::size_t i = 0; i < elements.size(); ++i) {
-        atom_types[i] = elements[i];
-    }
-}
-
-ResidueType Assign::to_residuetype(const std::string& residue_name) const {
-    ResidueType residue_type(residue_name);
-    for (std::size_t i = 0; i < elements.size(); ++i) {
-        const auto& atom_type = atom_types[i].empty() ? elements[i] : atom_types[i];
-        residue_type.add_atom(names[i], atom_type, coordinates[i][0], coordinates[i][1], coordinates[i][2],
-                              charges[i], default_mass_for_element(elements[i]));
-    }
-    for (std::size_t i = 0; i < bonds.size(); ++i) {
-        for (const auto& [j, order] : bonds[i]) {
-            (void)order;
-            if (i < j) {
-                residue_type.add_connectivity(names[i], names[j]);
-            }
-        }
-    }
-    return residue_type;
 }
 
 }  // namespace xpongecpp
