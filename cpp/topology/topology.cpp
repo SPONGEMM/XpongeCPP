@@ -265,10 +265,14 @@ void add_xponge_impropers(const Molecule& molecule, const std::vector<std::vecto
 }  // namespace
 
 Topology build_topology(const Molecule& molecule) {
-    Topology topology;
     if (!molecule.validate()) {
         throw std::invalid_argument("cannot build topology for invalid molecule");
     }
+    if (molecule.topology_override) {
+        return *molecule.topology_override;
+    }
+
+    Topology topology;
 
     std::unordered_set<std::uint64_t> seen_bonds;
     seen_bonds.reserve(molecule.atoms.size() * 2);

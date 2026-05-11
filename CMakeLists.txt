@@ -16,6 +16,7 @@ pybind11_add_module(_core
     cpp/assign/ring.cpp
     cpp/core/molecule.cpp
     cpp/forcefield/amber.cpp
+    cpp/forcefield/fep.cpp
     cpp/forcefield/nonamber.cpp
     cpp/io/mol2.cpp
     cpp/io/pdb.cpp

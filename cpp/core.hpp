@@ -6,6 +6,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -278,6 +279,7 @@ public:
     std::vector<std::string> listed_force_definitions;
     std::unordered_map<std::string, StillingerWeberParameter> sw_parameters;
     std::unordered_map<std::string, EDIPParameter> edip_parameters;
+    std::optional<Topology> topology_override;
     std::array<double, 3> box_length{0.0, 0.0, 0.0};
     std::array<double, 3> box_angle{90.0, 90.0, 90.0};
     bool has_box{false};
@@ -405,6 +407,11 @@ std::optional<BondTerm> find_amber_bond_term(const std::string& atom_type1, cons
 std::optional<AngleTerm> find_amber_angle_term(const std::array<std::string, 3>& atom_types);
 std::string find_amber_lj_type(const std::string& atom_type);
 std::optional<std::pair<double, double>> find_amber_lj_parameter(const std::string& lj_type);
+std::pair<Molecule, Molecule> merge_dual_topology(const Molecule& molecule, ResidueId residue_index,
+                                                  const Molecule& residue_b_molecule,
+                                                  const std::unordered_map<std::uint32_t, std::uint32_t>& match_b_to_a);
+Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_b, double default_lambda,
+                           const std::unordered_map<std::string, double>& specific_lambda);
 void register_residue_templates_from_mol2_text(const std::string& text);
 void register_residue_templates_from_mol2_file(const std::filesystem::path& filename);
 void register_template_molecule_from_mol2_file(const std::filesystem::path& filename);

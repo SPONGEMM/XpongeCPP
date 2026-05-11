@@ -196,12 +196,28 @@ void save_mol2_object(const std::shared_ptr<Molecule>& molecule, const std::stri
     save_mol2(*molecule, filename);
 }
 
+py::tuple merge_dual_topology_object(const std::shared_ptr<Molecule>& molecule, ResidueId residue_index,
+                                     const std::shared_ptr<Molecule>& residue_b_molecule,
+                                     const std::unordered_map<std::uint32_t, std::uint32_t>& match_b_to_a) {
+    auto [from_a, to_b] = merge_dual_topology(*molecule, residue_index, *residue_b_molecule, match_b_to_a);
+    return py::make_tuple(std::make_shared<Molecule>(std::move(from_a)),
+                          std::make_shared<Molecule>(std::move(to_b)),
+                          match_b_to_a);
+}
+
+std::shared_ptr<Molecule> merge_force_field_object(
+    const std::shared_ptr<Molecule>& molecule_a, const std::shared_ptr<Molecule>& molecule_b, double default_lambda,
+    const std::unordered_map<std::string, double>& specific_lambda) {
+    return std::make_shared<Molecule>(merge_force_field(*molecule_a, *molecule_b, default_lambda, specific_lambda));
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_core, m) {
     py::class_<AtomView>(m, "Atom")
         .def_property_readonly("name", [](const AtomView& self) { return self.get().name; })
-        .def_property_readonly("type", [](const AtomView& self) { return self.get().type; })
+        .def_property("type", [](const AtomView& self) { return self.get().type; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).type = value; })
         .def_property_readonly("element", [](const AtomView& self) { return self.get().element; })
         .def_property("x", [](const AtomView& self) { return self.get().x; },
                       [](AtomView& self, double value) { self.molecule->atom(self.id).x = value; })
@@ -209,8 +225,10 @@ PYBIND11_MODULE(_core, m) {
                       [](AtomView& self, double value) { self.molecule->atom(self.id).y = value; })
         .def_property("z", [](const AtomView& self) { return self.get().z; },
                       [](AtomView& self, double value) { self.molecule->atom(self.id).z = value; })
-        .def_property_readonly("charge", [](const AtomView& self) { return self.get().charge; })
-        .def_property_readonly("mass", [](const AtomView& self) { return self.get().mass; })
+        .def_property("charge", [](const AtomView& self) { return self.get().charge; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).charge = value; })
+        .def_property("mass", [](const AtomView& self) { return self.get().mass; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).mass = value; })
         .def_property("lj_type_b", [](const AtomView& self) { return self.get().lj_type_b; },
                       [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).lj_type_b = value; })
         .def_property("sw_type", [](const AtomView& self) { return self.get().sw_type; },
@@ -229,6 +247,7 @@ PYBIND11_MODULE(_core, m) {
                       [](AtomView& self, bool value) { self.molecule->atom(self.id).zero_lj_atom = value; });
 
     py::class_<ResidueView>(m, "Residue")
+        .def_property_readonly("index", [](const ResidueView& self) { return self.id; })
         .def_property_readonly("name", [](const ResidueView& self) { return self.get().name; })
         .def_property_readonly("type_name", [](const ResidueView& self) { return self.get().type_name; })
         .def_property_readonly("atom_count", [](const ResidueView& self) { return self.get().atom_count; })
@@ -249,6 +268,8 @@ PYBIND11_MODULE(_core, m) {
         .def("Set_Box_Padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
         .def("add_molecule", &Molecule::add_molecule, py::arg("other"))
         .def("Add_Molecule", &Molecule::add_molecule, py::arg("other"))
+        .def("copy", [](const std::shared_ptr<Molecule>& self) { return std::make_shared<Molecule>(*self); })
+        .def("deepcopy", [](const std::shared_ptr<Molecule>& self) { return std::make_shared<Molecule>(*self); })
         .def("add_virtual_atom2", &Molecule::add_virtual_atom2, py::arg("virtual_atom"), py::arg("atom0"),
              py::arg("atom1"), py::arg("atom2"), py::arg("k1"), py::arg("k2"))
         .def("Add_Virtual_Atom2", &Molecule::add_virtual_atom2, py::arg("virtual_atom"), py::arg("atom0"),
@@ -331,6 +352,7 @@ PYBIND11_MODULE(_core, m) {
         .def_readonly("names", &Assign::names)
         .def_readonly("coordinates", &Assign::coordinates)
         .def_readonly("charges", &Assign::charges)
+        .def_readonly("bonds", &Assign::bonds)
         .def_readonly("atom_types", &Assign::atom_types)
         .def("add_atom", &Assign::add_atom, py::arg("element"), py::arg("x"), py::arg("y"), py::arg("z"),
              py::arg("name") = "", py::arg("charge") = 0.0)
@@ -387,6 +409,10 @@ PYBIND11_MODULE(_core, m) {
     m.def("save_pdb", &save_pdb_object, py::arg("molecule"), py::arg("filename"));
     m.def("save_mol2", &save_mol2_object, py::arg("molecule"), py::arg("filename"));
     m.def("implemented_gaff_assign_types", &implemented_gaff_assign_types);
+    m.def("merge_dual_topology", &merge_dual_topology_object, py::arg("molecule"), py::arg("residue_index"),
+          py::arg("residue_b_molecule"), py::arg("match_b_to_a"));
+    m.def("merge_force_field", &merge_force_field_object, py::arg("molecule_a"), py::arg("molecule_b"),
+          py::arg("default_lambda"), py::arg("specific_lambda") = std::unordered_map<std::string, double>{});
 
     m.def("register_ff14sb", &register_ff14sb);
     m.def("register_tip3p", &register_tip3p);
