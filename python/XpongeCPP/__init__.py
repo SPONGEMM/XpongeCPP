@@ -34,8 +34,8 @@ def Add_Solvent_Box(molecule, solvent, distance, tolerance=2.5, n_solvent=None, 
     return add_solvent_box(molecule, solvent, distance, tolerance, n_solvent, seed)
 
 
-def Add_Ions(molecule, counts, seed=0):
-    return add_ions(molecule, counts, seed)
+def Add_Ions(molecule, counts, seed=0, solvent="WAT"):
+    return add_ions(molecule, counts, seed, solvent)
 
 
 def Add_Molecule(molecule, other):

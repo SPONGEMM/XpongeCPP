@@ -220,7 +220,7 @@ std::vector<std::string> implemented_gaff_assign_types();
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distance, double tolerance,
                      std::int64_t n_solvent, std::uint64_t seed = 0);
 void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts,
-              std::uint64_t seed = 0);
+              std::uint64_t seed = 0, const std::string& solvent_residue = "WAT");
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname);

@@ -39,28 +39,6 @@ std::array<double, 3> molecule_max(const Molecule& molecule) {
     return maxv;
 }
 
-ResidueType first_residue_as_type(const Molecule& molecule) {
-    if (molecule.residues.empty()) {
-        throw std::invalid_argument("solvent molecule must contain one residue");
-    }
-    const auto& residue = molecule.residues.front();
-    ResidueType residue_type(residue.name);
-    for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
-        const auto& atom = molecule.atoms[residue.atom_begin + local];
-        residue_type.add_atom(atom.name, atom.type, atom.x, atom.y, atom.z, atom.charge, atom.mass);
-    }
-    for (const auto& bond : molecule.explicit_bonds) {
-        if (bond.atom1 < residue.atom_begin || bond.atom1 >= residue.atom_begin + residue.atom_count ||
-            bond.atom2 < residue.atom_begin || bond.atom2 >= residue.atom_begin + residue.atom_count) {
-            continue;
-        }
-        const auto& atom1 = molecule.atoms[bond.atom1];
-        const auto& atom2 = molecule.atoms[bond.atom2];
-        residue_type.add_connectivity(atom1.name, atom2.name);
-    }
-    return residue_type;
-}
-
 std::vector<std::string> deterministic_ion_order(const std::unordered_map<std::string, std::int64_t>& counts) {
     std::vector<std::string> order;
     for (const auto* name : {"NA", "CL"}) {
@@ -75,6 +53,36 @@ std::vector<std::string> deterministic_ion_order(const std::unordered_map<std::s
         }
     }
     return order;
+}
+
+void append_solvent_unit(Molecule& molecule, const Molecule& solvent, const std::array<double, 3>& placement) {
+    const AtomId atom_offset = static_cast<AtomId>(molecule.atoms.size());
+    const ResidueId residue_offset = static_cast<ResidueId>(molecule.residues.size());
+
+    molecule.residues.reserve(molecule.residues.size() + solvent.residues.size());
+    molecule.atoms.reserve(molecule.atoms.size() + solvent.atoms.size());
+    molecule.explicit_bonds.reserve(molecule.explicit_bonds.size() + solvent.explicit_bonds.size());
+    molecule.residue_links.reserve(molecule.residue_links.size() + solvent.residue_links.size());
+
+    for (const auto& residue : solvent.residues) {
+        Residue copied = residue;
+        copied.atom_begin += atom_offset;
+        molecule.residues.push_back(std::move(copied));
+    }
+    for (const auto& source_atom : solvent.atoms) {
+        Atom atom = source_atom;
+        atom.residue += residue_offset;
+        atom.x += placement[0];
+        atom.y += placement[1];
+        atom.z += placement[2];
+        molecule.atoms.push_back(std::move(atom));
+    }
+    for (const auto& bond : solvent.explicit_bonds) {
+        molecule.explicit_bonds.push_back({bond.atom1 + atom_offset, bond.atom2 + atom_offset});
+    }
+    for (const auto& link : solvent.residue_links) {
+        molecule.residue_links.push_back({link.atom1 + atom_offset, link.atom2 + atom_offset});
+    }
 }
 
 }  // namespace
@@ -100,8 +108,8 @@ void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distanc
         std::max(2.4, solvent_max[1] - solvent_min[1] + tolerance),
         std::max(2.4, solvent_max[2] - solvent_min[2] + tolerance),
     };
-    const auto solvent_type = first_residue_as_type(solvent);
-    const std::size_t atoms_per_solvent = solvent_type.atom_count();
+    const std::size_t atoms_per_solvent = solvent.atoms.size();
+    const std::size_t residues_per_solvent = solvent.residues.size();
 
     std::vector<std::array<double, 3>> placements;
     const std::array<std::int64_t, 3> inner_grid{
@@ -195,13 +203,14 @@ void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distanc
     }
 
     molecule.atoms.reserve(molecule.atoms.size() + placements.size() * atoms_per_solvent);
-    molecule.residues.reserve(molecule.residues.size() + placements.size());
+    molecule.residues.reserve(molecule.residues.size() + placements.size() * residues_per_solvent);
     for (const auto& placement : placements) {
-        molecule.append_residue_from_type(solvent_type, placement[0], placement[1], placement[2]);
+        append_solvent_unit(molecule, solvent, placement);
     }
 }
 
-void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts, std::uint64_t seed) {
+void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts, std::uint64_t seed,
+              const std::string& solvent_residue) {
     std::int64_t requested = 0;
     for (const auto& [name, count] : counts) {
         if (count < 0) {
@@ -213,20 +222,24 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
         return;
     }
 
-    std::vector<ResidueId> water_residues;
-    water_residues.reserve(molecule.residues.size());
+    if (solvent_residue.empty()) {
+        throw std::invalid_argument("solvent residue name should not be empty");
+    }
+
+    std::vector<ResidueId> solvent_residues;
+    solvent_residues.reserve(molecule.residues.size());
     for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
         const auto& residue = molecule.residues[residue_id];
-        if (residue.name == "WAT") {
-            water_residues.push_back(residue_id);
+        if (residue.name == solvent_residue) {
+            solvent_residues.push_back(residue_id);
         }
     }
-    if (static_cast<std::int64_t>(water_residues.size()) < requested) {
-        throw std::invalid_argument("not enough WAT residues to replace with ions");
+    if (static_cast<std::int64_t>(solvent_residues.size()) < requested) {
+        throw std::invalid_argument("not enough " + solvent_residue + " residues to replace with ions");
     }
 
     std::mt19937_64 rng(seed == 0 ? 5489ULL : seed);
-    std::shuffle(water_residues.begin(), water_residues.end(), rng);
+    std::shuffle(solvent_residues.begin(), solvent_residues.end(), rng);
 
     const auto order = deterministic_ion_order(counts);
     std::unordered_map<ResidueId, std::string> replacement_by_residue;
@@ -235,7 +248,7 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
     for (const auto& ion_name : order) {
         const auto count = counts.at(ion_name);
         for (std::int64_t i = 0; i < count; ++i) {
-            replacement_by_residue.emplace(water_residues[cursor++], ion_name);
+            replacement_by_residue.emplace(solvent_residues[cursor++], ion_name);
         }
     }
 
@@ -271,9 +284,9 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
         }
     };
 
-    const auto append_ion_from_water = [&](const Residue& water, const std::string& ion_name) {
+    const auto append_ion_from_solvent = [&](const Residue& solvent_residue_to_replace, const std::string& ion_name) {
         const auto& ion_type = get_residue_template(ion_name);
-        const auto& oxygen = molecule.atoms[water.atom_begin];
+        const auto& anchor = molecule.atoms[solvent_residue_to_replace.atom_begin];
         const ResidueId new_residue_id = static_cast<ResidueId>(rebuilt.residues.size());
         Residue new_residue;
         new_residue.name = ion_type.name();
@@ -288,9 +301,9 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
         ion.type = ion_atom.type;
         ion.element = ion_atom.element;
         ion.residue = new_residue_id;
-        ion.x = oxygen.x;
-        ion.y = oxygen.y;
-        ion.z = oxygen.z;
+        ion.x = anchor.x;
+        ion.y = anchor.y;
+        ion.z = anchor.z;
         ion.charge = ion_atom.charge;
         ion.mass = ion_atom.mass;
         rebuilt.atoms.push_back(std::move(ion));
@@ -298,7 +311,7 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
 
     for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
         const auto& residue = molecule.residues[residue_id];
-        if (residue.name != "WAT") {
+        if (residue.name != solvent_residue) {
             append_residue_copy(residue);
         }
     }
@@ -306,13 +319,14 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
         for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
             const auto it = replacement_by_residue.find(residue_id);
             if (it != replacement_by_residue.end() && it->second == ion_name) {
-                append_ion_from_water(molecule.residues[residue_id], ion_name);
+                append_ion_from_solvent(molecule.residues[residue_id], ion_name);
             }
         }
     }
     for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
         const auto& residue = molecule.residues[residue_id];
-        if (residue.name == "WAT" && replacement_by_residue.find(residue_id) == replacement_by_residue.end()) {
+        if (residue.name == solvent_residue &&
+            replacement_by_residue.find(residue_id) == replacement_by_residue.end()) {
             append_residue_copy(residue);
         }
     }

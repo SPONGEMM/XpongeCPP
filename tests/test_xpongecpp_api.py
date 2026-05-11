@@ -113,6 +113,21 @@ def test_add_solvent_box_appends_template_waters_and_exports_implicit_box(tmp_pa
     assert box[0] > 0
 
 
+def test_add_solvent_box_replicates_all_residues_of_custom_solvent_unit(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    solute = Xponge.load_pdb(StringIO(PDB_TEXT))
+    solvent = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+
+    Xponge.Add_Solvent_Box(solute, solvent, 4.0, tolerance=2.5, n_solvent=1)
+    Xponge.Save_SPONGE_Input(solute, prefix="customsol", dirname=str(tmp_path))
+
+    assert solute.validate()
+    assert solute.residue_count == 3
+    assert [res.name for res in solute.residues] == ["NALA", "FAR", "LIG"]
+    assert (tmp_path / "customsol_bond.txt").read_text().splitlines()[0] == "6"
+
+
 def test_load_mol2_preserves_declared_residues_atom_properties():
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
 
@@ -189,6 +204,19 @@ def test_add_ions_preserves_mol2_explicit_bonds_after_rebuild(tmp_path):
     assert mol.validate()
     assert [res.name for res in mol.residues] == ["FAR", "NA", "WAT"]
     assert (tmp_path / "farwat_bond.txt").read_text().splitlines()[0] == "3"
+
+
+def test_add_ions_can_replace_named_custom_solvent_residue(tmp_path):
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+
+    Xponge.Add_Ions(mol, {"NA": 1}, seed=20260509, solvent="FAR")
+    Xponge.Save_SPONGE_Input(mol, prefix="customion", dirname=str(tmp_path))
+
+    assert mol.validate()
+    assert [res.name for res in mol.residues] == ["LIG", "NA"]
+    assert (tmp_path / "customion_bond.txt").read_text().splitlines()[0] == "1"
 
 
 def test_add_molecule_preserves_source_explicit_bonds(tmp_path):

@@ -122,8 +122,9 @@ void add_solvent_box_object(const std::shared_ptr<Molecule>& molecule, const std
 }
 
 void add_ions_object(const std::shared_ptr<Molecule>& molecule,
-                     const std::unordered_map<std::string, std::int64_t>& counts, std::uint64_t seed) {
-    add_ions(*molecule, counts, seed);
+                     const std::unordered_map<std::string, std::int64_t>& counts, std::uint64_t seed,
+                     const std::string& solvent) {
+    add_ions(*molecule, counts, seed, solvent);
 }
 
 void add_molecule_object(const std::shared_ptr<Molecule>& molecule, const std::shared_ptr<Molecule>& other) {
@@ -239,7 +240,8 @@ PYBIND11_MODULE(_core, m) {
     m.def("add_solvent_box", &add_solvent_box_object, py::arg("molecule"), py::arg("solvent"),
           py::arg("distance"), py::arg("tolerance") = 2.5, py::arg("n_solvent") = py::none(),
           py::arg("seed") = 0);
-    m.def("add_ions", &add_ions_object, py::arg("molecule"), py::arg("counts"), py::arg("seed") = 0);
+    m.def("add_ions", &add_ions_object, py::arg("molecule"), py::arg("counts"), py::arg("seed") = 0,
+          py::arg("solvent") = "WAT");
     m.def("add_molecule", &add_molecule_object, py::arg("molecule"), py::arg("other"));
     m.def("set_box_padding", &set_box_padding_object, py::arg("molecule"), py::arg("padding") = 0.5,
           py::arg("center") = true);
