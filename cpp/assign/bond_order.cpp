@@ -503,17 +503,38 @@ void assign_c3_formal_charge(Assign& assign, const std::vector<std::uint32_t>& c
 }  // namespace
 
 bool Assign::determine_bond_order(bool check_formal_charge_flag, std::optional<int> total_charge) {
+    return determine_bond_order_custom(check_formal_charge_flag, total_charge, 2000, 20000, {}, {});
+}
+
+bool Assign::determine_bond_order_custom(
+    bool check_formal_charge_flag,
+    std::optional<int> total_charge,
+    int max_step,
+    int max_stat,
+    const std::vector<std::vector<std::pair<int, int>>>& penalty_scores,
+    const std::function<bool(const Assign&)>& extra_criteria) {
+    if (max_step <= 0 || max_stat <= 0) {
+        throw std::invalid_argument("max_step and max_stat should be positive");
+    }
     if (!built) {
         determine_ring_and_bond_type();
     }
+    const auto initial_bonds = bonds;
+    const auto initial_formal_charges = formal_charges;
     const int input_formal_charge_sum =
         std::accumulate(formal_charges.begin(), formal_charges.end(), 0);
     UnknownConnectivity uc;
     std::vector<int> connected;
     collect_unknowns(*this, uc, connected);
-    const auto penalties = original_penalties(*this);
+    const auto penalties = penalty_scores.empty() ? original_penalties(*this) : penalty_scores;
+    if (penalties.size() != elements.size()) {
+        throw std::invalid_argument("penalty_scores should have one entry per atom");
+    }
     std::vector<int> best_valence(elements.size(), 0);
     for (std::uint32_t atom = 0; atom < elements.size(); ++atom) {
+        if (penalties[atom].empty()) {
+            throw std::invalid_argument("penalty_scores entries should not be empty");
+        }
         best_valence[atom] = uc[atom].empty() ? 0 : penalties[atom].front().first - connected[atom];
     }
     const auto penalty_points = collect_penalty_points(penalties);
@@ -524,8 +545,6 @@ bool Assign::determine_bond_order(bool check_formal_charge_flag, std::optional<i
     std::size_t stat_position = 0;
     std::vector<std::vector<ValencePoint>> points;
     int count = 0;
-    constexpr int max_step = 2000;
-    constexpr int max_stat = 20000;
 
     BondMap candidate_bonds;
     std::vector<std::vector<std::uint32_t>> formal_charge_combinations;
@@ -557,6 +576,22 @@ bool Assign::determine_bond_order(bool check_formal_charge_flag, std::optional<i
         return false;
     };
 
+    auto accept_candidate = [&]() {
+        if (!extra_criteria) {
+            bonds = std::move(candidate_bonds);
+            return true;
+        }
+        const auto previous_bonds = bonds;
+        const auto previous_formal_charges = formal_charges;
+        bonds = candidate_bonds;
+        if (extra_criteria(*this)) {
+            return true;
+        }
+        bonds = previous_bonds;
+        formal_charges = previous_formal_charges;
+        return false;
+    };
+
     while (count < max_step && current_stat < max_stat) {
         bool success = false;
         if (!formal_charge_combinations.empty() && formal_charge_position < formal_charge_combinations.size()) {
@@ -585,14 +620,22 @@ bool Assign::determine_bond_order(bool check_formal_charge_flag, std::optional<i
             }
         }
         if (success) {
-            bonds = std::move(candidate_bonds);
-            return true;
+            if (accept_candidate()) {
+                return true;
+            }
+            if (!formal_charge_combinations.empty() &&
+                formal_charge_position < formal_charge_combinations.size()) {
+                ++count;
+                continue;
+            }
         }
         ++count;
         if (!get_next_valence()) {
             break;
         }
     }
+    bonds = initial_bonds;
+    formal_charges = initial_formal_charges;
     return false;
 }
 

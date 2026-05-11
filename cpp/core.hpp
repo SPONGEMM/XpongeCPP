@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <set>
 #include <string>
@@ -388,6 +389,7 @@ public:
     void set_charges(const std::vector<double>& new_charges);
     void set_formal_charge(std::uint32_t atom, int charge);
     void set_coordinate(std::uint32_t atom, double x, double y, double z);
+    void set_atom_type(std::uint32_t atom, const std::string& atom_type);
     void determine_connectivity(double simple_cutoff);
     bool check_connectivity() const;
     bool atom_judge(std::uint32_t atom, const std::string& mask) const;
@@ -398,6 +400,13 @@ public:
     int atom_marker_count(std::uint32_t atom, const std::string& marker) const;
     bool has_bond_marker(std::uint32_t atom1, std::uint32_t atom2, const std::string& marker) const;
     bool determine_bond_order(bool check_formal_charge = true, std::optional<int> total_charge = std::nullopt);
+    bool determine_bond_order_custom(
+        bool check_formal_charge,
+        std::optional<int> total_charge,
+        int max_step,
+        int max_stat,
+        const std::vector<std::vector<std::pair<int, int>>>& penalty_scores,
+        const std::function<bool(const Assign&)>& extra_criteria = {});
     void determine_ring_and_bond_type();
     void kekulize();
     void determine_atom_type(const std::string& rule);

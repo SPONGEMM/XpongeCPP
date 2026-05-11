@@ -530,6 +530,7 @@ PYBIND11_MODULE(_core, m) {
         .def("set_charges", &Assign::set_charges, py::arg("charges"))
         .def("set_formal_charge", &Assign::set_formal_charge, py::arg("atom"), py::arg("charge"))
         .def("set_coordinate", &Assign::set_coordinate, py::arg("atom"), py::arg("x"), py::arg("y"), py::arg("z"))
+        .def("set_atom_type", &Assign::set_atom_type, py::arg("atom"), py::arg("atom_type"))
         .def("has_atom_marker", &Assign::has_atom_marker, py::arg("atom"), py::arg("marker"))
         .def("has_bond_marker", &Assign::has_bond_marker, py::arg("atom1"), py::arg("atom2"), py::arg("marker"))
         .def("add_bond_marker", &Assign::add_bond_marker, py::arg("atom1"), py::arg("atom2"),
@@ -537,6 +538,33 @@ PYBIND11_MODULE(_core, m) {
         .def("determine_connectivity", &Assign::determine_connectivity, py::arg("simple_cutoff"))
         .def("determine_bond_order", &Assign::determine_bond_order, py::arg("check_formal_charge") = true,
              py::arg("total_charge") = py::none())
+        .def("_determine_bond_order_custom",
+             [](Assign& self,
+                bool check_formal_charge,
+                py::object total_charge_object,
+                int max_step,
+                int max_stat,
+                const std::vector<std::vector<std::pair<int, int>>>& penalty_scores,
+                py::object extra_criteria) {
+                 std::optional<int> total_charge;
+                 if (!total_charge_object.is_none()) {
+                     total_charge = py::cast<int>(total_charge_object);
+                 }
+                 std::function<bool(const Assign&)> criteria;
+                 if (!extra_criteria.is_none()) {
+                     criteria = [&self, extra_criteria](const Assign&) {
+                         return py::cast<bool>(extra_criteria(py::cast(&self, py::return_value_policy::reference)));
+                     };
+                 }
+                 return self.determine_bond_order_custom(check_formal_charge, total_charge, max_step, max_stat,
+                                                         penalty_scores, criteria);
+             },
+             py::arg("check_formal_charge"),
+             py::arg("total_charge"),
+             py::arg("max_step"),
+             py::arg("max_stat"),
+             py::arg("penalty_scores"),
+             py::arg("extra_criteria") = py::none())
         .def("determine_ring_and_bond_type", &Assign::determine_ring_and_bond_type)
         .def("kekulize", &Assign::kekulize)
         .def("determine_atom_type", &Assign::determine_atom_type, py::arg("rule"))

@@ -3,6 +3,7 @@
 import math
 import re
 from importlib.resources import files
+from collections import OrderedDict
 
 from ._core import (
     Assign,
@@ -53,6 +54,7 @@ from ._core import (
     set_box_padding,
     template_atom_count,
 )
+from .assign import AssignRule
 
 __version__ = "0.1.0"
 
@@ -317,12 +319,39 @@ def _assign_determine_connectivity(self, simple_cutoff=None, tolerance=1.0):
 
 def _assign_determine_bond_order(self, max_step=2000, max_stat=20000, penalty_scores=None,
                                  check_formal_charge=True, total_charge=None, extra_criteria=None):
-    del max_step, max_stat
-    if penalty_scores is not None:
-        raise NotImplementedError("custom penalty_scores are not supported by XpongeCPP Assign yet")
-    if extra_criteria is not None:
-        raise NotImplementedError("extra_criteria is not supported by XpongeCPP Assign yet")
-    return _core_determine_bond_order(self, check_formal_charge, total_charge)
+    if isinstance(max_step, bool):
+        check_formal_charge = max_step
+        total_charge = max_stat
+        max_step = 2000
+        max_stat = 20000
+    if penalty_scores is None and extra_criteria is None and max_step == 2000 and max_stat == 20000:
+        return _core_determine_bond_order(self, check_formal_charge, total_charge)
+    penalties = _normalise_penalty_scores(self, penalty_scores)
+    return self._determine_bond_order_custom(
+        check_formal_charge,
+        total_charge,
+        max_step,
+        max_stat,
+        penalties,
+        extra_criteria,
+    )
+
+
+def _normalise_penalty_scores(assign, penalty_scores):
+    if penalty_scores is None:
+        return []
+    if len(penalty_scores) != assign.atom_count:
+        raise ValueError("penalty_scores should have one entry per atom")
+    result = []
+    for entry in penalty_scores:
+        if isinstance(entry, dict):
+            items = list(entry.items())
+        else:
+            items = list(entry)
+        if not items:
+            raise ValueError("penalty_scores entries should not be empty")
+        result.append([(int(valence), int(penalty)) for valence, penalty in items])
+    return result
 
 
 def _phmodel_type(self, atom):
@@ -345,7 +374,36 @@ def _assign_determine_atom_type(self, rule):
     if str(rule).lower() == "phmodel":
         self.kekulize()
         return [_phmodel_type(self, atom) for atom in range(self.atom_count)]
+    if isinstance(rule, AssignRule):
+        return _assign_determine_atom_type_from_rule(self, rule)
+    if str(rule).lower() not in {"gaff", "gaff2", "sybyl"} and str(rule) in AssignRule.all:
+        return _assign_determine_atom_type_from_rule(self, AssignRule.all[str(rule)])
     return _core_determine_atom_type(self, rule)
+
+
+def _assign_determine_atom_type_from_rule(assign, rule):
+    if not rule.built:
+        rule.rules = OrderedDict(sorted(rule.rules.items(), key=lambda item: rule.priority[item[0]]))
+        rule.built = True
+    backup = list(assign.atom_types)
+    if rule.pre_action:
+        rule.pre_action(assign)
+    assigned_types = []
+    for atom in range(assign.atom_count):
+        for atom_type, judge in rule.rules.items():
+            if judge(atom, assign):
+                assigned_types.append(atom_type)
+                assign.set_atom_type(atom, atom_type)
+                break
+        else:
+            raise KeyError(f"No atom type found for assignment {assign.name} of atom #{atom}")
+    if rule.post_action:
+        rule.post_action(assign)
+    if rule.pure_string:
+        for atom, atom_type in enumerate(backup):
+            assign.set_atom_type(atom, atom_type)
+        return assigned_types
+    return None
 
 
 def _assign_determine_equal_atoms(self):
@@ -804,6 +862,7 @@ GetAssignmentFromPDB = get_assignment_from_pdb
 
 __all__ = [
     "Assign",
+    "AssignRule",
     "Molecule",
     "ResidueType",
     "add_ions",

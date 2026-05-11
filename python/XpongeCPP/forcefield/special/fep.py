@@ -202,7 +202,7 @@ def _assign_to_rdkit(assign):
         1: Chem.BondType.SINGLE,
         2: Chem.BondType.DOUBLE,
         3: Chem.BondType.TRIPLE,
-        -1: Chem.BondType.AROMATIC,
+        -1: Chem.BondType.UNSPECIFIED,
     }
     for atom_i, neighbors in enumerate(assign.bonds):
         for atom_j, order in neighbors.items():
@@ -213,7 +213,8 @@ def _assign_to_rdkit(assign):
 
 
 def _hydrogen_count(rdmol, atom_id):
-    return rdmol.GetAtomWithIdx(int(atom_id)).GetTotalNumHs(includeNeighbors=True)
+    atom = rdmol.GetAtomWithIdx(int(atom_id))
+    return sum(1 for neighbor in atom.GetNeighbors() if neighbor.GetAtomicNum() == 1)
 
 
 Prepare_LJ_Soft_Core = prepare_lj_soft_core

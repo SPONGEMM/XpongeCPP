@@ -116,6 +116,13 @@ void Assign::set_coordinate(std::uint32_t atom, double x, double y, double z) {
     built = false;
 }
 
+void Assign::set_atom_type(std::uint32_t atom, const std::string& atom_type) {
+    if (atom >= atom_types.size()) {
+        throw std::out_of_range("Assign atom type index out of range");
+    }
+    atom_types[atom] = atom_type;
+}
+
 void Assign::determine_connectivity(double simple_cutoff) {
     if (simple_cutoff <= 0.0) {
         throw std::invalid_argument("simple_cutoff should be positive");

@@ -323,3 +323,84 @@ def test_resp_uses_pyscf_backend_or_reports_missing_dependency():
         return
     assert len(water.charges) == 3
     assert math.isclose(sum(water.charges), 0.0, abs_tol=1e-5)
+
+
+def test_assign_rule_custom_registry_supports_xponge_pure_string_semantics():
+    rule = Xponge.AssignRule("unit_custom_rule", pure_string=True)
+    calls = []
+
+    def pre_action(assign):
+        calls.append(("pre", assign.name))
+
+    def post_action(assign):
+        calls.append(("post", assign.name))
+
+    rule.set_pre_action(pre_action)
+    rule.set_post_action(post_action)
+
+    @rule.add_rule("hydrogen", priority=10)
+    def is_hydrogen(atom, assign):
+        return assign.atoms[atom] == "H"
+
+    @rule.add_rule("heavy", priority=0)
+    def is_heavy(atom, assign):
+        return True
+
+    methane = _assignment(
+        "methane",
+        ["C", "H", "H", "H", "H"],
+        [(0, 1, 1), (0, 2, 1), (0, 3, 1), (0, 4, 1)],
+    )
+
+    atom_types = methane.determine_atom_type("unit_custom_rule")
+
+    assert atom_types == ["heavy", "hydrogen", "hydrogen", "hydrogen", "hydrogen"]
+    assert methane.atom_types == ["", "", "", "", ""]
+    assert calls == [("pre", "methane"), ("post", "methane")]
+
+
+def test_assign_rule_custom_registry_can_assign_in_place():
+    rule = Xponge.AssignRule("unit_inplace_rule")
+
+    @rule.add_rule("h_custom", priority=10)
+    def is_hydrogen(atom, assign):
+        return assign.atoms[atom] == "H"
+
+    @rule.add_rule("x_custom")
+    def fallback(atom, assign):
+        return True
+
+    water = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
+
+    assert water.determine_atom_type(rule) is None
+    assert water.atom_types == ["x_custom", "h_custom", "h_custom"]
+
+
+def test_determine_bond_order_accepts_custom_penalty_scores():
+    hydroxide = _assignment("hydroxide", ["O", "H"], [(0, 1, -1)])
+
+    success = hydroxide.determine_bond_order(
+        penalty_scores=[{1: 0}, {1: 0}],
+        total_charge=-1,
+    )
+
+    assert success
+    assert hydroxide.bonds[0][1] == 1
+    assert hydroxide.formal_charges == [-1, 0]
+
+
+def test_determine_bond_order_extra_criteria_filters_candidates():
+    water = _assignment("water", ["O", "H", "H"], [(0, 1, -1), (0, 2, -1)])
+    seen = []
+
+    def reject_all(assign):
+        seen.append(sorted((min(i, j), max(i, j), order) for i, bonds in enumerate(assign.bonds) for j, order in bonds.items() if i < j))
+        return False
+
+    assert not water.determine_bond_order(extra_criteria=reject_all)
+    assert seen
+
+    water = _assignment("water", ["O", "H", "H"], [(0, 1, -1), (0, 2, -1)])
+    assert water.determine_bond_order(extra_criteria=lambda assign: all(order == 1 for order in assign.bonds[0].values()))
+    assert water.bonds[0][1] == 1
+    assert water.bonds[0][2] == 1

@@ -1,0 +1,24 @@
+[workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = ">=3.11,<3.12"
+numpy = ">=1.26"
+pytest = ">=8"
+cmake = ">=3.18"
+ninja = "*"
+pybind11 = ">=2.12"
+scikit-build-core = ">=0.10"
+rdkit = "*"
+pyscf = "*"
+pip = "*"
+
+[pypi-dependencies]
+pubchempy = "*"
+
+[tasks]
+install-dev = "python -m pip install -e . --force-reinstall --no-cache-dir"
+test = { cmd = "pytest -q", depends-on = ["install-dev"] }
+test-assign-full = { cmd = "pytest tests/test_assign_charge_models.py tests/test_gaff_assign_migration.py tests/test_amber_fep_workflow.py::test_merge_dual_topology_can_derive_match_map_from_assign_when_rdkit_is_available -q", depends-on = ["install-dev"] }
+test-resp = { cmd = "pytest tests/test_assign_charge_models.py::test_resp_uses_pyscf_backend_or_reports_missing_dependency -q", depends-on = ["install-dev"] }
