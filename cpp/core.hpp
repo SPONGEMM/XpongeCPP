@@ -387,6 +387,7 @@ public:
     void set_charge(std::uint32_t atom, double charge);
     void set_charges(const std::vector<double>& new_charges);
     void set_formal_charge(std::uint32_t atom, int charge);
+    void set_coordinate(std::uint32_t atom, double x, double y, double z);
     void determine_connectivity(double simple_cutoff);
     bool check_connectivity() const;
     bool atom_judge(std::uint32_t atom, const std::string& mask) const;

@@ -259,6 +259,21 @@ std::string assignment_to_mol2_text(const Assign& assignment, const std::string&
             << " " << std::setw(10) << std::setprecision(6) << assignment.charges[i] << std::setprecision(4)
             << "\n";
     }
+    bool has_formal_charge = false;
+    for (const auto charge : assignment.formal_charges) {
+        if (charge != 0) {
+            has_formal_charge = true;
+            break;
+        }
+    }
+    if (has_formal_charge) {
+        out << "@<TRIPOS>UNITY_ATOM_ATTR\n";
+        for (std::uint32_t i = 0; i < assignment.atom_count(); ++i) {
+            if (assignment.formal_charges[i] != 0) {
+                out << i + 1 << " 1\ncharge " << assignment.formal_charges[i] << "\n";
+            }
+        }
+    }
     out << "@<TRIPOS>BOND\n";
     std::size_t bond_index = 1;
     for (std::uint32_t i = 0; i < assignment.bonds.size(); ++i) {
@@ -266,8 +281,18 @@ std::string assignment_to_mol2_text(const Assign& assignment, const std::string&
             if (neighbor <= i) {
                 continue;
             }
+            std::string bond_type;
+            if (assignment.has_bond_marker(i, neighbor, "ar") || assignment.has_bond_marker(i, neighbor, "mol2_ar")) {
+                bond_type = "ar";
+            } else if (assignment.has_bond_marker(i, neighbor, "am") || assignment.has_bond_marker(i, neighbor, "mol2_am")) {
+                bond_type = "am";
+            } else if (order == -1) {
+                bond_type = "un";
+            } else {
+                bond_type = std::to_string(order);
+            }
             out << std::setw(6) << bond_index++ << std::setw(6) << i + 1 << std::setw(6) << neighbor + 1
-                << " " << (order > 0 ? order : 1) << "\n";
+                << " " << bond_type << "\n";
         }
     }
     out << "@<TRIPOS>SUBSTRUCTURE\n" << std::setw(5) << 1 << " " << std::setw(8) << resname << std::setw(6)

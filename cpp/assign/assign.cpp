@@ -108,6 +108,14 @@ void Assign::set_formal_charge(std::uint32_t atom, int charge) {
     built = false;
 }
 
+void Assign::set_coordinate(std::uint32_t atom, double x, double y, double z) {
+    if (atom >= coordinates.size()) {
+        throw std::out_of_range("Assign coordinate atom index out of range");
+    }
+    coordinates[atom] = {x, y, z};
+    built = false;
+}
+
 void Assign::determine_connectivity(double simple_cutoff) {
     if (simple_cutoff <= 0.0) {
         throw std::invalid_argument("simple_cutoff should be positive");

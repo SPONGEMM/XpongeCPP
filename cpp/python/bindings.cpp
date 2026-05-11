@@ -529,9 +529,15 @@ PYBIND11_MODULE(_core, m) {
         .def("set_charge", &Assign::set_charge, py::arg("atom"), py::arg("charge"))
         .def("set_charges", &Assign::set_charges, py::arg("charges"))
         .def("set_formal_charge", &Assign::set_formal_charge, py::arg("atom"), py::arg("charge"))
+        .def("set_coordinate", &Assign::set_coordinate, py::arg("atom"), py::arg("x"), py::arg("y"), py::arg("z"))
+        .def("has_atom_marker", &Assign::has_atom_marker, py::arg("atom"), py::arg("marker"))
+        .def("has_bond_marker", &Assign::has_bond_marker, py::arg("atom1"), py::arg("atom2"), py::arg("marker"))
+        .def("add_bond_marker", &Assign::add_bond_marker, py::arg("atom1"), py::arg("atom2"),
+             py::arg("marker"), py::arg("only1") = false)
         .def("determine_connectivity", &Assign::determine_connectivity, py::arg("simple_cutoff"))
         .def("determine_bond_order", &Assign::determine_bond_order, py::arg("check_formal_charge") = true,
              py::arg("total_charge") = py::none())
+        .def("determine_ring_and_bond_type", &Assign::determine_ring_and_bond_type)
         .def("kekulize", &Assign::kekulize)
         .def("determine_atom_type", &Assign::determine_atom_type, py::arg("rule"))
         .def("_calculate_tpacm4", &Assign::calculate_tpacm4_charge, py::arg("atom_type_table"),

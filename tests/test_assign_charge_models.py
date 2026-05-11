@@ -1,4 +1,5 @@
 import math
+import io
 
 import pytest
 import XpongeCPP as Xponge
@@ -188,3 +189,137 @@ def test_set_ph_deprotonates_carboxylic_acid_like_xponge_phmodel():
     assert acetic_acid.atoms == ["C", "C", "O", "O", "H", "H", "H"]
     assert acetic_acid.formal_charges == [0, 0, 0, -1, 0, 0, 0]
     assert acetic_acid.bond_count == 6
+
+
+def test_determine_connectivity_accepts_xponge_tolerance_signature():
+    assignment = Xponge.Assign("water")
+    assignment.add_atom("O", 0.0, 0.0, 0.0)
+    assignment.add_atom("H", 0.96, 0.0, 0.0)
+    assignment.add_atom("H", -0.24, 0.93, 0.0)
+
+    assignment.determine_connectivity(tolerance=1.0)
+
+    assert assignment.bond_count == 2
+    assert sorted((min(i, j), max(i, j), order) for i, bonds in enumerate(assignment.bonds) for j, order in bonds.items() if i < j) == [
+        (0, 1, -1),
+        (0, 2, -1),
+    ]
+
+
+def test_pdb_and_xyz_assignment_entrypoints_accept_xponge_parameters():
+    pdb = """\
+HETATM    1  C1  LIG A   1       0.000   0.000   0.000                       C
+HETATM    2  H1  LIG A   1       1.090   0.000   0.000                       H
+HETATM    3  C2  SOL A   2       5.000   0.000   0.000                       C
+HETATM    4  H2  SOL A   2       6.090   0.000   0.000                       H
+END
+"""
+    assignment = Xponge.get_assignment_from_pdb(io.StringIO(pdb), only_residue="LIG", bond_tolerance=1.0, total_charge=0)
+    assert assignment.name == "LIG"
+    assert assignment.atoms == ["C", "H"]
+    assert assignment.bond_count == 1
+
+    xyz = """2
+fragment
+C 0.000 0.000 0.000
+H 1.090 0.000 0.000
+"""
+    assignment = Xponge.get_assignment_from_xyz(io.StringIO(xyz), bond_tolerance=1.0, total_charge=0)
+    assert assignment.name == "fragment"
+    assert assignment.bond_count == 1
+
+
+def test_cif_assignment_supports_fractional_coordinates_and_symmetry_basis():
+    cif = """
+data_frac
+_cell_length_a    10.0
+_cell_length_b    20.0
+_cell_length_c    30.0
+_cell_angle_alpha 90.0
+_cell_angle_beta  90.0
+_cell_angle_gamma 90.0
+_symmetry_equiv_pos_as_xyz
+'x,y,z
+x+1/2,y,z'
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+C1 C 0.5 0.25 0.1
+H1 H 0.6 0.25 0.1
+loop_
+_geom_bond_atom_site_label_1
+_geom_bond_atom_site_label_2
+_geom_bond_distance
+C1 H1 1.0
+"""
+    assignment, lattice = Xponge.get_assignment_from_cif(cif, keep_cell_angle=False)
+    assert assignment.name == "frac"
+    assert assignment.coordinates[0] == pytest.approx([5.0, 5.0, 3.0])
+    assert assignment.bond_count == 1
+    assert lattice["cell_angle"] == [90, 90, 90]
+    assert lattice["basis_position"] == [[1, 1, 1], [1.5, 1, 1]]
+
+
+def test_phmodel_atom_type_and_set_ph_cover_phenol_and_alcohol():
+    phenol = _assignment(
+        "phenol",
+        ["C", "C", "C", "C", "C", "C", "O", "H", "H", "H", "H", "H", "H"],
+        [
+            (0, 1, 1),
+            (1, 2, 2),
+            (2, 3, 1),
+            (3, 4, 2),
+            (4, 5, 1),
+            (5, 0, 2),
+            (0, 7, 1),
+            (1, 8, 1),
+            (2, 9, 1),
+            (3, 10, 1),
+            (4, 11, 1),
+            (5, 6, 1),
+            (6, 12, 1),
+        ],
+    )
+    types = phenol.determine_atom_type("phmodel")
+    assert types[12] == "A-phenol"
+    assert phenol.set_ph(11.0) == -1
+    assert phenol.atoms.count("H") == 5
+
+    alcohol = _assignment("methanol", ["C", "O", "H", "H", "H", "H"], [(0, 1, 1), (0, 2, 1), (0, 3, 1), (0, 4, 1), (1, 5, 1)])
+    assert alcohol.determine_atom_type("phmodel")[5] == "A-alcohol"
+
+
+def test_save_as_mol2_atomtype_argument_and_equal_atoms_api(tmp_path):
+    ethane = _assignment(
+        "ethane",
+        ["C", "C", "H", "H", "H", "H", "H", "H"],
+        [(0, 1, 1), (0, 2, 1), (0, 3, 1), (0, 4, 1), (1, 5, 1), (1, 6, 1), (1, 7, 1)],
+    )
+    ethane.calculate_charge("tpacm4")
+    mol2 = tmp_path / "ethane.mol2"
+    ethane.save_as_mol2(str(mol2), atomtype="sybyl")
+    text = mol2.read_text()
+    assert "@<TRIPOS>UNITY_ATOM_ATTR" not in text
+
+    with pytest.raises(ValueError, match="atomtype"):
+        ethane.save_as_mol2(str(tmp_path / "bad.mol2"), atomtype="gaff")
+
+    try:
+        groups = ethane.determine_equal_atoms()
+    except ImportError as exc:
+        pytest.skip(str(exc))
+    assert any(set(group) == {0, 1} for group in groups)
+
+
+def test_resp_uses_pyscf_backend_or_reports_missing_dependency():
+    water = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
+    try:
+        water.calculate_charge("resp", basis="sto-3g", charge=0, grid_density=1, grid_cell_layer=1, only_esp=True)
+    except ImportError as exc:
+        assert "PySCF" in str(exc)
+        return
+    assert len(water.charges) == 3
+    assert math.isclose(sum(water.charges), 0.0, abs_tol=1e-5)
