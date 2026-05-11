@@ -259,6 +259,32 @@ def test_extra_bonded_force_entries_on_removed_solvent_are_dropped_during_ion_re
     assert "nb14_extra" not in out
 
 
+def test_save_sponge_input_writes_xponge_general_bonded_force_files(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+
+    mol.add_urey_bradley(2, 1, 0, 1.1, 2.2, 3.3, 4.4)
+    mol.add_ryckaert_bellemans(4, 3, 2, 1, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5)
+    mol.add_bond_soft(4, 1, 6.5, 7.5, 2)
+
+    out = Xponge.Save_SPONGE_Input(mol, prefix="general", dirname=str(tmp_path))
+
+    assert {"urey_bradley", "Ryckaert_Bellemans", "bond_soft", "listed_forces"}.issubset(out)
+    assert (tmp_path / "general_urey_bradley.txt").read_text().splitlines() == [
+        "1",
+        "0 1 2 1.100000 2.200000 3.300000 4.400000",
+    ]
+    assert (tmp_path / "general_Ryckaert_Bellemans.txt").read_text().splitlines() == [
+        "1",
+        "1 2 3 4 0.500000 1.500000 2.500000 3.500000 4.500000 5.500000",
+    ]
+    assert (tmp_path / "general_bond_soft.txt").read_text().splitlines() == [
+        "1",
+        "1 4 6.500000 7.500000 2",
+    ]
+    assert (tmp_path / "general_listed_forces.txt").read_text().startswith("[[[ Ryckaert_Bellemans ]]]")
+
+
 def test_add_ions_randomly_replaces_waters_by_seed():
     Xponge.register_tip3p()
     solute = Xponge.load_pdb(StringIO(PDB_TEXT))

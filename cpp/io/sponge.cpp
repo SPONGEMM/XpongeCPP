@@ -71,6 +71,21 @@ std::string formatted_scientific(double value) {
     return out.str();
 }
 
+const char* ryckaert_bellemans_listed_definition() {
+    return R"([[[ Ryckaert_Bellemans ]]]
+[[ parameters ]]
+int atom_a, int atom_b, int atom_c, int atom_d, float c0, float c1, float c2, float c3, float c4, float c5
+[[ potential ]]
+SADfloat<15> cphi = cosf(phi_abcd - CONSTANT_Pi);
+SADfloat<15> cphi2 = cphi * cphi;
+SADfloat<15> cphi3 = cphi2 * cphi;
+SADfloat<15> cphi4 = cphi3 * cphi;
+SADfloat<15> cphi5 = cphi4 * cphi;
+E = c0 + c1 * cphi + c2 * cphi2 + c3 * cphi3 + c4 * cphi4 + c5 * cphi5;
+[[ end ]]
+)";
+}
+
 std::pair<double, double> amber_lj_ab(const std::string& lj_type1, const std::string& lj_type2) {
     const auto lj1 = find_amber_lj_parameter(lj_type1);
     const auto lj2 = find_amber_lj_parameter(lj_type2);
@@ -481,6 +496,140 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
                 << row.atom4 << " " << row.type << "\n";
         }
         remember(outputs, "cmap", path);
+    }
+    if (!molecule.urey_bradleys.empty()) {
+        struct UreyBradleyRow {
+            AtomId atom0{0};
+            AtomId atom1{0};
+            AtomId atom2{0};
+            double k{0.0};
+            double b{0.0};
+            double k_ub{0.0};
+            double r13{0.0};
+        };
+        std::vector<UreyBradleyRow> rows;
+        rows.reserve(molecule.urey_bradleys.size());
+        for (const auto& angle : molecule.urey_bradleys) {
+            if (angle.k != 0.0 || angle.k_ub != 0.0) {
+                if (angle.atom0 > angle.atom2) {
+                    rows.push_back({angle.atom2, angle.atom1, angle.atom0, angle.k, angle.b, angle.k_ub, angle.r13});
+                } else {
+                    rows.push_back({angle.atom0, angle.atom1, angle.atom2, angle.k, angle.b, angle.k_ub, angle.r13});
+                }
+            }
+        }
+        if (!rows.empty()) {
+            std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+                return std::tie(left.atom0, left.atom1, left.atom2) <
+                       std::tie(right.atom0, right.atom1, right.atom2);
+            });
+            const auto path = output_path(dirname, actual_prefix, "urey_bradley");
+            std::ofstream out(path);
+            out << rows.size() << "\n";
+            out << std::fixed << std::setprecision(6);
+            for (const auto& row : rows) {
+                out << row.atom0 << " " << row.atom1 << " " << row.atom2 << " " << row.k << " " << row.b
+                    << " " << row.k_ub << " " << row.r13 << "\n";
+            }
+            remember(outputs, "urey_bradley", path);
+        }
+    }
+    if (!molecule.ryckaert_bellemans.empty()) {
+        struct RyckaertBellemansRow {
+            AtomId atom0{0};
+            AtomId atom1{0};
+            AtomId atom2{0};
+            AtomId atom3{0};
+            std::array<double, 6> coefficients{};
+        };
+        std::vector<RyckaertBellemansRow> rows;
+        rows.reserve(molecule.ryckaert_bellemans.size());
+        for (const auto& dihedral : molecule.ryckaert_bellemans) {
+            const std::array<double, 6> coefficients{dihedral.c0, dihedral.c1, dihedral.c2,
+                                                     dihedral.c3, dihedral.c4, dihedral.c5};
+            const bool nonzero = std::any_of(coefficients.begin(), coefficients.end(),
+                                             [](double value) { return value != 0.0; });
+            if (!nonzero) {
+                continue;
+            }
+            if (dihedral.atom0 > dihedral.atom3) {
+                rows.push_back({dihedral.atom3, dihedral.atom2, dihedral.atom1, dihedral.atom0, coefficients});
+            } else {
+                rows.push_back({dihedral.atom0, dihedral.atom1, dihedral.atom2, dihedral.atom3, coefficients});
+            }
+        }
+        if (!rows.empty()) {
+            std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+                return std::tuple(left.atom0, left.atom1, left.atom2, left.atom3, left.coefficients) <
+                       std::tuple(right.atom0, right.atom1, right.atom2, right.atom3, right.coefficients);
+            });
+            const auto path = output_path(dirname, actual_prefix, "Ryckaert_Bellemans");
+            std::ofstream out(path);
+            out << rows.size() << "\n";
+            out << std::fixed << std::setprecision(6);
+            for (const auto& row : rows) {
+                out << row.atom0 << " " << row.atom1 << " " << row.atom2 << " " << row.atom3;
+                for (const double coefficient : row.coefficients) {
+                    out << " " << coefficient;
+                }
+                out << "\n";
+            }
+            remember(outputs, "Ryckaert_Bellemans", path);
+        }
+    }
+    if (!molecule.soft_bonds.empty()) {
+        struct SoftBondRow {
+            AtomId atom1{0};
+            AtomId atom2{0};
+            double k{0.0};
+            double b{0.0};
+            int from_a_or_b{0};
+        };
+        std::vector<SoftBondRow> rows;
+        rows.reserve(molecule.soft_bonds.size());
+        for (const auto& bond : molecule.soft_bonds) {
+            if (bond.k != 0.0) {
+                const auto atom1 = std::min(bond.atom1, bond.atom2);
+                const auto atom2 = std::max(bond.atom1, bond.atom2);
+                rows.push_back({atom1, atom2, bond.k, bond.b, bond.from_a_or_b});
+            }
+        }
+        if (!rows.empty()) {
+            std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+                return std::tie(left.atom1, left.atom2) < std::tie(right.atom1, right.atom2);
+            });
+            const auto path = output_path(dirname, actual_prefix, "bond_soft");
+            std::ofstream out(path);
+            out << rows.size() << "\n";
+            out << std::fixed << std::setprecision(6);
+            for (const auto& row : rows) {
+                out << row.atom1 << " " << row.atom2 << " " << row.k << " " << row.b << " "
+                    << row.from_a_or_b << "\n";
+            }
+            remember(outputs, "bond_soft", path);
+        }
+    }
+    if (!molecule.ryckaert_bellemans.empty() || !molecule.listed_force_definitions.empty()) {
+        std::vector<std::string> definitions;
+        const auto append_unique = [&](const std::string& definition) {
+            if (!definition.empty() && std::find(definitions.begin(), definitions.end(), definition) == definitions.end()) {
+                definitions.push_back(definition);
+            }
+        };
+        if (!molecule.ryckaert_bellemans.empty()) {
+            append_unique(ryckaert_bellemans_listed_definition());
+        }
+        for (const auto& definition : molecule.listed_force_definitions) {
+            append_unique(definition);
+        }
+        if (!definitions.empty()) {
+            const auto path = output_path(dirname, actual_prefix, "listed_forces");
+            std::ofstream out(path);
+            for (const auto& definition : definitions) {
+                out << definition;
+            }
+            remember(outputs, "listed_forces", path);
+        }
     }
 
     return outputs;

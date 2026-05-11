@@ -68,6 +68,11 @@ void append_solvent_unit(Molecule& molecule, const Molecule& solvent, const std:
     molecule.cmap_types.reserve(molecule.cmap_types.size() + solvent.cmap_types.size());
     molecule.cmaps.reserve(molecule.cmaps.size() + solvent.cmaps.size());
     molecule.nb14_extras.reserve(molecule.nb14_extras.size() + solvent.nb14_extras.size());
+    molecule.urey_bradleys.reserve(molecule.urey_bradleys.size() + solvent.urey_bradleys.size());
+    molecule.ryckaert_bellemans.reserve(molecule.ryckaert_bellemans.size() + solvent.ryckaert_bellemans.size());
+    molecule.soft_bonds.reserve(molecule.soft_bonds.size() + solvent.soft_bonds.size());
+    molecule.listed_force_definitions.reserve(molecule.listed_force_definitions.size() +
+                                              solvent.listed_force_definitions.size());
 
     for (const auto& residue : solvent.residues) {
         Residue copied = residue;
@@ -109,6 +114,23 @@ void append_solvent_unit(Molecule& molecule, const Molecule& solvent, const std:
     for (const auto& nb14 : solvent.nb14_extras) {
         molecule.nb14_extras.push_back({nb14.atom1 + atom_offset, nb14.atom2 + atom_offset,
                                         nb14.a, nb14.b, nb14.kee});
+    }
+    for (const auto& angle : solvent.urey_bradleys) {
+        molecule.urey_bradleys.push_back({angle.atom0 + atom_offset, angle.atom1 + atom_offset,
+                                          angle.atom2 + atom_offset, angle.k, angle.b, angle.k_ub, angle.r13});
+    }
+    for (const auto& dihedral : solvent.ryckaert_bellemans) {
+        molecule.ryckaert_bellemans.push_back({dihedral.atom0 + atom_offset, dihedral.atom1 + atom_offset,
+                                               dihedral.atom2 + atom_offset, dihedral.atom3 + atom_offset,
+                                               dihedral.c0, dihedral.c1, dihedral.c2,
+                                               dihedral.c3, dihedral.c4, dihedral.c5});
+    }
+    for (const auto& bond : solvent.soft_bonds) {
+        molecule.soft_bonds.push_back({bond.atom1 + atom_offset, bond.atom2 + atom_offset,
+                                       bond.k, bond.b, bond.from_a_or_b});
+    }
+    for (const auto& definition : solvent.listed_force_definitions) {
+        molecule.listed_force_definitions.push_back(definition);
     }
 }
 
@@ -432,6 +454,36 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
         }
         rebuilt.nb14_extras.push_back({atom1, atom2, nb14.a, nb14.b, nb14.kee});
     }
+    for (const auto& angle : molecule.urey_bradleys) {
+        const AtomId atom0 = mapped_atom(angle.atom0);
+        const AtomId atom1 = mapped_atom(angle.atom1);
+        const AtomId atom2 = mapped_atom(angle.atom2);
+        if (atom0 == invalid_atom_id || atom1 == invalid_atom_id || atom2 == invalid_atom_id) {
+            continue;
+        }
+        rebuilt.urey_bradleys.push_back({atom0, atom1, atom2, angle.k, angle.b, angle.k_ub, angle.r13});
+    }
+    for (const auto& dihedral : molecule.ryckaert_bellemans) {
+        const AtomId atom0 = mapped_atom(dihedral.atom0);
+        const AtomId atom1 = mapped_atom(dihedral.atom1);
+        const AtomId atom2 = mapped_atom(dihedral.atom2);
+        const AtomId atom3 = mapped_atom(dihedral.atom3);
+        if (atom0 == invalid_atom_id || atom1 == invalid_atom_id ||
+            atom2 == invalid_atom_id || atom3 == invalid_atom_id) {
+            continue;
+        }
+        rebuilt.ryckaert_bellemans.push_back({atom0, atom1, atom2, atom3, dihedral.c0, dihedral.c1,
+                                              dihedral.c2, dihedral.c3, dihedral.c4, dihedral.c5});
+    }
+    for (const auto& bond : molecule.soft_bonds) {
+        const AtomId atom1 = mapped_atom(bond.atom1);
+        const AtomId atom2 = mapped_atom(bond.atom2);
+        if (atom1 == invalid_atom_id || atom2 == invalid_atom_id) {
+            continue;
+        }
+        rebuilt.soft_bonds.push_back({atom1, atom2, bond.k, bond.b, bond.from_a_or_b});
+    }
+    rebuilt.listed_force_definitions = molecule.listed_force_definitions;
 
     molecule = std::move(rebuilt);
     if (!molecule.validate()) {

@@ -231,6 +231,10 @@ void Molecule::add_molecule(const Molecule& other) {
     cmap_types.reserve(cmap_types.size() + other.cmap_types.size());
     cmaps.reserve(cmaps.size() + other.cmaps.size());
     nb14_extras.reserve(nb14_extras.size() + other.nb14_extras.size());
+    urey_bradleys.reserve(urey_bradleys.size() + other.urey_bradleys.size());
+    ryckaert_bellemans.reserve(ryckaert_bellemans.size() + other.ryckaert_bellemans.size());
+    soft_bonds.reserve(soft_bonds.size() + other.soft_bonds.size());
+    listed_force_definitions.reserve(listed_force_definitions.size() + other.listed_force_definitions.size());
 
     for (const auto& residue : other.residues) {
         Residue copied = residue;
@@ -270,6 +274,23 @@ void Molecule::add_molecule(const Molecule& other) {
     }
     for (const auto& nb14 : other.nb14_extras) {
         nb14_extras.push_back({nb14.atom1 + atom_offset, nb14.atom2 + atom_offset, nb14.a, nb14.b, nb14.kee});
+    }
+    for (const auto& angle : other.urey_bradleys) {
+        urey_bradleys.push_back({angle.atom0 + atom_offset, angle.atom1 + atom_offset, angle.atom2 + atom_offset,
+                                 angle.k, angle.b, angle.k_ub, angle.r13});
+    }
+    for (const auto& dihedral : other.ryckaert_bellemans) {
+        ryckaert_bellemans.push_back({dihedral.atom0 + atom_offset, dihedral.atom1 + atom_offset,
+                                      dihedral.atom2 + atom_offset, dihedral.atom3 + atom_offset,
+                                      dihedral.c0, dihedral.c1, dihedral.c2,
+                                      dihedral.c3, dihedral.c4, dihedral.c5});
+    }
+    for (const auto& bond : other.soft_bonds) {
+        soft_bonds.push_back({bond.atom1 + atom_offset, bond.atom2 + atom_offset, bond.k, bond.b,
+                              bond.from_a_or_b});
+    }
+    for (const auto& definition : other.listed_force_definitions) {
+        listed_force_definitions.push_back(definition);
     }
 
     if (!validate()) {
@@ -328,6 +349,38 @@ void Molecule::add_nb14_extra(AtomId atom1, AtomId atom2, double a, double b, do
         throw std::invalid_argument("nb14_extra atoms should be different");
     }
     nb14_extras.push_back({atom1, atom2, a, b, kee});
+}
+
+void Molecule::add_urey_bradley(AtomId atom0, AtomId atom1, AtomId atom2,
+                                double k, double b, double k_ub, double r13) {
+    ensure_atom_id(*this, atom0);
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    urey_bradleys.push_back({atom0, atom1, atom2, k, b, k_ub, r13});
+}
+
+void Molecule::add_ryckaert_bellemans(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3,
+                                      double c0, double c1, double c2, double c3, double c4, double c5) {
+    ensure_atom_id(*this, atom0);
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    ensure_atom_id(*this, atom3);
+    ryckaert_bellemans.push_back({atom0, atom1, atom2, atom3, c0, c1, c2, c3, c4, c5});
+}
+
+void Molecule::add_bond_soft(AtomId atom1, AtomId atom2, double k, double b, int from_a_or_b) {
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    if (atom1 == atom2) {
+        throw std::invalid_argument("bond_soft atoms should be different");
+    }
+    soft_bonds.push_back({atom1, atom2, k, b, from_a_or_b});
+}
+
+void Molecule::add_listed_force_definition(const std::string& definition) {
+    if (!definition.empty()) {
+        listed_force_definitions.push_back(definition);
+    }
 }
 
 void Molecule::set_box_padding(double padding, bool center) {
@@ -404,6 +457,22 @@ bool Molecule::validate() const {
     }
     for (const auto& nb14 : nb14_extras) {
         if (nb14.atom1 >= atoms.size() || nb14.atom2 >= atoms.size() || nb14.atom1 == nb14.atom2) {
+            return false;
+        }
+    }
+    for (const auto& angle : urey_bradleys) {
+        if (angle.atom0 >= atoms.size() || angle.atom1 >= atoms.size() || angle.atom2 >= atoms.size()) {
+            return false;
+        }
+    }
+    for (const auto& dihedral : ryckaert_bellemans) {
+        if (dihedral.atom0 >= atoms.size() || dihedral.atom1 >= atoms.size() ||
+            dihedral.atom2 >= atoms.size() || dihedral.atom3 >= atoms.size()) {
+            return false;
+        }
+    }
+    for (const auto& bond : soft_bonds) {
+        if (bond.atom1 >= atoms.size() || bond.atom2 >= atoms.size() || bond.atom1 == bond.atom2) {
             return false;
         }
     }

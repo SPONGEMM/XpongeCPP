@@ -205,6 +205,22 @@ PYBIND11_MODULE(_core, m) {
              py::arg("b"), py::arg("kee"))
         .def("Add_NB14_Extra", &Molecule::add_nb14_extra, py::arg("atom1"), py::arg("atom2"), py::arg("a"),
              py::arg("b"), py::arg("kee"))
+        .def("add_urey_bradley", &Molecule::add_urey_bradley, py::arg("atom0"), py::arg("atom1"),
+             py::arg("atom2"), py::arg("k"), py::arg("b"), py::arg("kUB"), py::arg("r13"))
+        .def("Add_Urey_Bradley", &Molecule::add_urey_bradley, py::arg("atom0"), py::arg("atom1"),
+             py::arg("atom2"), py::arg("k"), py::arg("b"), py::arg("kUB"), py::arg("r13"))
+        .def("add_ryckaert_bellemans", &Molecule::add_ryckaert_bellemans, py::arg("atom0"),
+             py::arg("atom1"), py::arg("atom2"), py::arg("atom3"), py::arg("c0"), py::arg("c1"),
+             py::arg("c2"), py::arg("c3"), py::arg("c4"), py::arg("c5"))
+        .def("Add_Ryckaert_Bellemans", &Molecule::add_ryckaert_bellemans, py::arg("atom0"),
+             py::arg("atom1"), py::arg("atom2"), py::arg("atom3"), py::arg("c0"), py::arg("c1"),
+             py::arg("c2"), py::arg("c3"), py::arg("c4"), py::arg("c5"))
+        .def("add_bond_soft", &Molecule::add_bond_soft, py::arg("atom1"), py::arg("atom2"),
+             py::arg("k"), py::arg("b"), py::arg("from_AorB"))
+        .def("Add_Bond_Soft", &Molecule::add_bond_soft, py::arg("atom1"), py::arg("atom2"),
+             py::arg("k"), py::arg("b"), py::arg("from_AorB"))
+        .def("add_listed_force_definition", &Molecule::add_listed_force_definition, py::arg("definition"))
+        .def("Add_Listed_Force_Definition", &Molecule::add_listed_force_definition, py::arg("definition"))
         .def("validate", &Molecule::validate)
         .def("residue_counts", &Molecule::residue_counts);
 

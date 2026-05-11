@@ -111,6 +111,37 @@ struct NB14Extra {
     double kee{0.0};
 };
 
+struct UreyBradley {
+    AtomId atom0{0};
+    AtomId atom1{0};
+    AtomId atom2{0};
+    double k{0.0};
+    double b{0.0};
+    double k_ub{0.0};
+    double r13{0.0};
+};
+
+struct RyckaertBellemans {
+    AtomId atom0{0};
+    AtomId atom1{0};
+    AtomId atom2{0};
+    AtomId atom3{0};
+    double c0{0.0};
+    double c1{0.0};
+    double c2{0.0};
+    double c3{0.0};
+    double c4{0.0};
+    double c5{0.0};
+};
+
+struct SoftBond {
+    AtomId atom1{0};
+    AtomId atom2{0};
+    double k{0.0};
+    double b{0.0};
+    int from_a_or_b{0};
+};
+
 struct DihedralTerm {
     int periodicity{1};
     double k{0.0};
@@ -200,6 +231,10 @@ public:
     std::vector<CMapType> cmap_types;
     std::vector<CMap> cmaps;
     std::vector<NB14Extra> nb14_extras;
+    std::vector<UreyBradley> urey_bradleys;
+    std::vector<RyckaertBellemans> ryckaert_bellemans;
+    std::vector<SoftBond> soft_bonds;
+    std::vector<std::string> listed_force_definitions;
     std::array<double, 3> box_length{0.0, 0.0, 0.0};
     std::array<double, 3> box_angle{90.0, 90.0, 90.0};
     bool has_box{false};
@@ -217,6 +252,11 @@ public:
     std::uint32_t add_cmap_type(std::uint32_t resolution, const std::vector<double>& parameters);
     void add_cmap(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3, AtomId atom4, std::uint32_t type);
     void add_nb14_extra(AtomId atom1, AtomId atom2, double a, double b, double kee);
+    void add_urey_bradley(AtomId atom0, AtomId atom1, AtomId atom2, double k, double b, double k_ub, double r13);
+    void add_ryckaert_bellemans(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3,
+                                double c0, double c1, double c2, double c3, double c4, double c5);
+    void add_bond_soft(AtomId atom1, AtomId atom2, double k, double b, int from_a_or_b);
+    void add_listed_force_definition(const std::string& definition);
     void set_box_padding(double padding, bool center);
     bool validate() const;
     std::unordered_map<std::string, std::size_t> residue_counts() const;
