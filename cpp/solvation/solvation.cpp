@@ -49,9 +49,14 @@ ResidueType first_residue_as_type(const Molecule& molecule) {
         const auto& atom = molecule.atoms[residue.atom_begin + local];
         residue_type.add_atom(atom.name, atom.type, atom.x, atom.y, atom.z, atom.charge, atom.mass);
     }
-    if (residue_type.atom_count() >= 3) {
-        residue_type.add_connectivity("O", "H1");
-        residue_type.add_connectivity("O", "H2");
+    for (const auto& bond : molecule.explicit_bonds) {
+        if (bond.atom1 < residue.atom_begin || bond.atom1 >= residue.atom_begin + residue.atom_count ||
+            bond.atom2 < residue.atom_begin || bond.atom2 >= residue.atom_begin + residue.atom_count) {
+            continue;
+        }
+        const auto& atom1 = molecule.atoms[bond.atom1];
+        const auto& atom2 = molecule.atoms[bond.atom2];
+        residue_type.add_connectivity(atom1.name, atom2.name);
     }
     return residue_type;
 }

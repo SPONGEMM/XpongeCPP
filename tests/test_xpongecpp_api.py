@@ -28,6 +28,25 @@ NO_CHARGES
 """
 
 
+CUSTOM_MOL2_TEXT = """\
+@<TRIPOS>MOLECULE
+CUSTOM_SOLVENT
+5 3 2
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 O1 0.0000 0.0000 0.0000 OW 1 FAR -0.500
+2 H1 8.0000 0.0000 0.0000 HW 1 FAR 0.250
+3 H2 0.0000 8.0000 0.0000 HW 1 FAR 0.250
+4 O2 2.0000 2.0000 2.0000 OW 2 LIG -0.500
+5 H3 2.0000 2.0000 3.1000 HW 2 LIG 0.500
+@<TRIPOS>BOND
+1 1 2 1
+2 1 3 1
+3 4 5 1
+"""
+
+
 def test_load_pdb_preserves_molecule_residue_atom_layers():
     mol = Xponge.load_pdb(StringIO(PDB_TEXT))
 
@@ -65,6 +84,28 @@ def test_add_solvent_box_appends_template_waters_and_exports_implicit_box(tmp_pa
     Xponge.Save_SPONGE_Input(solute, prefix="case", dirname=str(tmp_path))
     box = [float(value) for value in (tmp_path / "case_coordinate.txt").read_text().splitlines()[-1].split()]
     assert box[0] > 0
+
+
+def test_load_mol2_preserves_declared_residues_atom_properties():
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+
+    assert mol.name == "CUSTOM_SOLVENT"
+    assert mol.residue_count == 2
+    assert mol.atom_count == 5
+    assert [res.name for res in mol.residues] == ["FAR", "LIG"]
+    assert mol.residues[0].name2atom("O1").type == "OW"
+    assert mol.residues[0].name2atom("H1").charge == 0.250
+    assert mol.residues[1].name2atom("O2").type == "OW"
+    assert mol.validate()
+
+
+def test_load_mol2_declared_bonds_drive_topology_even_when_far(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+
+    Xponge.Save_SPONGE_Input(mol, prefix="custom", dirname=str(tmp_path))
+
+    assert (tmp_path / "custom_bond.txt").read_text().splitlines()[0] == "3"
 
 
 def test_save_sponge_input_writes_core_files(tmp_path):

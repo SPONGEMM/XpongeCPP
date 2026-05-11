@@ -91,13 +91,11 @@ Molecule load_mol2_text(const std::string& text) {
             }
             const auto atom1 = mol2_to_atom.at(std::stoi(words[1]));
             const auto atom2 = mol2_to_atom.at(std::stoi(words[2]));
+            molecule.explicit_bonds.push_back({atom1, atom2});
             if (molecule.atoms[atom1].residue != molecule.atoms[atom2].residue) {
                 molecule.residue_links.push_back({atom1, atom2});
             }
         }
-    }
-    if (!molecule.atoms.empty()) {
-        molecule.set_box_padding(0.0, false);
     }
     return molecule;
 }

@@ -640,92 +640,38 @@ void register_tip3p() {
 }
 
 void register_residue_templates_from_mol2_text(const std::string& text) {
-    struct Mol2AtomInfo {
-        std::string name;
-        std::string type;
-        std::string residue_name;
-        std::string residue_key;
-        double x{0.0};
-        double y{0.0};
-        double z{0.0};
-        double charge{0.0};
-    };
-    std::istringstream input(text);
-    std::string line;
-    std::string section;
-    std::unordered_map<int, Mol2AtomInfo> atoms_by_id;
-    std::vector<std::array<int, 2>> bonds_by_id;
+    const auto molecule = load_mol2_text(text);
+    std::vector<std::pair<ResidueId, ResidueType>> residue_types;
+    residue_types.reserve(molecule.residues.size());
+    std::unordered_map<ResidueId, std::size_t> residue_to_type;
 
-    while (std::getline(input, line)) {
-        if (line.rfind("@<TRIPOS>", 0) == 0) {
-            section = trim_copy(line.substr(9));
-            continue;
-        }
-        const auto words = split_ws(line);
-        if (words.empty()) {
-            continue;
-        }
-        if (section == "ATOM") {
-            if (words.size() < 9) {
-                continue;
-            }
-            Mol2AtomInfo atom;
-            atom.name = words[1];
-            atom.x = std::stod(words[2]);
-            atom.y = std::stod(words[3]);
-            atom.z = std::stod(words[4]);
-            atom.type = words[5];
-            atom.residue_name = words[7];
-            atom.residue_key = words[6] + ":" + words[7];
-            atom.charge = std::stod(words[8]);
-            atoms_by_id[std::stoi(words[0])] = std::move(atom);
-        } else if (section == "BOND") {
-            if (words.size() < 4) {
-                continue;
-            }
-            bonds_by_id.push_back({std::stoi(words[1]), std::stoi(words[2])});
+    for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
+        const auto& residue = molecule.residues[residue_id];
+        residue_to_type[residue_id] = residue_types.size();
+        residue_types.emplace_back(residue_id, ResidueType(residue.name));
+        auto& residue_type = residue_types.back().second;
+        for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
+            const auto& atom = molecule.atoms[residue.atom_begin + local];
+            residue_type.add_atom(atom.name, atom.type, atom.x, atom.y, atom.z, atom.charge, atom.mass);
         }
     }
 
-    std::vector<int> atom_ids;
-    atom_ids.reserve(atoms_by_id.size());
-    for (const auto& [id, atom] : atoms_by_id) {
-        (void)atom;
-        atom_ids.push_back(id);
-    }
-    std::sort(atom_ids.begin(), atom_ids.end());
-    std::vector<std::string> residue_order;
-    std::unordered_map<std::string, ResidueType> residue_types;
-    std::unordered_map<int, std::string> atom_residue;
-    std::unordered_map<int, std::string> atom_name;
-    for (const auto id : atom_ids) {
-        const auto& atom = atoms_by_id.at(id);
-        if (residue_types.find(atom.residue_key) == residue_types.end()) {
-            residue_order.push_back(atom.residue_key);
-            residue_types.emplace(atom.residue_key, ResidueType(atom.residue_name));
-        }
-        const bool atomic_ion = atom.residue_name == "NA" || atom.residue_name == "CL";
-        residue_types.at(atom.residue_key)
-            .add_atom(atom.name, atom.type, atom.x, atom.y, atom.z, atom.charge,
-                      default_mass_for_element(guess_element(atom.name, atomic_ion ? atom.type : "")));
-        atom_residue[id] = atom.residue_key;
-        atom_name[id] = atom.name;
-    }
-    for (const auto& bond : bonds_by_id) {
-        const auto res1 = atom_residue.find(bond[0]);
-        const auto res2 = atom_residue.find(bond[1]);
-        if (res1 == atom_residue.end() || res2 == atom_residue.end() || res1->second != res2->second) {
+    for (const auto& bond : molecule.explicit_bonds) {
+        const auto res1 = molecule.atoms[bond.atom1].residue;
+        const auto res2 = molecule.atoms[bond.atom2].residue;
+        if (res1 != res2) {
             continue;
         }
+        auto& residue_type = residue_types[residue_to_type.at(res1)].second;
         try {
-            residue_types.at(res1->second).add_connectivity(atom_name.at(bond[0]), atom_name.at(bond[1]));
+            residue_type.add_connectivity(molecule.atoms[bond.atom1].name, molecule.atoms[bond.atom2].name);
         } catch (const std::exception&) {
         }
     }
 
     std::scoped_lock lock(registry_mutex());
-    for (const auto& residue_name : residue_order) {
-        put_template(std::move(residue_types.at(residue_name)));
+    for (auto& residue_type : residue_types) {
+        put_template(std::move(residue_type.second));
     }
 }
 

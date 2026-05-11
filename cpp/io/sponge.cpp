@@ -288,7 +288,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         const auto path = output_path(dirname, actual_prefix, "bond");
         std::ofstream out(path);
         out << topology.bonds.size() << "\n";
-        out << std::setprecision(10);
+        out << std::fixed << std::setprecision(6);
         for (const auto& bond : topology.bonds) {
             out << bond.atom1 << " " << bond.atom2 << " " << bond.k << " " << bond.length << "\n";
         }
@@ -298,6 +298,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         const auto path = output_path(dirname, actual_prefix, "angle");
         std::ofstream out(path);
         out << topology.angles.size() << "\n";
+        out << std::fixed << std::setprecision(6);
         for (const auto& angle : topology.angles) {
             out << angle.atom1 << " " << angle.atom2 << " " << angle.atom3 << " " << angle.k << " " << angle.theta
                 << "\n";
@@ -308,6 +309,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         const auto path = output_path(dirname, actual_prefix, "dihedral");
         std::ofstream out(path);
         out << topology.dihedrals.size() << "\n";
+        out << std::fixed << std::setprecision(6);
         for (const auto& dihedral : topology.dihedrals) {
             out << dihedral.atom1 << " " << dihedral.atom2 << " " << dihedral.atom3 << " " << dihedral.atom4
                 << " " << dihedral.periodicity << " " << dihedral.k << " " << dihedral.phase << "\n";
@@ -348,6 +350,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         const auto path = output_path(dirname, actual_prefix, "nb14");
         std::ofstream out(path);
         out << topology.nb14s.size() << "\n";
+        out << std::fixed << std::setprecision(6);
         for (const auto& nb14 : topology.nb14s) {
             out << nb14.atom1 << " " << nb14.atom2 << " " << nb14.k_lj << " " << nb14.k_ee << "\n";
         }

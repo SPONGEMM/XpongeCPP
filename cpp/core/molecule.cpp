@@ -83,10 +83,17 @@ std::string guess_element(const std::string& atom_name, const std::string& expli
         if (explicit_trimmed == "HW" || explicit_trimmed == "HO" || explicit_trimmed[0] == 'H') return "H";
         if (explicit_trimmed == "Na+" || explicit_trimmed == "NA") return "Na";
         if (explicit_trimmed == "Cl-" || explicit_trimmed == "CL") return "Cl";
-        if (explicit_trimmed.size() >= 2 && std::islower(static_cast<unsigned char>(explicit_trimmed[1]))) {
-            return explicit_trimmed.substr(0, 2);
+        if (std::islower(static_cast<unsigned char>(explicit_trimmed[0]))) {
+            if (explicit_trimmed.rfind("cl", 0) == 0) return "Cl";
+            if (explicit_trimmed.rfind("br", 0) == 0) return "Br";
+            return std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(explicit_trimmed[0]))));
         }
-        return explicit_trimmed.substr(0, 1);
+        if (explicit_trimmed.size() >= 2 && std::islower(static_cast<unsigned char>(explicit_trimmed[1]))) {
+            std::string element = explicit_trimmed.substr(0, 2);
+            element[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(element[0])));
+            return element;
+        }
+        return std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(explicit_trimmed[0]))));
     }
     std::string letters;
     for (const char c : atom_name) {
@@ -204,6 +211,9 @@ void Molecule::append_residue_from_type(const ResidueType& type, double dx, doub
         atom.mass = template_atom.mass;
         atoms.push_back(std::move(atom));
     }
+    for (const auto& bond : type.bonds()) {
+        explicit_bonds.push_back({residue.atom_begin + bond.atom1, residue.atom_begin + bond.atom2});
+    }
 }
 
 void Molecule::set_box_padding(double padding, bool center) {
@@ -246,6 +256,11 @@ bool Molecule::validate() const {
     }
     for (const auto& link : residue_links) {
         if (link.atom1 >= atoms.size() || link.atom2 >= atoms.size()) {
+            return false;
+        }
+    }
+    for (const auto& bond : explicit_bonds) {
+        if (bond.atom1 >= atoms.size() || bond.atom2 >= atoms.size() || bond.atom1 == bond.atom2) {
             return false;
         }
     }

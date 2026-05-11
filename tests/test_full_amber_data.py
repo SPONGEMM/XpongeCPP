@@ -1,4 +1,5 @@
 from importlib import resources
+from io import StringIO
 
 import XpongeCPP as Xponge
 
@@ -57,3 +58,29 @@ def test_ff14sb_and_tip3p_imports_register_templates_from_real_amber_mol2():
     assert water.atom_count == 3
     assert water.residues[0].name == "WAT"
     assert water.residues[0].name2atom("O").type == "OW"
+
+
+def test_gaff_and_gaff2_imports_register_packaged_parameters(tmp_path):
+    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
+    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
+
+    # A missing parameter would raise during export; this exercises the Python import entry points.
+    mol = Xponge.load_mol2(
+        StringIO(
+        """@<TRIPOS>MOLECULE
+ETH
+2 1 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 C1 0.0 0.0 0.0 c3 1 ETH 0.0
+2 C2 1.5 0.0 0.0 c3 1 ETH 0.0
+@<TRIPOS>BOND
+1 1 2 1
+"""
+        )
+    )
+    assert mol.atom_count == 2
+    assert mol.validate()
+    Xponge.Save_SPONGE_Input(mol, prefix="eth", dirname=str(tmp_path))
+    assert (tmp_path / "eth_bond.txt").read_text().splitlines()[0] == "1"

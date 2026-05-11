@@ -152,6 +152,7 @@ public:
     std::string name;
     std::vector<Atom> atoms;
     std::vector<Residue> residues;
+    std::vector<ResidueLink> explicit_bonds;
     std::vector<ResidueLink> residue_links;
     std::array<double, 3> box_length{0.0, 0.0, 0.0};
     std::array<double, 3> box_angle{90.0, 90.0, 90.0};

@@ -272,7 +272,21 @@ Topology build_topology(const Molecule& molecule) {
 
     std::unordered_set<std::uint64_t> seen_bonds;
     seen_bonds.reserve(molecule.atoms.size() * 2);
-    for (const auto& residue : molecule.residues) {
+    std::vector<bool> residue_has_explicit_bond(molecule.residues.size(), false);
+    for (const auto& bond : molecule.explicit_bonds) {
+        add_bond(topology.bonds, seen_bonds, bond.atom1, bond.atom2, molecule);
+        if (bond.atom1 < molecule.atoms.size()) {
+            residue_has_explicit_bond[molecule.atoms[bond.atom1].residue] = true;
+        }
+        if (bond.atom2 < molecule.atoms.size()) {
+            residue_has_explicit_bond[molecule.atoms[bond.atom2].residue] = true;
+        }
+    }
+    for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
+        const auto& residue = molecule.residues[residue_id];
+        if (residue_has_explicit_bond[residue_id]) {
+            continue;
+        }
         if (has_template(residue.name)) {
             const auto& residue_type = get_residue_template(residue.name);
             const auto atoms_by_name = residue_atom_map(molecule, residue);
@@ -304,6 +318,9 @@ Topology build_topology(const Molecule& molecule) {
     for (std::size_t residue_index = 0; residue_index + 1 < molecule.residues.size(); ++residue_index) {
         const auto& current = molecule.residues[residue_index];
         const auto& next = molecule.residues[residue_index + 1];
+        if (residue_has_explicit_bond[residue_index] || residue_has_explicit_bond[residue_index + 1]) {
+            continue;
+        }
         if (is_solvent_or_ion(current) || is_solvent_or_ion(next)) {
             continue;
         }
