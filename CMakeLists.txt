@@ -18,8 +18,13 @@ pybind11_add_module(_core
     cpp/forcefield/amber.cpp
     cpp/forcefield/fep.cpp
     cpp/forcefield/nonamber.cpp
+    cpp/io/coordinate.cpp
     cpp/io/mol2.cpp
+    cpp/io/gro.cpp
+    cpp/io/pdb_hybrid36.cpp
     cpp/io/pdb.cpp
+    cpp/io/psf.cpp
+    cpp/io/sponge_coordinate.cpp
     cpp/io/sponge.cpp
     cpp/python/bindings.cpp
     cpp/solvation/solvation.cpp

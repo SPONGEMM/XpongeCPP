@@ -144,10 +144,18 @@ void append_solvent_unit(Molecule& molecule, const Molecule& solvent, const std:
 
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distance, double tolerance,
                      std::int64_t n_solvent, std::uint64_t seed) {
+    add_solvent_box(molecule, solvent,
+                    std::array<double, 6>{distance, distance, distance, distance, distance, distance},
+                    tolerance, n_solvent, seed);
+}
+
+void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::array<double, 6>& distance,
+                     double tolerance, std::int64_t n_solvent, std::uint64_t seed) {
     if (molecule.atoms.empty() || solvent.atoms.empty() || solvent.residues.empty()) {
         throw std::invalid_argument("solute and solvent must contain atoms");
     }
-    if (distance < 0.0 || tolerance <= 0.0) {
+    if (std::any_of(distance.begin(), distance.end(), [](double value) { return value < 0.0; }) ||
+        tolerance <= 0.0) {
         throw std::invalid_argument("distance should be non-negative and tolerance should be positive");
     }
     if (n_solvent < 0) {
@@ -208,11 +216,11 @@ void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distanc
         }
     }
 
-    const std::array<double, 3> boxmin{minv[0] - distance, minv[1] - distance, minv[2] - distance};
+    const std::array<double, 3> boxmin{minv[0] - distance[0], minv[1] - distance[1], minv[2] - distance[2]};
     const std::array<std::int64_t, 3> outer_grid{
-        static_cast<std::int64_t>(std::ceil((maxv[0] + distance - boxmin[0]) / solvent_shape[0])),
-        static_cast<std::int64_t>(std::ceil((maxv[1] + distance - boxmin[1]) / solvent_shape[1])),
-        static_cast<std::int64_t>(std::ceil((maxv[2] + distance - boxmin[2]) / solvent_shape[2])),
+        static_cast<std::int64_t>(std::ceil((maxv[0] + distance[3] - boxmin[0]) / solvent_shape[0])),
+        static_cast<std::int64_t>(std::ceil((maxv[1] + distance[4] - boxmin[1]) / solvent_shape[1])),
+        static_cast<std::int64_t>(std::ceil((maxv[2] + distance[5] - boxmin[2]) / solvent_shape[2])),
     };
     std::vector<std::array<std::int64_t, 3>> outer_candidates;
     const std::array<std::int64_t, 3> in_min{

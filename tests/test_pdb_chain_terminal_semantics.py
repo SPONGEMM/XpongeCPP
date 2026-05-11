@@ -173,7 +173,8 @@ ATOM     16  O   GLY B   2       7.000   5.000   0.000  1.00  0.00           O
 TER
 END
 """
-        )
+        ),
+        ignore_conect=False,
     )
     out = tmp_path / "roundtrip.pdb"
 
@@ -186,6 +187,120 @@ END
     assert " A   1" in text
     assert " B   1" in text
     assert [res.name for res in reloaded.residues] == ["NALA", "CGLY", "NALA", "CGLY"]
+
+
+def test_pdb_writer_rebuilds_ssbond_link_and_conect_records(tmp_path):
+    _load_amber()
+    mol = Xponge.load_pdb(
+        StringIO(
+            """\
+SSBOND   1 CYS A   1    CYS B   1
+ATOM      1  N   CYS A   1       0.000   0.000   0.000  1.00  0.00           N
+ATOM      2  CA  CYS A   1       1.000   0.000   0.000  1.00  0.00           C
+ATOM      3  C   CYS A   1       2.000   0.000   0.000  1.00  0.00           C
+ATOM      4  O   CYS A   1       3.000   0.000   0.000  1.00  0.00           O
+ATOM      5  SG  CYS A   1       1.000   1.800   0.000  1.00  0.00           S
+ATOM      6  N   ALA A   2       4.000   0.000   0.000  1.00  0.00           N
+ATOM      7  CA  ALA A   2       5.000   0.000   0.000  1.00  0.00           C
+ATOM      8  C   ALA A   2       6.000   0.000   0.000  1.00  0.00           C
+ATOM      9  O   ALA A   2       7.000   0.000   0.000  1.00  0.00           O
+TER
+ATOM     10  N   CYS B   1       0.000   5.000   0.000  1.00  0.00           N
+ATOM     11  CA  CYS B   1       1.000   5.000   0.000  1.00  0.00           C
+ATOM     12  C   CYS B   1       2.000   5.000   0.000  1.00  0.00           C
+ATOM     13  O   CYS B   1       3.000   5.000   0.000  1.00  0.00           O
+ATOM     14  SG  CYS B   1       1.000   3.200   0.000  1.00  0.00           S
+ATOM     15  N   ALA B   2       4.000   5.000   0.000  1.00  0.00           N
+ATOM     16  CA  ALA B   2       5.000   5.000   0.000  1.00  0.00           C
+ATOM     17  C   ALA B   2       6.000   5.000   0.000  1.00  0.00           C
+ATOM     18  O   ALA B   2       7.000   5.000   0.000  1.00  0.00           O
+TER
+CONECT    7   16
+END
+"""
+        ),
+        ignore_conect=False,
+    )
+    out = tmp_path / "links.pdb"
+
+    Xponge.save_pdb(mol, str(out))
+    text = out.read_text()
+    reloaded = Xponge.load_pdb(str(out))
+
+    assert "SSBOND   1 CYX A   1    CYX B   1" in text
+    assert any(line.startswith("LINK") and "ALA A   2" in line and "ALA B   2" in line for line in text.splitlines())
+    assert "CONECT" not in text
+    Xponge.Save_SPONGE_Input(reloaded, prefix="roundtrip", dirname=str(tmp_path))
+    assert (4, 13) in _bond_pairs(tmp_path / "roundtrip_bond.txt")
+    assert (6, 15) in _bond_pairs(tmp_path / "roundtrip_bond.txt")
+
+
+def test_pdb_writer_uses_conect_for_single_residue_chains(tmp_path):
+    _load_amber()
+    mol = Xponge.load_pdb(
+        StringIO(
+            """\
+HETATM    1  C1  LIG A   1       0.000   0.000   0.000  0.50 10.00           C
+HETATM    2  C2  LIG B   1       1.000   0.000   0.000  0.75 20.00           C
+CONECT    1    2
+END
+"""
+        ),
+        ignore_conect=False,
+    )
+    out = tmp_path / "single_link.pdb"
+
+    Xponge.save_pdb(mol, str(out))
+    text = out.read_text()
+    reloaded = Xponge.load_pdb(str(out), ignore_conect=False)
+
+    assert "LINK" not in text
+    assert "SSBOND" not in text
+    assert "CONECT    1    2" in text
+    assert text.count("\nTER\n") == 2
+    assert [atom.record_name for residue in reloaded.residues for atom in residue.atoms] == ["HETATM", "HETATM"]
+    assert reloaded.residues[0].atoms[0].occupancy == pytest.approx(0.5)
+    assert reloaded.residues[1].atoms[0].temp_factor == pytest.approx(20.0)
+
+
+def test_pdb_writer_outputs_seqres_only_for_multi_residue_chains(tmp_path):
+    _load_amber()
+    mol = Xponge.load_pdb(
+        StringIO(
+            """\
+ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N
+ATOM      2  CA  ALA A   1       1.000   0.000   0.000  1.00  0.00           C
+ATOM      3  C   ALA A   1       2.000   0.000   0.000  1.00  0.00           C
+ATOM      4  O   ALA A   1       3.000   0.000   0.000  1.00  0.00           O
+ATOM      5  N   GLY A   2       4.000   0.000   0.000  1.00  0.00           N
+ATOM      6  CA  GLY A   2       5.000   0.000   0.000  1.00  0.00           C
+ATOM      7  C   GLY A   2       6.000   0.000   0.000  1.00  0.00           C
+ATOM      8  O   GLY A   2       7.000   0.000   0.000  1.00  0.00           O
+TER
+HETATM    9  C1  LIG Z   1       0.000   4.000   0.000  1.00  0.00           C
+END
+"""
+        )
+    )
+    out = tmp_path / "seqres.pdb"
+
+    Xponge.save_pdb(mol, str(out))
+    seqres = [line for line in out.read_text().splitlines() if line.startswith("SEQRES")]
+
+    assert seqres == ["SEQRES   1 A    2  ALA GLY"]
+
+
+def test_pdb_hybrid36_read_large_indices():
+    _load_amber()
+    decoded = Xponge.load_pdb(
+        StringIO(
+            "ATOM  A0000  N   ALA AA000       0.000   0.000   0.000  1.00  0.00           N\n"
+            "END\n"
+        ),
+        unterminal_residues=["A:10000"],
+    )
+    assert decoded.residues[0].pdb_resseq == 10000
+    assert decoded.residues[0].atoms[0].serial == 100000
 
 
 def test_molecule_plus_and_pipe_follow_xponge_link_semantics(tmp_path):

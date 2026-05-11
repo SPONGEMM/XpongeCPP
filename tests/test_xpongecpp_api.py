@@ -1,5 +1,6 @@
 from io import StringIO
 
+import pytest
 import XpongeCPP as Xponge
 
 
@@ -111,6 +112,25 @@ def test_add_solvent_box_appends_template_waters_and_exports_implicit_box(tmp_pa
     Xponge.Save_SPONGE_Input(solute, prefix="case", dirname=str(tmp_path))
     box = [float(value) for value in (tmp_path / "case_coordinate.txt").read_text().splitlines()[-1].split()]
     assert box[0] > 0
+
+
+def test_add_solvent_box_accepts_xponge_distance_vectors():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    scalar = Xponge.load_pdb(StringIO(PDB_TEXT))
+    vector3 = Xponge.load_pdb(StringIO(PDB_TEXT))
+    vector6 = Xponge.load_pdb(StringIO(PDB_TEXT))
+    water = Xponge.get_template_molecule("WAT")
+
+    Xponge.Add_Solvent_Box(scalar, water, 4.0, tolerance=2.5)
+    Xponge.Add_Solvent_Box(vector3, water, [4.0, 4.0, 4.0], tolerance=2.5)
+    Xponge.Add_Solvent_Box(vector6, water, [0.0, 0.0, 0.0, 4.0, 4.0, 4.0], tolerance=2.5)
+
+    assert vector3.residue_counts()["WAT"] == scalar.residue_counts()["WAT"]
+    assert vector6.residue_counts()["WAT"] < scalar.residue_counts()["WAT"]
+    with pytest.raises(TypeError):
+        Xponge.Add_Solvent_Box(Xponge.load_pdb(StringIO(PDB_TEXT)), water, [1.0, 2.0], tolerance=2.5)
 
 
 def test_add_solvent_box_replicates_all_residues_of_custom_solvent_unit(tmp_path):

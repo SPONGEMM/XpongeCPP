@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "pdb_records.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -11,6 +12,7 @@
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -18,12 +20,7 @@ namespace xpongecpp {
 namespace {
 
 std::string trim_copy(const std::string& input) {
-    const auto first = input.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos) {
-        return "";
-    }
-    const auto last = input.find_last_not_of(" \t\r\n");
-    return input.substr(first, last - first + 1);
+    return pdb_trim_copy(input);
 }
 
 std::string upper_copy(std::string value) {
@@ -132,33 +129,7 @@ void set_atom_defaults(Atom& atom, const std::string& residue_name) {
 }
 
 int hy36_decode(int width, const std::string& field) {
-    const auto text = trim_copy(field);
-    if (text.empty()) {
-        return 0;
-    }
-    if (text[0] == '-' || text[0] == '+' || std::isdigit(static_cast<unsigned char>(text[0]))) {
-        return std::stoi(text);
-    }
-    const std::string digits_upper = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    const std::string digits_lower = "0123456789abcdefghijklmnopqrstuvwxyz";
-    const bool lower = std::islower(static_cast<unsigned char>(field[0]));
-    const auto& digits = lower ? digits_lower : digits_upper;
-    int value = 0;
-    for (const char c : field) {
-        const auto pos = digits.find(c);
-        if (pos == std::string::npos) {
-            throw std::invalid_argument("invalid hybrid-36 number");
-        }
-        value = value * 36 + static_cast<int>(pos);
-    }
-    int power = 1;
-    for (int i = 1; i < width; ++i) {
-        power *= 36;
-    }
-    if (lower) {
-        return value + 16 * power + static_cast<int>(std::pow(10, width));
-    }
-    return value - 10 * power + static_cast<int>(std::pow(10, width));
+    return pdb_hy36_decode(width, field);
 }
 
 std::optional<int> pdb_int(const std::string& line, std::size_t pos, std::size_t len) {
@@ -178,20 +149,7 @@ std::optional<int> pdb_int(const std::string& line, std::size_t pos, std::size_t
 }
 
 std::string pdb_int_field(int width, int value) {
-    const int decimal_limit = static_cast<int>(std::pow(10, width));
-    if (value > -decimal_limit / 10 && value < decimal_limit) {
-        std::ostringstream out;
-        out << std::setw(width) << value;
-        return out.str();
-    }
-    const std::string digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    int offset = value + 10 * static_cast<int>(std::pow(36, width - 1)) - decimal_limit;
-    std::string out(width, '0');
-    for (int i = width - 1; i >= 0; --i) {
-        out[static_cast<std::size_t>(i)] = digits[static_cast<std::size_t>(offset % 36)];
-        offset /= 36;
-    }
-    return out;
+    return pdb_hy36_field(width, value);
 }
 
 struct ResidueSelectorSets {
@@ -746,6 +704,81 @@ void save_pdb(const Molecule& molecule, const std::filesystem::path& filename) {
         }
     }
 
+    struct LinkRecord {
+        char chain_a{' '};
+        int resseq_a{0};
+        char chain_b{' '};
+        int resseq_b{0};
+        std::string atom_a;
+        std::string resname_a;
+        std::string atom_b;
+        std::string resname_b;
+    };
+    std::map<AtomId, std::vector<AtomId>> connects;
+    std::vector<std::tuple<char, int, char, int>> ssbonds;
+    std::vector<LinkRecord> links;
+    const auto residue_atom_name = [&](const Residue& residue, AtomId atom_id) {
+        if (atom_id < residue.atom_begin || atom_id >= residue.atom_begin + residue.atom_count) {
+            return std::string{};
+        }
+        return molecule.atoms[atom_id].name;
+    };
+    const auto is_ssbond_atom = [&](const Residue& residue, AtomId atom_id) {
+        if (!has_template(residue.name)) {
+            return false;
+        }
+        const auto& type = get_residue_template(residue.name);
+        const auto it = type.connect_atoms().find("ssbond");
+        return it != type.connect_atoms().end() && residue_atom_name(residue, atom_id) == it->second;
+    };
+    for (const auto& link : molecule.residue_links) {
+        AtomId atom_a = link.atom1;
+        AtomId atom_b = link.atom2;
+        if (atom_a > atom_b) {
+            std::swap(atom_a, atom_b);
+        }
+        const auto res_a = molecule.atoms[atom_a].residue;
+        const auto res_b = molecule.atoms[atom_b].residue;
+        const char chain_a = chain_ids[res_a];
+        const char chain_b = chain_ids[res_b];
+        if (res_a + 1 == res_b && chain_a == chain_b && chain_a != ' ') {
+            continue;
+        }
+        if (chain_a == ' ' || chain_b == ' ') {
+            connects[atom_a].push_back(atom_b);
+            connects[atom_b].push_back(atom_a);
+            continue;
+        }
+        const auto& residue_a = molecule.residues[res_a];
+        const auto& residue_b = molecule.residues[res_b];
+        const std::string resname_a = normalized_residue_name(residue_a.name);
+        const std::string resname_b = normalized_residue_name(residue_b.name);
+        if (resname_a == "CYX" && resname_b == "CYX" &&
+            is_ssbond_atom(residue_a, atom_a) && is_ssbond_atom(residue_b, atom_b)) {
+            ssbonds.push_back({chain_a, residue_pdb_indices[res_a], chain_b, residue_pdb_indices[res_b]});
+        } else {
+            links.push_back({chain_a, residue_pdb_indices[res_a], chain_b, residue_pdb_indices[res_b],
+                             residue_atom_name(residue_a, atom_a), resname_a,
+                             residue_atom_name(residue_b, atom_b), resname_b});
+        }
+    }
+    std::sort(ssbonds.begin(), ssbonds.end());
+    for (std::size_t i = 0; i < ssbonds.size(); ++i) {
+        const auto& [chain_a, resseq_a, chain_b, resseq_b] = ssbonds[i];
+        out << "SSBOND " << std::setw(3) << (i + 1) << " CYX " << chain_a << pdb_int_field(4, resseq_a)
+            << "    CYX " << chain_b << pdb_int_field(4, resseq_b) << "\n";
+    }
+    std::sort(links.begin(), links.end(), [](const LinkRecord& lhs, const LinkRecord& rhs) {
+        return std::tie(lhs.chain_a, lhs.resseq_a, lhs.chain_b, lhs.resseq_b, lhs.atom_a, lhs.atom_b) <
+               std::tie(rhs.chain_a, rhs.resseq_a, rhs.chain_b, rhs.resseq_b, rhs.atom_a, rhs.atom_b);
+    });
+    for (const auto& link : links) {
+        out << "LINK        " << std::setw(4) << std::left << link.atom_a.substr(0, 4) << std::right << " "
+            << std::setw(3) << link.resname_a << " " << link.chain_a << pdb_int_field(4, link.resseq_a)
+            << "                " << std::setw(4) << std::left << link.atom_b.substr(0, 4) << std::right << " "
+            << std::setw(3) << link.resname_b << " " << link.chain_b << pdb_int_field(4, link.resseq_b) << "\n";
+    }
+
     std::size_t serial = 1;
     for (std::size_t residue_index = 0; residue_index < molecule.residues.size(); ++residue_index) {
         const auto& residue = molecule.residues[residue_index];
@@ -767,18 +800,6 @@ void save_pdb(const Molecule& molecule, const std::filesystem::path& filename) {
         }
     }
 
-    std::map<AtomId, std::vector<AtomId>> connects;
-    for (const auto& link : molecule.residue_links) {
-        const auto res_a = molecule.atoms[link.atom1].residue;
-        const auto res_b = molecule.atoms[link.atom2].residue;
-        if (res_a + 1 == res_b && chain_ids[res_a] == chain_ids[res_b] && chain_ids[res_a] != ' ') {
-            continue;
-        }
-        if (chain_ids[res_a] == ' ' || chain_ids[res_b] == ' ') {
-            connects[link.atom1].push_back(link.atom2);
-            connects[link.atom2].push_back(link.atom1);
-        }
-    }
     for (auto& [atom, atoms] : connects) {
         std::sort(atoms.begin(), atoms.end());
         for (std::size_t i = 0; i < atoms.size(); i += 4) {

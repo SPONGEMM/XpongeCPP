@@ -173,13 +173,30 @@ void set_box_padding_object(const std::shared_ptr<Molecule>& molecule, double pa
     molecule->set_box_padding(padding, center);
 }
 
+std::array<double, 6> parse_solvent_distance(py::object distance) {
+    if (PySequence_Check(distance.ptr()) != 0 && !PyUnicode_Check(distance.ptr()) && !PyBytes_Check(distance.ptr())) {
+        const py::sequence values = py::reinterpret_borrow<py::sequence>(distance);
+        if (values.size() == 3) {
+            return {py::cast<double>(values[0]), py::cast<double>(values[1]), py::cast<double>(values[2]),
+                    py::cast<double>(values[0]), py::cast<double>(values[1]), py::cast<double>(values[2])};
+        }
+        if (values.size() == 6) {
+            return {py::cast<double>(values[0]), py::cast<double>(values[1]), py::cast<double>(values[2]),
+                    py::cast<double>(values[3]), py::cast<double>(values[4]), py::cast<double>(values[5])};
+        }
+        throw py::type_error("the length of parameter distance should be 3 or 6");
+    }
+    const double scalar = py::cast<double>(distance);
+    return {scalar, scalar, scalar, scalar, scalar, scalar};
+}
+
 void add_solvent_box_object(const std::shared_ptr<Molecule>& molecule, const std::shared_ptr<Molecule>& solvent,
-                            double distance, double tolerance, py::object n_solvent, std::uint64_t seed) {
+                            py::object distance, double tolerance, py::object n_solvent, std::uint64_t seed) {
     std::int64_t count = 0;
     if (!n_solvent.is_none()) {
         count = py::cast<std::int64_t>(n_solvent);
     }
-    add_solvent_box(*molecule, *solvent, distance, tolerance, count, seed);
+    add_solvent_box(*molecule, *solvent, parse_solvent_distance(distance), tolerance, count, seed);
 }
 
 void add_ions_object(const std::shared_ptr<Molecule>& molecule,
@@ -233,6 +250,72 @@ void save_pdb_object(const std::shared_ptr<Molecule>& molecule, const std::strin
 
 void save_mol2_object(const std::shared_ptr<Molecule>& molecule, const std::string& filename) {
     save_mol2(*molecule, filename);
+}
+
+py::tuple gro_data_to_python(const GroData& data) {
+    std::vector<std::vector<double>> coordinates;
+    coordinates.reserve(data.coordinates.size());
+    for (const auto& coordinate : data.coordinates) {
+        coordinates.push_back({coordinate[0], coordinate[1], coordinate[2]});
+    }
+    std::vector<double> box{data.box[0], data.box[1], data.box[2], data.box[3], data.box[4], data.box[5]};
+    return py::make_tuple(coordinates, box);
+}
+
+py::tuple coordinate_data_to_python(const CoordinateData& data) {
+    std::vector<std::vector<double>> coordinates;
+    coordinates.reserve(data.coordinates.size());
+    for (const auto& coordinate : data.coordinates) {
+        coordinates.push_back({coordinate[0], coordinate[1], coordinate[2]});
+    }
+    std::vector<double> box;
+    if (data.has_box) {
+        box = {data.box[0], data.box[1], data.box[2], data.box[3], data.box[4], data.box[5]};
+    }
+    return py::make_tuple(coordinates, box);
+}
+
+py::tuple load_coordinate_object(py::object source, py::object molecule) {
+    if (molecule.is_none()) {
+        return coordinate_data_to_python(load_coordinate_text(read_python_input(source)));
+    }
+    auto mol = py::cast<std::shared_ptr<Molecule>>(molecule);
+    return coordinate_data_to_python(load_coordinate_text(read_python_input(source), *mol));
+}
+
+py::tuple load_rst7_object(py::object source, py::object molecule) {
+    if (molecule.is_none()) {
+        return coordinate_data_to_python(load_rst7_text(read_python_input(source)));
+    }
+    auto mol = py::cast<std::shared_ptr<Molecule>>(molecule);
+    return coordinate_data_to_python(load_rst7_text(read_python_input(source), *mol));
+}
+
+py::tuple load_gro_object(py::object source, py::object molecule, bool read_box_angle) {
+    if (molecule.is_none()) {
+        return gro_data_to_python(load_gro_text(read_python_input(source), read_box_angle));
+    }
+    auto mol = py::cast<std::shared_ptr<Molecule>>(molecule);
+    return gro_data_to_python(load_gro_text(read_python_input(source), *mol, read_box_angle));
+}
+
+void save_gro_object(const std::shared_ptr<Molecule>& molecule, const std::string& filename) {
+    save_gro(*molecule, filename);
+}
+
+py::tuple load_molpsf_object(py::object source, py::object split_by) {
+    std::string split = "connectivity";
+    if (!split_by.is_none()) {
+        split = py::cast<std::string>(split_by);
+    } else {
+        split.clear();
+    }
+    auto data = load_molpsf_text(read_python_input(source), split);
+    py::dict molecules;
+    for (auto& [name, molecule] : data.molecules) {
+        molecules[py::str(name)] = std::make_shared<Molecule>(std::move(molecule));
+    }
+    return py::make_tuple(std::make_shared<Molecule>(std::move(data.molecule)), molecules);
 }
 
 py::tuple merge_dual_topology_object(const std::shared_ptr<Molecule>& molecule, ResidueId residue_index,
@@ -460,6 +543,7 @@ PYBIND11_MODULE(_core, m) {
           py::arg("ignore_conect") = true, py::arg("read_cryst1") = true,
           py::arg("unterminal_residues") = py::none());
     m.def("load_mol2", &load_mol2_object);
+    m.def("load_molpsf", &load_molpsf_object, py::arg("source"), py::arg("split_by") = "connectivity");
     m.def("load_gromacs_topology_file", &load_gromacs_topology_object);
     m.def("load_opls_itp_file", &load_opls_itp_object);
     m.def("load_charmm_parameter_file", [](const std::string& filename) { load_charmm_parameter_file(filename); });
@@ -495,6 +579,11 @@ PYBIND11_MODULE(_core, m) {
     m.def("save_pdb", &save_pdb_object, py::arg("molecule"), py::arg("filename"),
           py::arg("write_cryst1") = true);
     m.def("save_mol2", &save_mol2_object, py::arg("molecule"), py::arg("filename"));
+    m.def("load_coordinate", &load_coordinate_object, py::arg("source"), py::arg("molecule") = py::none());
+    m.def("load_rst7", &load_rst7_object, py::arg("source"), py::arg("molecule") = py::none());
+    m.def("load_gro", &load_gro_object, py::arg("source"), py::arg("molecule") = py::none(),
+          py::arg("read_box_angle") = true);
+    m.def("save_gro", &save_gro_object, py::arg("molecule"), py::arg("filename"));
     m.def("implemented_gaff_assign_types", &implemented_gaff_assign_types);
     m.def("merge_dual_topology", &merge_dual_topology_object, py::arg("molecule"), py::arg("residue_index"),
           py::arg("residue_b_molecule"), py::arg("match_b_to_a"));

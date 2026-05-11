@@ -415,6 +415,8 @@ std::string assignment_to_pdb_text(const Assign& assignment, const std::string& 
 std::vector<std::string> implemented_gaff_assign_types();
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distance, double tolerance,
                      std::int64_t n_solvent, std::uint64_t seed = 0);
+void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::array<double, 6>& distance,
+                     double tolerance, std::int64_t n_solvent, std::uint64_t seed = 0);
 void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts,
               std::uint64_t seed = 0, const std::string& solvent_residue = "WAT");
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& molecule,
@@ -422,6 +424,28 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
                                                                          const std::filesystem::path& dirname);
 void save_pdb(const Molecule& molecule, const std::filesystem::path& filename);
 void save_mol2(const Molecule& molecule, const std::filesystem::path& filename);
+struct GroData {
+    std::vector<std::array<double, 3>> coordinates;
+    std::array<double, 6> box{0.0, 0.0, 0.0, 90.0, 90.0, 90.0};
+};
+struct CoordinateData {
+    std::vector<std::array<double, 3>> coordinates;
+    std::array<double, 6> box{0.0, 0.0, 0.0, 90.0, 90.0, 90.0};
+    bool has_box{false};
+};
+struct PsfData {
+    Molecule molecule;
+    std::unordered_map<std::string, Molecule> molecules;
+};
+CoordinateData load_coordinate_text(const std::string& text);
+CoordinateData load_coordinate_text(const std::string& text, Molecule& molecule);
+CoordinateData load_rst7_text(const std::string& text);
+CoordinateData load_rst7_text(const std::string& text, Molecule& molecule);
+GroData load_gro_text(const std::string& text);
+GroData load_gro_text(const std::string& text, bool read_box_angle);
+GroData load_gro_text(const std::string& text, Molecule& molecule, bool read_box_angle = true);
+void save_gro(const Molecule& molecule, const std::filesystem::path& filename);
+PsfData load_molpsf_text(const std::string& text, const std::string& split_by = "connectivity");
 Molecule load_gromacs_topology_file(const std::filesystem::path& filename);
 Molecule load_opls_itp_file(const std::filesystem::path& filename);
 void load_charmm_parameter_file(const std::filesystem::path& filename);
