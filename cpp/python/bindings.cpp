@@ -124,6 +124,32 @@ std::shared_ptr<Assign> get_assignment_from_mol2_object(py::object source, py::o
     return std::make_shared<Assign>(get_assignment_from_mol2_text(read_python_input(source), charge, charge_from_sum));
 }
 
+std::shared_ptr<Assign> get_assignment_from_xyz_object(py::object source) {
+    return std::make_shared<Assign>(get_assignment_from_xyz_text(read_python_input(source)));
+}
+
+std::shared_ptr<Assign> get_assignment_from_pdb_object(py::object source) {
+    return std::make_shared<Assign>(get_assignment_from_pdb_text(read_python_input(source)));
+}
+
+void save_assignment_mol2_object(const Assign& assignment, const std::string& filename,
+                                 const std::string& residue_name) {
+    std::ofstream out(filename);
+    if (!out) {
+        throw std::runtime_error("failed to open assignment MOL2 output: " + filename);
+    }
+    out << assignment_to_mol2_text(assignment, residue_name);
+}
+
+void save_assignment_pdb_object(const Assign& assignment, const std::string& filename,
+                                const std::string& residue_name) {
+    std::ofstream out(filename);
+    if (!out) {
+        throw std::runtime_error("failed to open assignment PDB output: " + filename);
+    }
+    out << assignment_to_pdb_text(assignment, residue_name);
+}
+
 std::shared_ptr<Molecule> get_template_molecule_object(const std::string& name) {
     return std::make_shared<Molecule>(get_template_molecule(name));
 }
@@ -302,6 +328,9 @@ PYBIND11_MODULE(_core, m) {
         .def_property_readonly("bond_count", &Assign::bond_count)
         .def_property_readonly("atoms", [](const Assign& self) { return self.elements; })
         .def_readonly("element_details", &Assign::element_details)
+        .def_readonly("names", &Assign::names)
+        .def_readonly("coordinates", &Assign::coordinates)
+        .def_readonly("charges", &Assign::charges)
         .def_readonly("atom_types", &Assign::atom_types)
         .def("add_atom", &Assign::add_atom, py::arg("element"), py::arg("x"), py::arg("y"), py::arg("z"),
              py::arg("name") = "", py::arg("charge") = 0.0)
@@ -315,7 +344,11 @@ PYBIND11_MODULE(_core, m) {
         .def("to_residuetype", &Assign::to_residuetype, py::arg("name"))
         .def("to_molecule", [](const std::shared_ptr<Assign>& self, const std::string& name) {
             return std::make_shared<Molecule>(self->to_molecule(name));
-        }, py::arg("name"));
+        }, py::arg("name"))
+        .def("save_as_mol2", &save_assignment_mol2_object, py::arg("filename"), py::arg("residue_name") = "MOL")
+        .def("Save_As_Mol2", &save_assignment_mol2_object, py::arg("filename"), py::arg("residue_name") = "MOL")
+        .def("save_as_pdb", &save_assignment_pdb_object, py::arg("filename"), py::arg("residue_name") = "MOL")
+        .def("Save_As_PDB", &save_assignment_pdb_object, py::arg("filename"), py::arg("residue_name") = "MOL");
 
     m.def("load_pdb", &load_pdb_object);
     m.def("load_mol2", &load_mol2_object);
@@ -327,6 +360,12 @@ PYBIND11_MODULE(_core, m) {
     m.def("load_edip_parameter_file", &load_edip_parameter_object, py::arg("filename"), py::arg("molecule"));
     m.def("get_assignment_from_mol2", &get_assignment_from_mol2_object, py::arg("source"),
           py::arg("total_charge") = py::none());
+    m.def("get_assignment_from_xyz", &get_assignment_from_xyz_object, py::arg("source"));
+    m.def("get_assignment_from_pdb", &get_assignment_from_pdb_object, py::arg("source"));
+    m.def("get_assignment_from_residuetype",
+          [](const ResidueType& residue_type) {
+              return std::make_shared<Assign>(get_assignment_from_residuetype(residue_type));
+          }, py::arg("residue_type"));
     m.def("load_frcmod", [](const std::string& filename) {
         register_amber_frcmod_file(filename);
         return py::dict();
@@ -357,6 +396,8 @@ PYBIND11_MODULE(_core, m) {
           py::arg("epsilon"), py::arg("rmin"));
     m.def("register_amber_bond_parameter", &register_amber_bond_parameter, py::arg("atom_type1"),
           py::arg("atom_type2"), py::arg("k"), py::arg("length"));
+    m.def("register_amber_cmap_parameter", &register_amber_cmap_parameter, py::arg("key"),
+          py::arg("resolution"), py::arg("parameters"));
     m.def("register_residue_templates_from_mol2_file",
           [](const std::string& filename) { register_residue_templates_from_mol2_file(filename); });
     m.def("register_template_molecule_from_mol2_file",

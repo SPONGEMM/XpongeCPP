@@ -252,6 +252,11 @@ void upsert_amber_cmap_parameter(const std::string& residue, std::uint32_t resol
         AmberCMapParameter{resolution, parameters});
 }
 
+void upsert_amber_cmap_key(const std::string& key, std::uint32_t resolution,
+                           const std::vector<double>& parameters) {
+    amber_cmap_parameters().insert_or_assign(key, AmberCMapParameter{resolution, parameters});
+}
+
 void flush_amber_cmap_block(const std::vector<std::string>& residues, std::uint32_t resolution,
                             const std::vector<double>& parameters) {
     if (residues.empty() || parameters.empty()) {
@@ -554,6 +559,15 @@ void register_amber_bond_parameter(const std::string& atom_type1, const std::str
                                    double length) {
     std::scoped_lock lock(registry_mutex());
     upsert_bond_parameter(atom_type1, atom_type2, {k, length});
+}
+
+void register_amber_cmap_parameter(const std::string& key, std::uint32_t resolution,
+                                   const std::vector<double>& parameters) {
+    if (resolution == 0 || parameters.size() != static_cast<std::size_t>(resolution) * resolution) {
+        throw std::invalid_argument("Amber CMAP parameter count should equal resolution * resolution");
+    }
+    std::scoped_lock lock(registry_mutex());
+    upsert_amber_cmap_key(key, resolution, parameters);
 }
 
 bool has_amber_cmap_parameters() {

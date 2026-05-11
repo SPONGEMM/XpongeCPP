@@ -82,6 +82,7 @@ std::string pdb_atom_name(const std::string& name) {
 
 bool is_terminal_mappable(const Residue& residue) {
     return residue.name != "WAT" && residue.name != "HOH" && residue.name != "NA" && residue.name != "CL" &&
+           residue.name != "ACE" && residue.name != "NME" &&
            residue.name.rfind("N", 0) != 0 && residue.name.rfind("C", 0) != 0;
 }
 
@@ -114,6 +115,8 @@ Molecule load_pdb_text(const std::string& text) {
     std::string line;
     std::string current_residue_key;
     ResidueId current_residue_id = 0;
+    std::uint32_t current_segment = 0;
+    std::vector<std::uint32_t> residue_segments;
 
     while (std::getline(input, line)) {
         if (line.rfind("CRYST1", 0) == 0) {
@@ -135,6 +138,10 @@ Molecule load_pdb_text(const std::string& text) {
             continue;
         }
         if (!(line.rfind("ATOM", 0) == 0 || line.rfind("HETATM", 0) == 0)) {
+            if (line.rfind("TER", 0) == 0) {
+                ++current_segment;
+                current_residue_key.clear();
+            }
             continue;
         }
         const std::string atom_name = pdb_string(line, 12, 4);
@@ -142,7 +149,8 @@ Molecule load_pdb_text(const std::string& text) {
         const std::string chain = pdb_string(line, 21, 1);
         const std::string resseq = pdb_string(line, 22, 4);
         const std::string icode = pdb_string(line, 26, 1);
-        const std::string residue_key = chain + ":" + resseq + ":" + icode + ":" + residue_name;
+        const std::string residue_key = std::to_string(current_segment) + ":" + chain + ":" + resseq + ":" +
+                                        icode + ":" + residue_name;
 
         if (molecule.residues.empty() || residue_key != current_residue_key) {
             current_residue_key = residue_key;
@@ -153,6 +161,7 @@ Molecule load_pdb_text(const std::string& text) {
             residue.atom_begin = static_cast<AtomId>(molecule.atoms.size());
             residue.atom_count = 0;
             molecule.residues.push_back(residue);
+            residue_segments.push_back(current_segment);
         }
 
         Atom atom;
@@ -167,13 +176,23 @@ Molecule load_pdb_text(const std::string& text) {
         molecule.residues[current_residue_id].atom_count += 1;
     }
     if (!molecule.residues.empty()) {
-        if (is_terminal_mappable(molecule.residues.front())) {
-            molecule.residues.front().name = "N" + molecule.residues.front().name;
-            molecule.residues.front().type_name = molecule.residues.front().name;
-        }
-        if (molecule.residues.size() > 1 && is_terminal_mappable(molecule.residues.back())) {
-            molecule.residues.back().name = "C" + molecule.residues.back().name;
-            molecule.residues.back().type_name = molecule.residues.back().name;
+        std::size_t segment_begin = 0;
+        while (segment_begin < molecule.residues.size()) {
+            std::size_t segment_end = segment_begin + 1;
+            while (segment_end < molecule.residues.size() &&
+                   residue_segments[segment_end] == residue_segments[segment_begin]) {
+                ++segment_end;
+            }
+            if (is_terminal_mappable(molecule.residues[segment_begin])) {
+                molecule.residues[segment_begin].name = "N" + molecule.residues[segment_begin].name;
+                molecule.residues[segment_begin].type_name = molecule.residues[segment_begin].name;
+            }
+            const auto last = segment_end - 1;
+            if (last != segment_begin && is_terminal_mappable(molecule.residues[last])) {
+                molecule.residues[last].name = "C" + molecule.residues[last].name;
+                molecule.residues[last].type_name = molecule.residues[last].name;
+            }
+            segment_begin = segment_end;
         }
     }
     apply_template_atom_properties(molecule);

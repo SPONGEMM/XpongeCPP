@@ -362,6 +362,11 @@ Molecule load_mol2_text(const std::string& text);
 Assign get_assignment_from_mol2_text(const std::string& text,
                                      std::optional<int> total_charge = std::nullopt,
                                      bool total_charge_from_partial_sum = false);
+Assign get_assignment_from_xyz_text(const std::string& text);
+Assign get_assignment_from_pdb_text(const std::string& text);
+Assign get_assignment_from_residuetype(const ResidueType& residue_type);
+std::string assignment_to_mol2_text(const Assign& assignment, const std::string& residue_name);
+std::string assignment_to_pdb_text(const Assign& assignment, const std::string& residue_name);
 std::vector<std::string> implemented_gaff_assign_types();
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distance, double tolerance,
                      std::int64_t n_solvent, std::uint64_t seed = 0);
@@ -388,6 +393,8 @@ void register_amber_frcmod_file(const std::filesystem::path& filename);
 void register_amber_lj_parameter(const std::string& atom_type, const std::string& lj_type, double epsilon, double rmin);
 void register_amber_bond_parameter(const std::string& atom_type1, const std::string& atom_type2, double k,
                                    double length);
+void register_amber_cmap_parameter(const std::string& key, std::uint32_t resolution,
+                                   const std::vector<double>& parameters);
 bool has_amber_cmap_parameters();
 void apply_amber_cmaps(Molecule& molecule);
 std::vector<DihedralTerm> find_amber_proper_terms(const std::array<std::string, 4>& atom_types);

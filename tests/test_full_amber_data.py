@@ -203,3 +203,75 @@ USER_CHARGES
         "",
         "0 1 2 3 4 0",
     ]
+
+
+def test_full_amber_ecosystem_import_modules_register_packaged_templates_and_parameters():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    for module_name in [
+        "XpongeCPP.forcefield.amber.bsc1",
+        "XpongeCPP.forcefield.amber.ol3",
+        "XpongeCPP.forcefield.amber.ol15",
+        "XpongeCPP.forcefield.amber.lipid14",
+        "XpongeCPP.forcefield.amber.lipid17",
+        "XpongeCPP.forcefield.amber.rsff2c",
+        "XpongeCPP.forcefield.amber.glycam_06j.d_furanose",
+        "XpongeCPP.forcefield.amber.glycam_06j.d_pyranose",
+        "XpongeCPP.forcefield.amber.glycam_06j.l_furanose",
+        "XpongeCPP.forcefield.amber.glycam_06j.l_pyranose",
+        "XpongeCPP.forcefield.amber.glycam_06j.glycoprotein",
+    ]:
+        importlib.import_module(module_name)
+
+    assert Xponge.template_atom_count("DA") > 20
+    assert Xponge.template_atom_count("A") > 20
+    assert Xponge.template_atom_count("ACE") == 6
+    assert Xponge.template_atom_count("NME") == 6
+
+
+def test_pdb_terminal_mapping_is_chain_local_and_keeps_ace_nme_caps():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    pdb = """\
+ATOM      1  N   MET A   1       0.000   0.000   0.000  1.00  0.00           N
+ATOM      2  CA  MET A   1       1.000   0.000   0.000  1.00  0.00           C
+ATOM      3  C   MET A   1       2.000   0.000   0.000  1.00  0.00           C
+ATOM      4  O   MET A   1       3.000   0.000   0.000  1.00  0.00           O
+ATOM      5  N   SER A   2       4.000   0.000   0.000  1.00  0.00           N
+ATOM      6  CA  SER A   2       5.000   0.000   0.000  1.00  0.00           C
+ATOM      7  C   SER A   2       6.000   0.000   0.000  1.00  0.00           C
+ATOM      8  O   SER A   2       7.000   0.000   0.000  1.00  0.00           O
+TER
+ATOM      9  N   ALA B   1       0.000   5.000   0.000  1.00  0.00           N
+ATOM     10  CA  ALA B   1       1.000   5.000   0.000  1.00  0.00           C
+ATOM     11  C   ALA B   1       2.000   5.000   0.000  1.00  0.00           C
+ATOM     12  O   ALA B   1       3.000   5.000   0.000  1.00  0.00           O
+ATOM     13  N   GLY B   2       4.000   5.000   0.000  1.00  0.00           N
+ATOM     14  CA  GLY B   2       5.000   5.000   0.000  1.00  0.00           C
+ATOM     15  C   GLY B   2       6.000   5.000   0.000  1.00  0.00           C
+ATOM     16  O   GLY B   2       7.000   5.000   0.000  1.00  0.00           O
+TER
+ATOM     17  CH3 ACE C   1       0.000  10.000   0.000  1.00  0.00           C
+ATOM     18  C   ACE C   1       1.000  10.000   0.000  1.00  0.00           C
+ATOM     19  O   ACE C   1       2.000  10.000   0.000  1.00  0.00           O
+ATOM     20  N   ALA C   2       3.000  10.000   0.000  1.00  0.00           N
+ATOM     21  CA  ALA C   2       4.000  10.000   0.000  1.00  0.00           C
+ATOM     22  C   ALA C   2       5.000  10.000   0.000  1.00  0.00           C
+ATOM     23  O   ALA C   2       6.000  10.000   0.000  1.00  0.00           O
+ATOM     24  N   NME C   3       7.000  10.000   0.000  1.00  0.00           N
+ATOM     25  CH3 NME C   3       8.000  10.000   0.000  1.00  0.00           C
+TER
+END
+"""
+
+    mol = Xponge.load_pdb(StringIO(pdb))
+
+    assert [res.name for res in mol.residues] == [
+        "NMET",
+        "CSER",
+        "NALA",
+        "CGLY",
+        "ACE",
+        "ALA",
+        "NME",
+    ]

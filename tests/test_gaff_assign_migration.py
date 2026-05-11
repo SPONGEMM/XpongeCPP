@@ -80,3 +80,47 @@ USER_CHARGES
 
     assignment.determine_atom_type("sybyl")
     assert assignment.atom_types == ["C.ar", "N.pl3", "O.co2", "Cl"]
+
+
+def test_assignment_compatibility_entrypoints_and_writers(tmp_path):
+    xyz = """3
+water
+O 0.0000 0.0000 0.0000
+H 0.9572 0.0000 0.0000
+H -0.2399 0.9266 0.0000
+"""
+    assignment = Xponge.get_assignment_from_xyz(io.StringIO(xyz))
+    assert assignment.atoms == ["O", "H", "H"]
+    assert assignment.atom_count == 3
+
+    mol2_path = tmp_path / "assigned.mol2"
+    pdb_path = tmp_path / "assigned.pdb"
+    assignment.save_as_mol2(str(mol2_path), residue_name="WAT")
+    assignment.save_as_pdb(str(pdb_path), residue_name="WAT")
+    assert "@<TRIPOS>ATOM" in mol2_path.read_text()
+    assert pdb_path.read_text().startswith("ATOM")
+
+    pdb_assignment = Xponge.get_assignment_from_pdb(io.StringIO(pdb_path.read_text()))
+    assert pdb_assignment.atoms == ["O", "H", "H"]
+
+    residue_type = assignment.to_residuetype("WAT")
+    residue_assignment = Xponge.get_assignment_from_residuetype(residue_type)
+    assert residue_assignment.atoms == ["O", "H", "H"]
+
+
+def test_smiles_and_pubchem_entrypoints_report_missing_optional_dependencies_clearly(monkeypatch):
+    import builtins
+
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name.startswith("rdkit") or name.startswith("pubchempy"):
+            raise ImportError(name)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(ImportError, match="RDKit"):
+        Xponge.get_assignment_from_smiles("CCO")
+    with pytest.raises(ImportError, match="PubChemPy"):
+        Xponge.get_assignment_from_pubchem("ethanol")

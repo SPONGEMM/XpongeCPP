@@ -8,6 +8,9 @@ from ._core import (
     add_molecule,
     add_solvent_box,
     get_assignment_from_mol2,
+    get_assignment_from_pdb,
+    get_assignment_from_residuetype,
+    get_assignment_from_xyz,
     get_template_molecule,
     has_template,
     implemented_gaff_assign_types,
@@ -25,6 +28,7 @@ from ._core import (
     register_amber_frcmod_file,
     register_amber_bond_parameter,
     register_amber_lj_parameter,
+    register_amber_cmap_parameter,
     register_amber_parmdat_file,
     register_residue_templates_from_mol2_file,
     register_template_molecule_from_mol2_file,
@@ -85,6 +89,13 @@ LoadSWParameterFile = load_sw_parameter_file
 Load_EDIP_Parameter_File = load_edip_parameter_file
 LoadEDIPParameterFile = load_edip_parameter_file
 Get_Assignment_From_Mol2 = get_assignment_from_mol2
+Get_Assignment_From_XYZ = get_assignment_from_xyz
+Get_Assignment_From_PDB = get_assignment_from_pdb
+Get_Assignment_From_ResidueType = get_assignment_from_residuetype
+GetAssignmentFromMol2 = get_assignment_from_mol2
+GetAssignmentFromXYZ = get_assignment_from_xyz
+GetAssignmentFromPDB = get_assignment_from_pdb
+GetAssignmentFromResidueType = get_assignment_from_residuetype
 Load_Frcmod = load_frcmod
 Load_Parmdat = load_parmdat
 AddIons = Add_Ions
@@ -96,6 +107,103 @@ Save_SPONGEInput = Save_SPONGE_Input
 SavePDB = Save_PDB
 Save_PDB_File = Save_PDB
 SaveMol2 = Save_Mol2
+
+
+def get_assignment_from_smiles(smiles, total_charge=None, add_hydrogens=True, seed=20260509):
+    try:
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+    except ImportError as exc:
+        raise ImportError("RDKit is required for get_assignment_from_smiles") from exc
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"invalid SMILES: {smiles}")
+    if add_hydrogens:
+        mol = Chem.AddHs(mol)
+    if mol.GetNumConformers() == 0:
+        status = AllChem.EmbedMolecule(mol, randomSeed=int(seed))
+        if status != 0:
+            raise ValueError("RDKit failed to embed the SMILES molecule")
+        AllChem.UFFOptimizeMolecule(mol, maxIters=200)
+    conf = mol.GetConformer()
+    assignment = Assign("SMILES")
+    for atom in mol.GetAtoms():
+        pos = conf.GetAtomPosition(atom.GetIdx())
+        assignment.add_atom(atom.GetSymbol(), pos.x, pos.y, pos.z, atom.GetSymbol() + str(atom.GetIdx() + 1), 0.0)
+    order_map = {
+        Chem.BondType.SINGLE: 1,
+        Chem.BondType.DOUBLE: 2,
+        Chem.BondType.TRIPLE: 3,
+        Chem.BondType.AROMATIC: -1,
+    }
+    for bond in mol.GetBonds():
+        assignment.add_bond(bond.GetBeginAtomIdx(), bond.GetEndAtomIdx(), order_map.get(bond.GetBondType(), 1))
+    if total_charge is not None:
+        assignment.determine_bond_order(True, total_charge)
+    return assignment
+
+
+def get_assignment_from_pubchem(name, total_charge=None, **kwargs):
+    try:
+        import pubchempy as pcp
+    except ImportError as exc:
+        raise ImportError("PubChemPy is required for get_assignment_from_pubchem") from exc
+
+    compounds = pcp.get_compounds(name, "name")
+    if not compounds:
+        raise ValueError(f"PubChem query returned no compounds: {name}")
+    smiles = compounds[0].isomeric_smiles or compounds[0].canonical_smiles
+    if not smiles:
+        raise ValueError(f"PubChem compound has no SMILES: {name}")
+    assignment = get_assignment_from_smiles(smiles, total_charge=total_charge, **kwargs)
+    assignment.name = str(getattr(compounds[0], "cid", "PUBCHEM"))
+    return assignment
+
+
+def get_assignment_from_cif(source):
+    text = source.read() if hasattr(source, "read") else open(source, encoding="utf-8").read()
+    rows = []
+    headers = []
+    in_loop = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line == "loop_":
+            in_loop = True
+            headers = []
+            continue
+        if in_loop and line.startswith("_atom_site."):
+            headers.append(line)
+            continue
+        if in_loop and headers:
+            parts = line.split()
+            if len(parts) >= len(headers):
+                rows.append(dict(zip(headers, parts)))
+            elif line.startswith("_"):
+                in_loop = False
+    if not rows:
+        raise ValueError("CIF input does not contain a simple _atom_site loop")
+
+    assignment = Assign("CIF")
+    for row in rows:
+        element = row.get("_atom_site.type_symbol", "").strip("'\"")
+        name = row.get("_atom_site.label_atom_id", element).strip("'\"")
+        x = float(row.get("_atom_site.Cartn_x", "0").strip("'\""))
+        y = float(row.get("_atom_site.Cartn_y", "0").strip("'\""))
+        z = float(row.get("_atom_site.Cartn_z", "0").strip("'\""))
+        assignment.add_atom(element, x, y, z, name)
+    assignment.determine_connectivity(1.2)
+    return assignment
+
+
+Get_Assignment_From_Smiles = get_assignment_from_smiles
+Get_Assignment_From_PubChem = get_assignment_from_pubchem
+Get_Assignment_From_CIF = get_assignment_from_cif
+GetAssignmentFromSmiles = get_assignment_from_smiles
+GetAssignmentFromPubChem = get_assignment_from_pubchem
+GetAssignmentFromCIF = get_assignment_from_cif
 
 __all__ = [
     "Assign",
@@ -115,6 +223,12 @@ __all__ = [
     "add_solvent_box",
     "add_molecule",
     "get_assignment_from_mol2",
+    "get_assignment_from_xyz",
+    "get_assignment_from_pdb",
+    "get_assignment_from_residuetype",
+    "get_assignment_from_cif",
+    "get_assignment_from_smiles",
+    "get_assignment_from_pubchem",
     "set_box_padding",
     "save_sponge_input",
     "save_pdb",
@@ -124,6 +238,7 @@ __all__ = [
     "register_amber_parmdat_file",
     "register_amber_frcmod_file",
     "register_amber_lj_parameter",
+    "register_amber_cmap_parameter",
     "register_amber_bond_parameter",
     "register_residue_templates_from_mol2_file",
     "register_template_molecule_from_mol2_file",
