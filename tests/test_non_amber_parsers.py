@@ -3,6 +3,95 @@ from io import StringIO
 import XpongeCPP as Xponge
 
 
+def test_gromacs_topology_iterator_handles_macros_include_and_continuation(tmp_path):
+    include = tmp_path / "included.itp"
+    include.write_text(
+        """#define VALUE 0.25
+[ atomtypes ]
+Q Q 6 12.011 0.0 A 0.35 \\
+VALUE
+#ifdef EXTRA
+H H 1 1.008 0.0 A 0.25 0.125
+#else
+X X 0 0.0 0.0 A 0.10 0.010
+#endif
+"""
+    )
+    top = tmp_path / "topol.top"
+    top.write_text(f"""#include "{include.name}"\n""")
+
+    iterator = Xponge.GromacsTopologyIterator(str(top), macros={"EXTRA": ""})
+    lines = list(iterator)
+
+    assert iterator.defined_macros["VALUE"] == "0.25"
+    assert lines == [
+        "Q Q 6 12.011 0.0 A 0.35  0.25",
+        "H H 1 1.008 0.0 A 0.25 0.125",
+    ]
+
+
+def test_load_ffitp_returns_xponge_style_forcefield_buffers(tmp_path):
+    ffitp = tmp_path / "ffbonded.itp"
+    ffitp.write_text(
+        """[ defaults ]
+1 2 yes 0.5 0.833333
+[ atomtypes ]
+Q Q 6 12.011 0.0 A 0.35 0.25
+[ pairtypes ]
+Q H 1 0.12 0.34
+[ bondtypes ]
+Q H 1 0.109 300000
+[ angletypes ]
+H Q H 5 109.5 50.0 0.2 10.0
+[ dihedraltypes ]
+Q Q Q Q 3 0.1 0.2 0.3 0.4 0.5 0.6
+[ cmaptypes ]
+Q Q Q Q Q 1 24 2 0.0 1.0 2.0 3.0
+"""
+    )
+
+    output = Xponge.load_ffitp(str(ffitp))
+
+    assert "Q 12.011 0.0 Q" in output["atomtypes"]
+    assert "Q-Q 0.35 0.25" in output["LJ"]
+    assert "Q-H 0.12 0.34 0.833333" in output["nb14_extra"]
+    assert "Q-H 0.109 150000.0" in output["bonds"]
+    assert "H-Q-H 109.5 25.0 0.2 5.0" in output["Urey-Bradley"]
+    assert "Q-Q-Q-Q 0.1 0.2 0.3 0.4 0.5 0.6" in output["RB_dihedrals"]
+    assert output["cmaps"]["Q-Q-Q-Q-Q"]["resolution"] == 2
+
+
+def test_load_molitp_builds_system_with_head_tail_residues_and_molecule_counts(tmp_path):
+    top = tmp_path / "system.top"
+    top.write_text(
+        """[ moleculetype ]
+PEP 3
+[ atoms ]
+1 N 1 ALA N 1 -0.3 14.0
+2 C 1 ALA CA 1 0.1 12.0
+3 C 2 GLY C 2 0.2 12.0
+4 O 2 GLY O 2 -0.2 16.0
+[ bonds ]
+1 2 1
+2 3 1
+3 4 1
+[ system ]
+case
+[ molecules ]
+PEP 2
+"""
+    )
+
+    system, mols = Xponge.load_molitp(str(top), water_replace=False)
+
+    assert sorted(mols) == ["PEP"]
+    assert mols["PEP"].residue_count == 2
+    assert [res.name for res in mols["PEP"].residues] == ["NALA", "CGLY"]
+    assert system.name == "case"
+    assert system.atom_count == 8
+    assert system.residue_counts() == {"NALA": 2, "CGLY": 2}
+
+
 def test_gromacs_topology_parser_generates_special_forces(tmp_path):
     include = tmp_path / "params.itp"
     include.write_text(

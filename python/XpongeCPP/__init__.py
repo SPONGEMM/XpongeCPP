@@ -55,6 +55,7 @@ from ._core import (
     template_atom_count,
 )
 from .assign import AssignRule
+from .gromacs import GlobalSetting, GromacsTopologyIterator, load_ffitp, load_molitp
 
 __version__ = "0.1.0"
 
@@ -524,6 +525,10 @@ LoadRST7 = load_rst7
 Load_GRO = load_gro
 LoadGRO = load_gro
 Load_MolPSF = load_molpsf
+Load_FFITP = load_ffitp
+LoadFFITP = load_ffitp
+Load_MolITP = load_molitp
+LoadMolITP = load_molitp
 LoadMolPSF = load_molpsf
 Load_Mol2 = load_mol2
 LoadMOL2 = load_mol2
@@ -863,12 +868,16 @@ GetAssignmentFromPDB = get_assignment_from_pdb
 __all__ = [
     "Assign",
     "AssignRule",
+    "GlobalSetting",
+    "GromacsTopologyIterator",
     "Molecule",
     "ResidueType",
     "add_ions",
     "load_pdb",
     "load_mol2",
     "load_molpsf",
+    "load_ffitp",
+    "load_molitp",
     "load_coordinate",
     "load_rst7",
     "load_gro",
