@@ -1,5 +1,7 @@
 """Python compatibility layer for the XpongeCPP C++ core."""
 
+from importlib.resources import files
+
 from ._core import (
     Assign,
     Molecule,
@@ -51,6 +53,70 @@ from ._core import (
 )
 
 __version__ = "0.1.0"
+
+
+def _tpacm4_tables():
+    base = files("XpongeCPP.data.assign.tpacm4")
+    return (base.joinpath("ATOMTYPE.dat").read_text(), base.joinpath("CHARGE.dat").read_text())
+
+
+def _assignment_to_rdkit_mol(assignment):
+    try:
+        from rdkit import Chem
+    except ImportError as exc:
+        raise ImportError("RDKit is required for Gasteiger charge calculation") from exc
+
+    mol = Chem.RWMol()
+    for atom_index, element in enumerate(assignment.atoms):
+        atom = Chem.Atom(element)
+        formal_charges = getattr(assignment, "formal_charges", [])
+        if atom_index < len(formal_charges):
+            atom.SetFormalCharge(int(formal_charges[atom_index]))
+        mol.AddAtom(atom)
+    bond_type = {
+        1: Chem.BondType.SINGLE,
+        2: Chem.BondType.DOUBLE,
+        3: Chem.BondType.TRIPLE,
+        -1: Chem.BondType.AROMATIC,
+    }
+    for atom1, bonded_atoms in enumerate(assignment.bonds):
+        for atom2, order in bonded_atoms.items():
+            if atom1 < atom2:
+                mol.AddBond(atom1, int(atom2), bond_type.get(int(order), Chem.BondType.SINGLE))
+                if int(order) == -1:
+                    mol.GetAtomWithIdx(atom1).SetIsAromatic(True)
+                    mol.GetAtomWithIdx(int(atom2)).SetIsAromatic(True)
+                    mol.GetBondBetweenAtoms(atom1, int(atom2)).SetIsAromatic(True)
+    return mol.GetMol()
+
+
+def _assign_calculate_charge(self, method, **parameters):
+    method = method.upper()
+    if method == "TPACM4":
+        atom_type_table, charge_table = _tpacm4_tables()
+        charge = parameters.get("charge", int(round(sum(self.formal_charges))))
+        self._calculate_tpacm4(atom_type_table, charge_table, int(charge))
+        return None
+    if method == "GASTEIGER":
+        try:
+            from rdkit.Chem import rdPartialCharges
+        except ImportError as exc:
+            raise ImportError("RDKit is required for Gasteiger charge calculation") from exc
+        rdmol = _assignment_to_rdkit_mol(self)
+        rdPartialCharges.ComputeGasteigerCharges(rdmol)
+        self.set_charges([float(atom.GetProp("_GasteigerCharge")) for atom in rdmol.GetAtoms()])
+        return None
+    if method == "RESP":
+        try:
+            import pyscf  # noqa: F401
+        except ImportError as exc:
+            raise ImportError("PySCF is required for RESP charge calculation") from exc
+        raise NotImplementedError("RESP charge fitting is not yet available in XpongeCPP without the Xponge RESP backend")
+    raise ValueError("methods should be one of the following: 'RESP', 'GASTEIGER', 'TPACM4' (case-insensitive)")
+
+
+Assign.calculate_charge = _assign_calculate_charge
+Assign.Calculate_Charge = _assign_calculate_charge
 
 
 def Add_Solvent_Box(molecule, solvent, distance, tolerance=2.5, n_solvent=None, seed=0):
@@ -167,58 +233,144 @@ def get_assignment_from_smiles(smiles, total_charge=None, add_hydrogens=True, se
     return assignment
 
 
-def get_assignment_from_pubchem(name, total_charge=None, **kwargs):
+def get_assignment_from_pubchem(parameter, keyword="name", total_charge=None, **kwargs):
     try:
         import pubchempy as pcp
     except ImportError as exc:
         raise ImportError("PubChemPy is required for get_assignment_from_pubchem") from exc
 
-    compounds = pcp.get_compounds(name, "name")
+    compounds = pcp.get_compounds(parameter, keyword, record_type="3d")
     if not compounds:
-        raise ValueError(f"PubChem query returned no compounds: {name}")
-    smiles = compounds[0].isomeric_smiles or compounds[0].canonical_smiles
+        try:
+            raise pcp.NotFoundError
+        except AttributeError as exc:
+            raise ValueError(f"PubChem query returned no compounds: {parameter}") from exc
+    if len(compounds) != 1:
+        raise NotImplementedError("get_assignment_from_pubchem expects exactly one PubChem result")
+    compound = compounds[0]
+    if getattr(compound, "atoms", None) and getattr(compound, "bonds", None):
+        assignment = Assign(str(getattr(compound, "cid", "PUBCHEM")))
+        for atom in compound.atoms:
+            assignment.add_atom(atom.element, atom.x, atom.y, atom.z)
+        for bond in compound.bonds:
+            assignment.add_bond(bond.aid1 - 1, bond.aid2 - 1, bond.order)
+        assignment.determine_bond_order(True, total_charge)
+        return assignment
+    smiles = compound.isomeric_smiles or compound.canonical_smiles
     if not smiles:
-        raise ValueError(f"PubChem compound has no SMILES: {name}")
+        raise ValueError(f"PubChem compound has no SMILES: {parameter}")
     assignment = get_assignment_from_smiles(smiles, total_charge=total_charge, **kwargs)
-    assignment.name = str(getattr(compounds[0], "cid", "PUBCHEM"))
+    assignment.name = str(getattr(compound, "cid", "PUBCHEM"))
     return assignment
 
 
-def get_assignment_from_cif(source):
-    text = source.read() if hasattr(source, "read") else open(source, encoding="utf-8").read()
-    rows = []
-    headers = []
-    in_loop = False
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
+def _read_text_source(source):
+    if hasattr(source, "read"):
+        return source.read()
+    if isinstance(source, str) and ("\n" in source or source.lstrip().startswith("data_")):
+        return source
+    with open(source, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _cif_float(value):
+    value = value.strip("'\"")
+    if "(" in value:
+        value = value.split("(", 1)[0]
+    return float(value)
+
+
+def _cif_loops(text):
+    loops = []
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        if lines[index].strip() != "loop_":
+            index += 1
             continue
-        if line == "loop_":
-            in_loop = True
-            headers = []
-            continue
-        if in_loop and line.startswith("_atom_site."):
-            headers.append(line)
-            continue
-        if in_loop and headers:
+        index += 1
+        headers = []
+        while index < len(lines) and lines[index].strip().startswith("_"):
+            headers.append(lines[index].strip())
+            index += 1
+        rows = []
+        while index < len(lines):
+            line = lines[index].strip()
+            if not line or line.startswith("#"):
+                index += 1
+                continue
+            if line == "loop_" or line.startswith("_") or line.startswith("data_"):
+                break
             parts = line.split()
             if len(parts) >= len(headers):
                 rows.append(dict(zip(headers, parts)))
-            elif line.startswith("_"):
-                in_loop = False
+            index += 1
+        loops.append((headers, rows))
+    return loops
+
+
+def get_assignment_from_cif(source, total_charge=0, orthogonal_threshold=None, keep_cell_angle=True):
+    text = _read_text_source(source)
+    data_name = "CIF"
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("data_"):
+            data_name = stripped[5:]
+            break
+    values = {}
+    for raw in text.splitlines():
+        parts = raw.strip().split(None, 1)
+        if len(parts) == 2 and parts[0].startswith("_cell_"):
+            values[parts[0]] = parts[1]
+
+    lattice_info = {"scale": 1, "style": "custom"}
+    if "_cell_length_a" in values:
+        lattice_info["cell_length"] = [
+            _cif_float(values["_cell_length_a"]),
+            _cif_float(values["_cell_length_b"]),
+            _cif_float(values["_cell_length_c"]),
+        ]
+        angles = [
+            _cif_float(values["_cell_angle_alpha"]),
+            _cif_float(values["_cell_angle_beta"]),
+            _cif_float(values["_cell_angle_gamma"]),
+        ]
+        if not keep_cell_angle:
+            angles = [90, 90, 90]
+        elif orthogonal_threshold is not None:
+            angles = [90 if abs(angle - 90) < orthogonal_threshold else angle for angle in angles]
+        lattice_info["cell_angle"] = angles
+
+    rows = []
+    bond_rows = []
+    for headers, loop_rows in _cif_loops(text):
+        if "_atom_site_type_symbol" in headers:
+            rows = loop_rows
+        if "_geom_bond_atom_site_label_1" in headers:
+            bond_rows = loop_rows
     if not rows:
         raise ValueError("CIF input does not contain a simple _atom_site loop")
 
-    assignment = Assign("CIF")
+    assignment = Assign(data_name)
+    name_to_atom = {}
     for row in rows:
-        element = row.get("_atom_site.type_symbol", "").strip("'\"")
-        name = row.get("_atom_site.label_atom_id", element).strip("'\"")
-        x = float(row.get("_atom_site.Cartn_x", "0").strip("'\""))
-        y = float(row.get("_atom_site.Cartn_y", "0").strip("'\""))
-        z = float(row.get("_atom_site.Cartn_z", "0").strip("'\""))
+        element = row.get("_atom_site_type_symbol", row.get("_atom_site.type_symbol", "")).strip("'\"")
+        name = row.get("_atom_site_label", row.get("_atom_site_label_atom_id", element)).strip("'\"")
+        x = _cif_float(row.get("_atom_site_Cartn_x", row.get("_atom_site.Cartn_x", "0")))
+        y = _cif_float(row.get("_atom_site_Cartn_y", row.get("_atom_site.Cartn_y", "0")))
+        z = _cif_float(row.get("_atom_site_Cartn_z", row.get("_atom_site.Cartn_z", "0")))
+        name_to_atom[name] = assignment.atom_count
         assignment.add_atom(element, x, y, z, name)
-    assignment.determine_connectivity(1.2)
-    return assignment
+    if bond_rows:
+        for row in bond_rows:
+            atom1 = row["_geom_bond_atom_site_label_1"].strip("'\"")
+            atom2 = row["_geom_bond_atom_site_label_2"].strip("'\"")
+            if atom1 in name_to_atom and atom2 in name_to_atom:
+                assignment.add_bond(name_to_atom[atom1], name_to_atom[atom2], -1)
+    else:
+        assignment.determine_connectivity(1.2)
+    assignment.determine_bond_order(True, total_charge)
+    return assignment, lattice_info
 
 
 Get_Assignment_From_Smiles = get_assignment_from_smiles

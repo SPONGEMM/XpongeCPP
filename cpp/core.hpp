@@ -383,6 +383,9 @@ public:
     void add_atom(const std::string& element, double x, double y, double z,
                   const std::string& name = "", double charge = 0.0);
     void add_bond(std::uint32_t atom1, std::uint32_t atom2, int order);
+    void set_charge(std::uint32_t atom, double charge);
+    void set_charges(const std::vector<double>& new_charges);
+    void set_formal_charge(std::uint32_t atom, int charge);
     void determine_connectivity(double simple_cutoff);
     bool check_connectivity() const;
     bool atom_judge(std::uint32_t atom, const std::string& mask) const;
@@ -394,7 +397,11 @@ public:
     bool has_bond_marker(std::uint32_t atom1, std::uint32_t atom2, const std::string& marker) const;
     bool determine_bond_order(bool check_formal_charge = true, std::optional<int> total_charge = std::nullopt);
     void determine_ring_and_bond_type();
+    void kekulize();
     void determine_atom_type(const std::string& rule);
+    void calculate_tpacm4_charge(const std::string& atom_type_table,
+                                 const std::string& charge_table,
+                                 int total_charge);
     ResidueType to_residuetype(const std::string& name) const;
     Molecule to_molecule(const std::string& name) const;
     std::size_t atom_count() const noexcept;

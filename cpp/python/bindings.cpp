@@ -517,6 +517,7 @@ PYBIND11_MODULE(_core, m) {
         .def_readonly("names", &Assign::names)
         .def_readonly("coordinates", &Assign::coordinates)
         .def_readonly("charges", &Assign::charges)
+        .def_readonly("formal_charges", &Assign::formal_charges)
         .def_readonly("bonds", &Assign::bonds)
         .def_readonly("atom_types", &Assign::atom_types)
         .def("add_atom", &Assign::add_atom, py::arg("element"), py::arg("x"), py::arg("y"), py::arg("z"),
@@ -524,10 +525,16 @@ PYBIND11_MODULE(_core, m) {
         .def("Add_Atom", &Assign::add_atom, py::arg("element"), py::arg("x"), py::arg("y"), py::arg("z"),
              py::arg("name") = "", py::arg("charge") = 0.0)
         .def("add_bond", &Assign::add_bond, py::arg("atom1"), py::arg("atom2"), py::arg("order") = 1)
+        .def("set_charge", &Assign::set_charge, py::arg("atom"), py::arg("charge"))
+        .def("set_charges", &Assign::set_charges, py::arg("charges"))
+        .def("set_formal_charge", &Assign::set_formal_charge, py::arg("atom"), py::arg("charge"))
         .def("determine_connectivity", &Assign::determine_connectivity, py::arg("simple_cutoff"))
         .def("determine_bond_order", &Assign::determine_bond_order, py::arg("check_formal_charge") = true,
              py::arg("total_charge") = py::none())
+        .def("kekulize", &Assign::kekulize)
         .def("determine_atom_type", &Assign::determine_atom_type, py::arg("rule"))
+        .def("_calculate_tpacm4", &Assign::calculate_tpacm4_charge, py::arg("atom_type_table"),
+             py::arg("charge_table"), py::arg("total_charge"))
         .def("to_residuetype", &Assign::to_residuetype, py::arg("name"))
         .def("to_molecule", [](const std::shared_ptr<Assign>& self, const std::string& name) {
             return std::make_shared<Molecule>(self->to_molecule(name));

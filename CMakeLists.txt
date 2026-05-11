@@ -14,6 +14,7 @@ pybind11_add_module(_core
     cpp/assign/gaff.cpp
     cpp/assign/mol2_assignment.cpp
     cpp/assign/ring.cpp
+    cpp/assign/tpacm4.cpp
     cpp/core/molecule.cpp
     cpp/forcefield/amber.cpp
     cpp/forcefield/fep.cpp

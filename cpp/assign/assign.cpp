@@ -45,6 +45,28 @@ void Assign::add_bond(std::uint32_t atom1, std::uint32_t atom2, int order) {
     built = false;
 }
 
+void Assign::set_charge(std::uint32_t atom, double charge) {
+    if (atom >= charges.size()) {
+        throw std::out_of_range("Assign charge atom index out of range");
+    }
+    charges[atom] = charge;
+}
+
+void Assign::set_charges(const std::vector<double>& new_charges) {
+    if (new_charges.size() != charges.size()) {
+        throw std::invalid_argument("Assign charge count does not match atom count");
+    }
+    charges = new_charges;
+}
+
+void Assign::set_formal_charge(std::uint32_t atom, int charge) {
+    if (atom >= formal_charges.size()) {
+        throw std::out_of_range("Assign formal charge atom index out of range");
+    }
+    formal_charges[atom] = charge;
+    built = false;
+}
+
 void Assign::determine_connectivity(double simple_cutoff) {
     if (simple_cutoff <= 0.0) {
         throw std::invalid_argument("simple_cutoff should be positive");

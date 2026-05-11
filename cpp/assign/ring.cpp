@@ -172,6 +172,128 @@ void check_out_plane_double_bond(const Assign& assign, RingInfo& ring) {
     }
 }
 
+std::uint32_t outside_ring_atom(const Assign& assign,
+                                const std::vector<std::uint32_t>& ring,
+                                std::uint32_t atom,
+                                std::uint32_t atom0,
+                                std::uint32_t atom2) {
+    for (const auto& [neighbor, order] : assign.bonds[atom]) {
+        (void)order;
+        if (neighbor != atom0 && neighbor != atom2 &&
+            std::find(ring.begin(), ring.end(), neighbor) == ring.end()) {
+            return neighbor;
+        }
+    }
+    return atom;
+}
+
+bool is_aromatic_ring(Assign& assign, const std::vector<std::uint32_t>& ring) {
+    if (ring.size() < 4) {
+        return false;
+    }
+    int pi_electron = 0;
+    for (std::size_t index = 0; index < ring.size(); ++index) {
+        const auto atom0 = ring[(index + ring.size() - 2) % ring.size()];
+        const auto atom1 = ring[(index + ring.size() - 1) % ring.size()];
+        const auto atom2 = ring[index];
+        const int degree = static_cast<int>(assign.bonds[atom1].size());
+        int valence = 0;
+        for (const auto& [neighbor, order] : assign.bonds[atom1]) {
+            (void)neighbor;
+            valence += order;
+        }
+        const int charge = assign.formal_charges[atom1];
+        const auto& element = assign.elements[atom1];
+        if (element == "C") {
+            if (charge == 0) {
+                if (degree != 3) {
+                    return false;
+                }
+                const auto outside = outside_ring_atom(assign, ring, atom1, atom0, atom2);
+                if (outside == atom1 || assign.elements[outside] == "C" || assign.bonds[atom1].at(outside) != 2) {
+                    ++pi_electron;
+                }
+            } else if (charge == 1 && valence == 3) {
+                if (degree == 2) {
+                    ++pi_electron;
+                } else if (degree != 3) {
+                    return false;
+                }
+            } else if (charge == -1 && valence == 3) {
+                if (degree == 3) {
+                    pi_electron += 2;
+                } else if (degree == 2) {
+                    ++pi_electron;
+                } else {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        } else if (element == "P" || element == "N") {
+            if (charge == 0) {
+                if (valence == 3) {
+                    pi_electron += degree == 3 ? 2 : 1;
+                } else if (valence == 5) {
+                    const auto outside = outside_ring_atom(assign, ring, atom1, atom0, atom2);
+                    pi_electron += outside != atom1 && assign.elements[outside] == "O" ? 1 : 2;
+                } else {
+                    return false;
+                }
+            } else if (charge == 1 && valence == 4 && degree == 3) {
+                ++pi_electron;
+            } else if (charge == -1 && valence == 2 && degree == 2) {
+                pi_electron += 2;
+            } else {
+                return false;
+            }
+        } else if (element == "O") {
+            if (charge == 0 && valence == 2 && degree == 2) {
+                pi_electron += 2;
+            } else if (charge == 1 && valence == 3 && degree == 2) {
+                ++pi_electron;
+            } else {
+                return false;
+            }
+        } else if (element == "S") {
+            if (charge == 0) {
+                if (valence == 2 && degree == 2) {
+                    pi_electron += 2;
+                } else {
+                    const auto outside = outside_ring_atom(assign, ring, atom1, atom0, atom2);
+                    if (degree == 3 && valence == 4 && outside != atom1 && assign.elements[outside] == "O") {
+                        pi_electron += 2;
+                    } else {
+                        return false;
+                    }
+                }
+            } else if (charge == 1) {
+                if (valence == 3 && degree == 2) {
+                    ++pi_electron;
+                } else {
+                    const auto outside = outside_ring_atom(assign, ring, atom1, atom0, atom2);
+                    if (degree == 3 && valence == 3 && outside != atom1 && assign.elements[outside] == "O") {
+                        pi_electron += 2;
+                    } else {
+                        return false;
+                    }
+                }
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    if (pi_electron % 4 != 2) {
+        return false;
+    }
+    for (const auto atom : ring) {
+        assign.add_atom_marker(atom, "AR0");
+    }
+    return true;
+}
+
 }  // namespace
 
 void Assign::determine_ring_and_bond_type() {
@@ -244,6 +366,22 @@ void Assign::determine_ring_and_bond_type() {
         }
     }
     built = true;
+}
+
+void Assign::kekulize() {
+    if (!built) {
+        determine_ring_and_bond_type();
+    }
+    for (const auto& ring : rings) {
+        if (!is_aromatic_ring(*this, ring)) {
+            continue;
+        }
+        for (std::size_t index = 0; index < ring.size(); ++index) {
+            const auto atom0 = ring[(index + ring.size() - 2) % ring.size()];
+            const auto atom1 = ring[(index + ring.size() - 1) % ring.size()];
+            add_bond_marker(atom0, atom1, "ar");
+        }
+    }
 }
 
 }  // namespace xpongecpp
