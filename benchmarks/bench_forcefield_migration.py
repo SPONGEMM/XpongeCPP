@@ -16,6 +16,8 @@ DEFAULT_JSON = REPO_ROOT / "benchmarks" / "forcefield_migration_bench.json"
 DEFAULT_MD = REPO_ROOT / "benchmarks" / "forcefield_migration_bench.md"
 PDB_1KV2_H = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Mokda_demos/1KV2/data/1KV2_H.pdb")
 DEFAULT_MOL2_DIR = REPO_ROOT / "tests" / "data" / "gaff_assign_100" / "inputs"
+CHARMM36_ITP = REPO_ROOT / "python" / "XpongeCPP" / "data" / "reference_forcefield" / "charmm" / "charmm36" / "forcefield.itp"
+OPLSAAM_ITP = REPO_ROOT / "python" / "XpongeCPP" / "data" / "reference_forcefield" / "opls" / "oplsaam" / "forcefield.itp"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,6 +63,56 @@ def run_benchmark(repeat: int, smoke: bool, mol2_dir: Path) -> dict[str, float]:
         repeat,
         lambda: Xponge.get_assignment_from_mol2(str(sample_mol2), total_charge="sum").determine_atom_type("gaff"),
     )
+    results["parse_charmm36_itp"] = median_time(repeat, lambda: Xponge.load_gromacs_topology_file(str(CHARMM36_ITP)))
+    results["parse_oplsaam_itp"] = median_time(repeat, lambda: Xponge.load_opls_itp_file(str(OPLSAAM_ITP)))
+
+    pairwise_mol2 = """@<TRIPOS>MOLECULE
+PAIRWISE
+2 1 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 A 0.0 0.0 0.0 S 1 SOL 0.0
+2 B 1.0 0.0 0.0 S 1 SOL 0.0
+@<TRIPOS>BOND
+1 1 2 1
+"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        sw = tmp / "mw.sw"
+        sw.write_text(
+            "S-S 1.1 2.2 3.3 4.0 5.0 6.6 7.7 8.8 0.0 0.0\n"
+            "S-S-S 0.0 0.0 3.3 0.0 0.0 0.0 0.0 0.0 9.9 10.1\n"
+        )
+        edip = tmp / "si.edip"
+        edip.write_text(
+            "S-S 1.1 2.2 3.3 4.4 5.5 6.6 7.7 8.8 0.0 0.0 0.0 12.12 0.0 0.0 0.0 0.0 0.0\n"
+            "S-S-S 0.0 0.0 0.0 0.0 0.0 0.0 9.9 10.1 11.11 12.12 13.13 0.0 14.14 15.15 16.16 17.17 18.18\n"
+        )
+
+        def export_pairwise():
+            from io import StringIO
+
+            mol = Xponge.load_mol2(StringIO(pairwise_mol2))
+            Xponge.load_sw_parameter_file(str(sw), mol)
+            Xponge.load_edip_parameter_file(str(edip), mol)
+            Xponge.Save_SPONGE_Input(mol, prefix="pairwise", dirname=tmpdir)
+
+        results["export_sw_edip"] = median_time(repeat, export_pairwise)
+
+        def export_softcore():
+            from io import StringIO
+
+            Xponge.register_amber_lj_parameter("A", "A", 0.2, 1.0)
+            Xponge.register_amber_lj_parameter("B", "B", 0.3, 1.5)
+            mol = Xponge.load_mol2(StringIO(pairwise_mol2.replace(" S ", " A ")))
+            for atom in mol.residues[0].atoms:
+                atom.lj_type_b = "B"
+                atom.subsys = 1
+            mol.enable_lj_soft_core()
+            Xponge.Save_SPONGE_Input(mol, prefix="softcore", dirname=tmpdir)
+
+        results["export_lj_softcore"] = median_time(repeat, export_softcore)
 
     if PDB_1KV2_H.exists():
         results["load_pdb"] = median_time(repeat, lambda: Xponge.load_pdb(str(PDB_1KV2_H)))

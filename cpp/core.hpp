@@ -372,6 +372,12 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
                                                                          const std::filesystem::path& dirname);
 void save_pdb(const Molecule& molecule, const std::filesystem::path& filename);
 void save_mol2(const Molecule& molecule, const std::filesystem::path& filename);
+Molecule load_gromacs_topology_file(const std::filesystem::path& filename);
+Molecule load_opls_itp_file(const std::filesystem::path& filename);
+void load_charmm_parameter_file(const std::filesystem::path& filename);
+Molecule load_charmm_topology_file(const std::filesystem::path& filename);
+void load_sw_parameter_file(const std::filesystem::path& filename, Molecule& molecule);
+void load_edip_parameter_file(const std::filesystem::path& filename, Molecule& molecule);
 
 Topology build_topology(const Molecule& molecule);
 

@@ -12,9 +12,15 @@ from ._core import (
     has_template,
     implemented_gaff_assign_types,
     load_frcmod,
+    load_charmm_parameter_file,
+    load_charmm_topology_file,
+    load_edip_parameter_file,
+    load_gromacs_topology_file,
     load_mol2,
+    load_opls_itp_file,
     load_parmdat,
     load_pdb,
+    load_sw_parameter_file,
     register_ff14sb,
     register_amber_frcmod_file,
     register_amber_bond_parameter,
@@ -66,6 +72,18 @@ Load_PDB = load_pdb
 LoadPDB = load_pdb
 Load_Mol2 = load_mol2
 LoadMOL2 = load_mol2
+Load_Gromacs_Topology_File = load_gromacs_topology_file
+LoadGromacsTopologyFile = load_gromacs_topology_file
+Load_OPLS_ITP_File = load_opls_itp_file
+LoadOPLSITPFile = load_opls_itp_file
+Load_CHARMM_Parameter_File = load_charmm_parameter_file
+LoadCHARMMParameterFile = load_charmm_parameter_file
+Load_CHARMM_Topology_File = load_charmm_topology_file
+LoadCHARMMTopologyFile = load_charmm_topology_file
+Load_SW_Parameter_File = load_sw_parameter_file
+LoadSWParameterFile = load_sw_parameter_file
+Load_EDIP_Parameter_File = load_edip_parameter_file
+LoadEDIPParameterFile = load_edip_parameter_file
 Get_Assignment_From_Mol2 = get_assignment_from_mol2
 Load_Frcmod = load_frcmod
 Load_Parmdat = load_parmdat
@@ -88,6 +106,12 @@ __all__ = [
     "load_mol2",
     "load_frcmod",
     "load_parmdat",
+    "load_gromacs_topology_file",
+    "load_opls_itp_file",
+    "load_charmm_parameter_file",
+    "load_charmm_topology_file",
+    "load_sw_parameter_file",
+    "load_edip_parameter_file",
     "add_solvent_box",
     "add_molecule",
     "get_assignment_from_mol2",
@@ -115,4 +139,16 @@ __all__ = [
     "Save_SPONGE_Input",
     "Save_PDB",
     "Save_Mol2",
+    "Load_Gromacs_Topology_File",
+    "LoadGromacsTopologyFile",
+    "Load_OPLS_ITP_File",
+    "LoadOPLSITPFile",
+    "Load_CHARMM_Parameter_File",
+    "LoadCHARMMParameterFile",
+    "Load_CHARMM_Topology_File",
+    "LoadCHARMMTopologyFile",
+    "Load_SW_Parameter_File",
+    "LoadSWParameterFile",
+    "Load_EDIP_Parameter_File",
+    "LoadEDIPParameterFile",
 ]

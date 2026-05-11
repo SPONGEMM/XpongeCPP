@@ -86,6 +86,26 @@ std::shared_ptr<Molecule> load_mol2_object(py::object source) {
     return std::make_shared<Molecule>(load_mol2_text(read_python_input(source)));
 }
 
+std::shared_ptr<Molecule> load_gromacs_topology_object(const std::string& filename) {
+    return std::make_shared<Molecule>(load_gromacs_topology_file(filename));
+}
+
+std::shared_ptr<Molecule> load_opls_itp_object(const std::string& filename) {
+    return std::make_shared<Molecule>(load_opls_itp_file(filename));
+}
+
+std::shared_ptr<Molecule> load_charmm_topology_object(const std::string& filename) {
+    return std::make_shared<Molecule>(load_charmm_topology_file(filename));
+}
+
+void load_sw_parameter_object(const std::string& filename, const std::shared_ptr<Molecule>& molecule) {
+    load_sw_parameter_file(filename, *molecule);
+}
+
+void load_edip_parameter_object(const std::string& filename, const std::shared_ptr<Molecule>& molecule) {
+    load_edip_parameter_file(filename, *molecule);
+}
+
 std::shared_ptr<Assign> get_assignment_from_mol2_object(py::object source, py::object total_charge) {
     std::optional<int> charge;
     bool charge_from_sum = false;
@@ -299,6 +319,12 @@ PYBIND11_MODULE(_core, m) {
 
     m.def("load_pdb", &load_pdb_object);
     m.def("load_mol2", &load_mol2_object);
+    m.def("load_gromacs_topology_file", &load_gromacs_topology_object);
+    m.def("load_opls_itp_file", &load_opls_itp_object);
+    m.def("load_charmm_parameter_file", [](const std::string& filename) { load_charmm_parameter_file(filename); });
+    m.def("load_charmm_topology_file", &load_charmm_topology_object);
+    m.def("load_sw_parameter_file", &load_sw_parameter_object, py::arg("filename"), py::arg("molecule"));
+    m.def("load_edip_parameter_file", &load_edip_parameter_object, py::arg("filename"), py::arg("molecule"));
     m.def("get_assignment_from_mol2", &get_assignment_from_mol2_object, py::arg("source"),
           py::arg("total_charge") = py::none());
     m.def("load_frcmod", [](const std::string& filename) {
