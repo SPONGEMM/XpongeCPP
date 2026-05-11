@@ -445,6 +445,12 @@ std::vector<std::string> implemented_gaff_assign_types() {
 }
 
 void Assign::determine_atom_type(const std::string& rule) {
+    if (rule == "sybyl" || rule == "SYBYL") {
+        for (std::size_t i = 0; i < elements.size(); ++i) {
+            atom_types[i] = elements[i] + element_details[i];
+        }
+        return;
+    }
     if (rule != "gaff" && rule != "GAFF") {
         for (std::size_t i = 0; i < elements.size(); ++i) {
             atom_types[i] = elements[i];

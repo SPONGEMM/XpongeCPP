@@ -207,6 +207,8 @@ PYBIND11_MODULE(_core, m) {
         .def_readwrite("name", &Assign::name)
         .def_property_readonly("atom_count", &Assign::atom_count)
         .def_property_readonly("bond_count", &Assign::bond_count)
+        .def_property_readonly("atoms", [](const Assign& self) { return self.elements; })
+        .def_readonly("element_details", &Assign::element_details)
         .def_readonly("atom_types", &Assign::atom_types)
         .def("add_atom", &Assign::add_atom, py::arg("element"), py::arg("x"), py::arg("y"), py::arg("z"),
              py::arg("name") = "", py::arg("charge") = 0.0)

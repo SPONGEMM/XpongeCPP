@@ -1,3 +1,4 @@
+import io
 import json
 import re
 from pathlib import Path
@@ -51,3 +52,31 @@ def test_gaff_assign_100_manifest_matches_original_xponge_baseline():
                 }
             )
     assert mismatches == []
+
+
+def test_assignment_from_mol2_preserves_sybyl_atom_type_details():
+    mol2 = """@<TRIPOS>MOLECULE
+SYBYL_TYPES
+ 4 3 1 0 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+     1 C1      0.0000   0.0000   0.0000 C.ar       1 MOL 0.000000
+     2 N1      1.3000   0.0000   0.0000 N.pl3      1 MOL 0.000000
+     3 O1      2.6000   0.0000   0.0000 O.co2      1 MOL 0.000000
+     4 CL1     3.9000   0.0000   0.0000 Cl         1 MOL 0.000000
+@<TRIPOS>BOND
+     1 1 2 ar
+     2 2 3 1
+     3 3 4 1
+@<TRIPOS>SUBSTRUCTURE
+     1 MOL 1
+"""
+
+    assignment = Xponge.get_assignment_from_mol2(io.StringIO(mol2), total_charge="sum")
+
+    assert assignment.atoms == ["C", "N", "O", "Cl"]
+    assert assignment.element_details == [".ar", ".pl3", ".co2", ""]
+
+    assignment.determine_atom_type("sybyl")
+    assert assignment.atom_types == ["C.ar", "N.pl3", "O.co2", "Cl"]
