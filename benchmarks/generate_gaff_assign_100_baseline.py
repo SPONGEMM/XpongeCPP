@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import importlib.util
 import json
 import re
 import signal
@@ -13,8 +14,21 @@ import urllib.request
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_XPONGE_REPO = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Xponge")
+def _load_paths_module():
+    module_path = Path(__file__).resolve().with_name("_paths.py")
+    spec = importlib.util.spec_from_file_location("_xpongecpp_bench_paths", module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+_paths = _load_paths_module()
+REPO_ROOT = _paths.REPO_ROOT
+original_xponge_repo = _paths.original_xponge_repo
+
+
+DEFAULT_XPONGE_REPO = original_xponge_repo()
 DEFAULT_CIDS = REPO_ROOT / "tests" / "data" / "gaff_assign_100" / "candidate_cids.txt"
 DEFAULT_OUT = REPO_ROOT / "tests" / "data" / "gaff_assign_100"
 CHEMBL_API = "https://www.ebi.ac.uk/chembl/api/data/molecule.json"

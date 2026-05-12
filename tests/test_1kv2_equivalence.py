@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 import XpongeCPP as Xponge
+from conftest import DATA_1KV2_DIR, optional_1kv2_baseline_dir
 
 
-DATA_DIR = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Mokda_demos/1KV2/data")
-PDB_1KV2_H = DATA_DIR / "1KV2_H.pdb"
+PDB_1KV2_H = DATA_1KV2_DIR / "1KV2_H.pdb"
 
 
 def _load_forcefield():
@@ -102,8 +102,9 @@ def test_1kv2_10a_sponge_file_headers_match_xponge(tmp_path):
 
 
 def test_1kv2_dihedral_xponge_same_force_groups_match_local_baseline(tmp_path):
-    baseline = Path("/tmp/xponge_1kv2_compare/original/spg_dihedral.txt")
-    if not baseline.exists():
+    baseline_dir = optional_1kv2_baseline_dir()
+    baseline = None if baseline_dir is None else baseline_dir / "spg_dihedral.txt"
+    if baseline is None or not baseline.exists():
         pytest.skip("local Xponge baseline output is not available")
 
     _load_forcefield()

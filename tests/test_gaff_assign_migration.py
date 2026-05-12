@@ -5,10 +5,11 @@ from pathlib import Path
 
 import pytest
 import XpongeCPP as Xponge
+from conftest import original_xponge_repo
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-XPONGE_GAFF = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Xponge/Xponge/forcefield/amber/gaff.py")
+XPONGE_GAFF = original_xponge_repo() / "Xponge" / "forcefield" / "amber" / "gaff.py"
 GAFF_100_DIR = REPO_ROOT / "tests" / "data" / "gaff_assign_100"
 
 

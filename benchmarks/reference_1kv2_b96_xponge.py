@@ -9,10 +9,25 @@ It records the exact Python calls used as the parity reference for XpongeCPP.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import sys
 from pathlib import Path
 
 import numpy as np
+
+
+def _load_paths_module():
+    module_path = Path(__file__).resolve().with_name("_paths.py")
+    spec = importlib.util.spec_from_file_location("_xpongecpp_bench_paths", module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+_paths = _load_paths_module()
+TEST_DATA_1KV2_DIR = _paths.TEST_DATA_1KV2_DIR
+original_xponge_repo = _paths.original_xponge_repo
 
 
 SPONGE_KEYS = [
@@ -37,13 +52,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--xponge-repo",
         type=Path,
-        default=Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Xponge"),
+        default=original_xponge_repo(),
         help="Path to the original Xponge checkout.",
     )
     parser.add_argument(
         "--data-dir",
         type=Path,
-        default=Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Mokda_demos/1KV2/data"),
+        default=TEST_DATA_1KV2_DIR,
         help="Directory containing 1KV2_H.pdb, B96.mol2, B96_H.mol2, and B96.frcmod.",
     )
     parser.add_argument("--out-dir", type=Path, required=True, help="Directory for generated reference files.")

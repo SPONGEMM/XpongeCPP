@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import statistics
 import tempfile
@@ -11,10 +12,22 @@ import time
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+def _load_paths_module():
+    module_path = Path(__file__).resolve().with_name("_paths.py")
+    spec = importlib.util.spec_from_file_location("_xpongecpp_bench_paths", module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+_paths = _load_paths_module()
+PDB_1KV2_H = _paths.PDB_1KV2_H
+REPO_ROOT = _paths.REPO_ROOT
+
+
 DEFAULT_JSON = REPO_ROOT / "benchmarks" / "forcefield_migration_bench.json"
 DEFAULT_MD = REPO_ROOT / "benchmarks" / "forcefield_migration_bench.md"
-PDB_1KV2_H = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Mokda_demos/1KV2/data/1KV2_H.pdb")
 DEFAULT_MOL2_DIR = REPO_ROOT / "tests" / "data" / "gaff_assign_100" / "inputs"
 CHARMM36_ITP = REPO_ROOT / "third_party" / "xponge_reference_forcefield" / "charmm" / "charmm36" / "forcefield.itp"
 OPLSAAM_ITP = REPO_ROOT / "third_party" / "xponge_reference_forcefield" / "opls" / "oplsaam" / "forcefield.itp"

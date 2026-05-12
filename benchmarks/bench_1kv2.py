@@ -5,13 +5,23 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.util
 import statistics
 import tempfile
 import time
 from pathlib import Path
 
 
-PDB_1KV2_H = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Mokda_demos/1KV2/data/1KV2_H.pdb")
+def _load_paths_module():
+    module_path = Path(__file__).resolve().with_name("_paths.py")
+    spec = importlib.util.spec_from_file_location("_xpongecpp_bench_paths", module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+PDB_1KV2_H = _load_paths_module().PDB_1KV2_H
 
 
 def bench_xpongecpp(n_solvent: int, n_repeat: int) -> dict[str, float]:

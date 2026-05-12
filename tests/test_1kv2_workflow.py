@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import XpongeCPP as Xponge
+from conftest import DATA_1KV2_DIR
 
 
-DATA_DIR = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Mokda_demos/1KV2/data")
-PDB_1KV2_H = DATA_DIR / "1KV2_H.pdb"
+PDB_1KV2_H = DATA_1KV2_DIR / "1KV2_H.pdb"
 
 
 def test_forcefield_imports_register_ff14sb_tip3p_and_ions():

@@ -4,10 +4,11 @@ import textwrap
 
 import pytest
 import XpongeCPP as Xponge
+from conftest import DATA_1KV2_DIR, original_xponge_repo
 
 
-DATA_DIR = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Mokda_demos/1KV2/data")
-XPONGE_REPO = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Xponge")
+DATA_DIR = DATA_1KV2_DIR
+XPONGE_REPO = original_xponge_repo()
 B96_MOL2 = DATA_DIR / "B96.mol2"
 B96_FRCMOD = DATA_DIR / "B96.frcmod"
 
