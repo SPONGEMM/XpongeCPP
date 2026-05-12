@@ -1,1 +1,0 @@
-"""Force-field compatibility namespace."""

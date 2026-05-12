@@ -114,7 +114,7 @@ Acceptance:
 - Modify: `cpp/core.hpp`
 - Modify: `cpp/core/molecule.cpp`
 - Modify: `cpp/python/bindings.cpp`
-- Modify: `python/XpongeCPP/__init__.py`
+- Modify: `src/XpongeCPP/__init__.py`
 - Test: `tests/test_system_assembly.py`
 
 - [ ] Add `append_molecule(Molecule& target, const Molecule& source)`.
@@ -230,7 +230,7 @@ Acceptance:
 
 **Files:**
 
-- Modify: `python/XpongeCPP/forcefield/amber/`
+- Modify: `src/XpongeCPP/forcefield/amber/`
 - Modify: `cpp/solvation/solvation.cpp`
 - Test: `tests/test_custom_solvent.py`
 

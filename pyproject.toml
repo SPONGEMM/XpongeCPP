@@ -17,7 +17,7 @@ dev = ["pytest>=9"]
 [tool.scikit-build]
 cmake.version = ">=3.18"
 build-dir = "build/{wheel_tag}"
-wheel.packages = ["python/XpongeCPP"]
+wheel.packages = ["src/XpongeCPP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,6 +1,7 @@
 import importlib
 from importlib import resources
 from io import StringIO
+from pathlib import Path
 
 import XpongeCPP as Xponge
 
@@ -30,8 +31,8 @@ def test_full_amber_forcefield_data_is_packaged():
         assert amber_root.joinpath(relative).is_file(), relative
 
 
-def test_reference_xponge_forcefield_tree_is_packaged():
-    reference_root = resources.files("XpongeCPP").joinpath("data", "reference_forcefield")
+def test_reference_xponge_forcefield_tree_is_available_in_source_tree():
+    reference_root = Path(__file__).resolve().parents[1] / "third_party" / "xponge_reference_forcefield"
 
     required = [
         "amber/ff14SB.mol2",

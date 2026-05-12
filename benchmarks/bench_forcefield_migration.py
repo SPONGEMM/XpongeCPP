@@ -16,8 +16,8 @@ DEFAULT_JSON = REPO_ROOT / "benchmarks" / "forcefield_migration_bench.json"
 DEFAULT_MD = REPO_ROOT / "benchmarks" / "forcefield_migration_bench.md"
 PDB_1KV2_H = Path("/media/ylj/62dc0c74-e929-4dc8-8db9-632cb94b0cb8/Mokda_demos/1KV2/data/1KV2_H.pdb")
 DEFAULT_MOL2_DIR = REPO_ROOT / "tests" / "data" / "gaff_assign_100" / "inputs"
-CHARMM36_ITP = REPO_ROOT / "python" / "XpongeCPP" / "data" / "reference_forcefield" / "charmm" / "charmm36" / "forcefield.itp"
-OPLSAAM_ITP = REPO_ROOT / "python" / "XpongeCPP" / "data" / "reference_forcefield" / "opls" / "oplsaam" / "forcefield.itp"
+CHARMM36_ITP = REPO_ROOT / "third_party" / "xponge_reference_forcefield" / "charmm" / "charmm36" / "forcefield.itp"
+OPLSAAM_ITP = REPO_ROOT / "third_party" / "xponge_reference_forcefield" / "opls" / "oplsaam" / "forcefield.itp"
 
 
 def build_parser() -> argparse.ArgumentParser:
