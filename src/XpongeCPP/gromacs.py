@@ -294,7 +294,16 @@ def load_molitp(filename, water_replace=True, head_prefix="N", tail_prefix="C", 
             current_name = words[0]
             skip = bool(water_replace and current_name == "SOL") or current_name not in system_molecules
             if not skip:
-                mol_specs[current_name] = {"atoms": [], "bonds": []}
+                mol_specs[current_name] = {
+                    "atoms": [],
+                    "bonds": [],
+                    "pairs": [],
+                    "angles": [],
+                    "dihedrals": [],
+                    "virtual_sites2": [],
+                    "virtual_sites3": [],
+                    "virtual_sites4": [],
+                }
                 molecule_order.append(current_name)
         elif iterator.flag == "atoms" and not skip:
             nr = int(words[0])
@@ -316,6 +325,11 @@ def load_molitp(filename, water_replace=True, head_prefix="N", tail_prefix="C", 
             )
         elif iterator.flag == "bonds" and not skip:
             mol_specs[current_name]["bonds"].append((int(words[0]), int(words[1])))
+            mol_specs[current_name]["bonds"].append(tuple(words))
+        elif iterator.flag in {
+            "pairs", "angles", "dihedrals", "virtual_sites2", "virtual_sites3", "virtual_sites4"
+        } and not skip:
+            mol_specs[current_name][iterator.flag].append(tuple(words))
         elif iterator.flag == "system":
             system_name = line.strip()
         elif iterator.flag == "molecules":
@@ -324,7 +338,29 @@ def load_molitp(filename, water_replace=True, head_prefix="N", tail_prefix="C", 
     mols = {}
     for name in molecule_order:
         spec = mol_specs[name]
-        mols[name] = load_mol2(StringIO(_molitp_to_mol2(name, spec["atoms"], spec["bonds"])))
+        bond_pairs = [bond for bond in spec["bonds"] if len(bond) == 2]
+        mol = load_mol2(StringIO(_molitp_to_mol2(name, spec["atoms"], bond_pairs)))
+        atom_views = []
+        for residue in mol.residues:
+            atom_views.extend(residue.atoms)
+        stat = {index: atom for index, atom in enumerate(atom_views, 1)}
+
+        for words in spec["bonds"]:
+            if len(words) != 2:
+                parser = GlobalSetting.get_gmx_bonded_type_parser("bond", int(words[2]))
+                parser(words, mol, stat)
+        for section, force_name, func_index in (
+            ("pairs", "pair", 2),
+            ("angles", "angle", 3),
+            ("dihedrals", "dihedral", 4),
+            ("virtual_sites2", "virtual_site2", 3),
+            ("virtual_sites3", "virtual_site3", 4),
+            ("virtual_sites4", "virtual_site4", 5),
+        ):
+            for words in spec[section]:
+                parser = GlobalSetting.get_gmx_bonded_type_parser(force_name, int(words[func_index]))
+                parser(words, mol, stat)
+        mols[name] = mol
     if water_replace and "SOL" in [name for name, _ in system_counts]:
         try:
             mols["SOL"] = get_template_molecule("WAT")
@@ -342,4 +378,3 @@ def load_molitp(filename, water_replace=True, head_prefix="N", tail_prefix="C", 
             for _ in range(count):
                 system.add_molecule(mols[name])
     return system, mols
-

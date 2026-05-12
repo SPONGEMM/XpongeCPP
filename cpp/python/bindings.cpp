@@ -78,6 +78,33 @@ std::vector<AtomView> residue_atom_views(const ResidueView& residue_view) {
     return views;
 }
 
+std::vector<AtomView> molecule_atom_views(const std::shared_ptr<Molecule>& molecule) {
+    std::vector<AtomView> views;
+    views.reserve(molecule->atom_count());
+    for (AtomId i = 0; i < molecule->atom_count(); ++i) {
+        views.push_back({molecule, i});
+    }
+    return views;
+}
+
+std::vector<std::array<AtomId, 2>> molecule_explicit_bonds(const std::shared_ptr<Molecule>& molecule) {
+    std::vector<std::array<AtomId, 2>> bonds;
+    bonds.reserve(molecule->explicit_bonds.size());
+    for (const auto& bond : molecule->explicit_bonds) {
+        bonds.push_back({bond.atom1, bond.atom2});
+    }
+    return bonds;
+}
+
+std::vector<std::array<AtomId, 2>> molecule_residue_links(const std::shared_ptr<Molecule>& molecule) {
+    std::vector<std::array<AtomId, 2>> links;
+    links.reserve(molecule->residue_links.size());
+    for (const auto& link : molecule->residue_links) {
+        links.push_back({link.atom1, link.atom2});
+    }
+    return links;
+}
+
 std::shared_ptr<Molecule> load_pdb_object(py::object source, bool judge_histone, const std::string& position_need,
                                           bool ignore_hydrogen, bool ignore_unknown_name, bool ignore_seqres,
                                           bool ignore_conect, bool read_cryst1, py::object unterminal_residues) {
@@ -337,6 +364,7 @@ std::shared_ptr<Molecule> merge_force_field_object(
 
 PYBIND11_MODULE(_core, m) {
     py::class_<AtomView>(m, "Atom")
+        .def_property_readonly("index", [](const AtomView& self) { return self.id; })
         .def_property_readonly("name", [](const AtomView& self) { return self.get().name; })
         .def_property("type", [](const AtomView& self) { return self.get().type; },
                       [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).type = value; })
@@ -396,7 +424,10 @@ PYBIND11_MODULE(_core, m) {
         .def_readwrite("name", &Molecule::name)
         .def_property_readonly("atom_count", &Molecule::atom_count)
         .def_property_readonly("residue_count", &Molecule::residue_count)
+        .def_property_readonly("atoms", &molecule_atom_views)
         .def_property_readonly("residues", &residue_views)
+        .def_property_readonly("explicit_bonds", &molecule_explicit_bonds)
+        .def_property_readonly("residue_links", &molecule_residue_links)
         .def_readwrite("box_length", &Molecule::box_length)
         .def_readwrite("box_angle", &Molecule::box_angle)
         .def("set_box_padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)

@@ -92,6 +92,49 @@ PEP 2
     assert system.residue_counts() == {"NALA": 2, "CGLY": 2}
 
 
+def test_load_molitp_invokes_registered_bonded_type_parsers_and_copies_special_forces(tmp_path):
+    top = tmp_path / "system.top"
+    top.write_text(
+        """[ moleculetype ]
+MOL 3
+[ atoms ]
+1 Q 1 LIG A1 1 0.0 12.0
+2 Q 1 LIG A2 1 0.0 12.0
+3 Q 1 LIG A3 1 0.0 12.0
+[ bonds ]
+1 2 1
+2 3 1
+[ pairs ]
+1 3 1
+[ system ]
+case
+[ molecules ]
+MOL 2
+"""
+    )
+
+    def pair_parser(words, mol, _stat):
+        mol.add_nb14_extra(int(words[0]) - 1, int(words[1]) - 1, 1.25, 2.5, 0.75)
+
+    Xponge.register_amber_lj_parameter("Q", "Q", 0.2, 1.0)
+    Xponge.GlobalSetting.Set_GMX_Bonded_Type_Parser("pair", 1, pair_parser)
+    try:
+        system, mols = Xponge.load_molitp(str(top), water_replace=False)
+    finally:
+        Xponge.GlobalSetting._gmx_bonded_type_parsers.pop(("pair", 1), None)
+
+    assert sorted(mols) == ["MOL"]
+    out = Xponge.Save_SPONGE_Input(system, prefix="molitp", dirname=str(tmp_path))
+    assert "nb14_extra" in out
+    lines = (tmp_path / "molitp_nb14_extra.txt").read_text().splitlines()
+    assert lines[0] == "2"
+    records = [[float(value) for value in line.split()] for line in lines[1:]]
+    assert records == [
+        [0.0, 2.0, 1.25, 2.5, 0.75],
+        [3.0, 5.0, 1.25, 2.5, 0.75],
+    ]
+
+
 def test_gromacs_topology_parser_generates_special_forces(tmp_path):
     include = tmp_path / "params.itp"
     include.write_text(
