@@ -1,4 +1,5 @@
 from io import StringIO
+from pathlib import Path
 
 import pytest
 import XpongeCPP as Xponge
@@ -72,7 +73,13 @@ USER_CHARGES
 """
 
 
+def _snapshot_export_dir(path: Path) -> dict[str, str]:
+    return {item.name: item.read_text() for item in sorted(path.iterdir()) if item.is_file()}
+
+
 def test_load_pdb_preserves_molecule_residue_atom_layers():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
     mol = Xponge.load_pdb(StringIO(PDB_TEXT))
 
     assert mol.name == "PDB"
@@ -197,6 +204,24 @@ def test_save_sponge_input_writes_core_files(tmp_path):
     assert (tmp_path / "case_residue.txt").read_text().splitlines()[0] == "4 1"
 
 
+def test_save_sponge_input_is_byte_identical_across_repeated_exports(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    mol = Xponge.load_pdb(StringIO(PDB_TEXT))
+    water = Xponge.get_template_molecule("WAT")
+    Xponge.Add_Solvent_Box(mol, water, 4.0, tolerance=2.5, n_solvent=4, seed=20260509)
+
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    Xponge.Save_SPONGE_Input(mol, prefix="case", dirname=str(first))
+    Xponge.Save_SPONGE_Input(mol, prefix="case", dirname=str(second))
+
+    assert _snapshot_export_dir(first) == _snapshot_export_dir(second)
+
+
 def test_save_sponge_input_writes_xponge_extra_bonded_force_files(tmp_path):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
@@ -305,6 +330,28 @@ def test_save_sponge_input_writes_xponge_general_bonded_force_files(tmp_path):
     assert (tmp_path / "general_listed_forces.txt").read_text().startswith("[[[ Ryckaert_Bellemans ]]]")
 
 
+def test_save_sponge_input_special_force_exports_are_byte_identical(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
+    mol.add_virtual_atom2(0, 1, 2, 3, 0.25, 0.75)
+    mol.add_improper_dihedral(1, 2, 3, 4, 5.5, 180.0)
+    mol.add_nb14_extra(4, 1, 1.25, 2.5, 0.75)
+    cmap_type = mol.add_cmap_type(2, [0.1, 0.2, 0.3, 0.4])
+    mol.add_cmap(4, 3, 2, 1, 0, cmap_type)
+    mol.add_urey_bradley(2, 1, 0, 1.1, 2.2, 3.3, 4.4)
+    mol.add_ryckaert_bellemans(4, 3, 2, 1, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5)
+    mol.add_bond_soft(4, 1, 6.5, 7.5, 2)
+
+    first = tmp_path / "first_special"
+    second = tmp_path / "second_special"
+    first.mkdir()
+    second.mkdir()
+    Xponge.Save_SPONGE_Input(mol, prefix="special", dirname=str(first))
+    Xponge.Save_SPONGE_Input(mol, prefix="special", dirname=str(second))
+
+    assert _snapshot_export_dir(first) == _snapshot_export_dir(second)
+
+
 def test_save_sponge_input_writes_xponge_special_state_files(tmp_path):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))
@@ -406,6 +453,27 @@ def test_add_ions_randomly_replaces_waters_by_seed():
     assert solute.residues[1].name == "NA"
     ion_position = tuple(getattr(solute.residues[1].atoms[0], axis) for axis in ("x", "y", "z"))
     assert ion_position != first_water_oxygen
+
+
+def test_add_solvent_box_is_deterministic_for_fixed_seed():
+    Xponge.register_tip3p()
+    first = Xponge.load_pdb(StringIO(PDB_TEXT))
+    second = Xponge.load_pdb(StringIO(PDB_TEXT))
+    water = Xponge.get_template_molecule("WAT")
+
+    Xponge.Add_Solvent_Box(first, water, 4.0, tolerance=2.5, n_solvent=8, seed=20260509)
+    Xponge.Add_Solvent_Box(second, water, 4.0, tolerance=2.5, n_solvent=8, seed=20260509)
+
+    assert first.atom_count == second.atom_count
+    assert first.residue_count == second.residue_count
+    assert [res.name for res in first.residues] == [res.name for res in second.residues]
+    assert [
+        (atom.name, atom.type, atom.x, atom.y, atom.z)
+        for atom in first.atoms
+    ] == [
+        (atom.name, atom.type, atom.x, atom.y, atom.z)
+        for atom in second.atoms
+    ]
 
 
 def test_add_ions_preserves_mol2_explicit_bonds_after_rebuild(tmp_path):

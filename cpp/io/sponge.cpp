@@ -6,6 +6,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -26,6 +27,20 @@ std::filesystem::path output_path(const std::filesystem::path& dirname, const st
 void remember(std::unordered_map<std::string, std::filesystem::path>& outputs, const std::string& key,
               const std::filesystem::path& path) {
     outputs[key] = path;
+}
+
+struct OutputBuffer {
+    std::string key;
+    std::string text;
+};
+
+void write_output_buffer(const std::filesystem::path& dirname, const std::string& prefix,
+                         std::unordered_map<std::string, std::filesystem::path>& outputs,
+                         const OutputBuffer& buffer) {
+    const auto path = output_path(dirname, prefix, buffer.key);
+    std::ofstream out(path);
+    out << buffer.text;
+    remember(outputs, buffer.key, path);
 }
 
 std::string formatted_scientific(double value) {
@@ -165,65 +180,60 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
     std::filesystem::create_directories(dirname);
     std::unordered_map<std::string, std::filesystem::path> outputs;
 
-    {
-        const auto path = output_path(dirname, actual_prefix, "residue");
-        std::ofstream out(path);
+    std::vector<std::pair<std::string, std::future<std::optional<OutputBuffer>>>> futures;
+    futures.reserve(12);
+    futures.emplace_back("residue", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << molecule.atoms.size() << " " << molecule.residues.size() << "\n";
         for (const auto& residue : molecule.residues) {
             out << residue.atom_count << "\n";
         }
-        remember(outputs, "residue", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "resname");
-        std::ofstream out(path);
+        return OutputBuffer{"residue", out.str()};
+    }));
+    futures.emplace_back("resname", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << molecule.residues.size() << "\n";
         for (const auto& residue : molecule.residues) {
             out << residue.name << "\n";
         }
-        remember(outputs, "resname", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "atom_name");
-        std::ofstream out(path);
+        return OutputBuffer{"resname", out.str()};
+    }));
+    futures.emplace_back("atom_name", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << molecule.atoms.size() << "\n";
         for (const auto& atom : molecule.atoms) {
             out << atom.name << "\n";
         }
-        remember(outputs, "atom_name", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "atom_type_name");
-        std::ofstream out(path);
+        return OutputBuffer{"atom_name", out.str()};
+    }));
+    futures.emplace_back("atom_type_name", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << molecule.atoms.size() << "\n";
         for (const auto& atom : molecule.atoms) {
             out << atom.type << "\n";
         }
-        remember(outputs, "atom_type_name", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "mass");
-        std::ofstream out(path);
+        return OutputBuffer{"atom_type_name", out.str()};
+    }));
+    futures.emplace_back("mass", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << molecule.atoms.size() << "\n";
         out << std::fixed << std::setprecision(3);
         for (const auto& atom : molecule.atoms) {
             out << atom.mass << "\n";
         }
-        remember(outputs, "mass", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "charge");
-        std::ofstream out(path);
+        return OutputBuffer{"mass", out.str()};
+    }));
+    futures.emplace_back("charge", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << molecule.atoms.size() << "\n";
         out << std::fixed << std::setprecision(6);
         for (const auto& atom : molecule.atoms) {
             out << atom.charge * 18.2223 << "\n";
         }
-        remember(outputs, "charge", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "coordinate");
-        std::ofstream out(path);
+        return OutputBuffer{"charge", out.str()};
+    }));
+    futures.emplace_back("coordinate", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << molecule.atoms.size() << "\n";
         out << std::fixed << std::setprecision(6);
         const auto shift = sponge_coordinate_shift_for_export(molecule);
@@ -232,9 +242,12 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         }
         const auto box = sponge_coordinate_box_for_export(molecule);
         out << box[0] << " " << box[1] << " " << box[2] << " " << box[3] << " " << box[4] << " " << box[5] << "\n";
-        remember(outputs, "coordinate", path);
-    }
-    if (!molecule.write_lj_soft_core) {
+        return OutputBuffer{"coordinate", out.str()};
+    }));
+    futures.emplace_back("LJ", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        if (molecule.write_lj_soft_core) {
+            return std::nullopt;
+        }
         std::vector<std::string> lj_types;
         std::unordered_map<std::string, std::uint32_t> lj_type_index;
         lj_type_index.reserve(32);
@@ -251,8 +264,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         const auto real_types = real_lj_types(lj_types, same_type);
         const auto [real_a, real_b] = find_ab_lj(real_types, false);
 
-        const auto path = output_path(dirname, actual_prefix, "LJ");
-        std::ofstream out(path);
+        std::ostringstream out;
         out << molecule.atoms.size() << " " << real_types.size() << "\n\n";
         std::size_t count = 0;
         for (std::size_t i = 0; i < real_types.size(); ++i) {
@@ -278,43 +290,38 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
             const auto lj_type = find_amber_lj_type(atom.type);
             out << same_type[lj_type_index.at(lj_type)] << "\n";
         }
-        remember(outputs, "LJ", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "bond");
-        std::ofstream out(path);
+        return OutputBuffer{"LJ", out.str()};
+    }));
+    futures.emplace_back("bond", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << topology.bonds.size() << "\n";
         out << std::fixed << std::setprecision(6);
         for (const auto& bond : topology.bonds) {
             out << bond.atom1 << " " << bond.atom2 << " " << bond.k << " " << bond.length << "\n";
         }
-        remember(outputs, "bond", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "angle");
-        std::ofstream out(path);
+        return OutputBuffer{"bond", out.str()};
+    }));
+    futures.emplace_back("angle", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << topology.angles.size() << "\n";
         out << std::fixed << std::setprecision(6);
         for (const auto& angle : topology.angles) {
             out << angle.atom1 << " " << angle.atom2 << " " << angle.atom3 << " " << angle.k << " " << angle.theta
                 << "\n";
         }
-        remember(outputs, "angle", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "dihedral");
-        std::ofstream out(path);
+        return OutputBuffer{"angle", out.str()};
+    }));
+    futures.emplace_back("dihedral", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << topology.dihedrals.size() << "\n";
         out << std::fixed << std::setprecision(6);
         for (const auto& dihedral : topology.dihedrals) {
             out << dihedral.atom1 << " " << dihedral.atom2 << " " << dihedral.atom3 << " " << dihedral.atom4
                 << " " << dihedral.periodicity << " " << dihedral.k << " " << dihedral.phase << "\n";
         }
-        remember(outputs, "dihedral", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "exclude");
-        std::ofstream out(path);
+        return OutputBuffer{"dihedral", out.str()};
+    }));
+    futures.emplace_back("exclude", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
         std::size_t total_exclusions = 0;
         std::vector<std::vector<AtomId>> upper_exclusions(topology.exclusions.size());
         for (AtomId atom_id = 0; atom_id < topology.exclusions.size(); ++atom_id) {
@@ -326,6 +333,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
             std::sort(upper_exclusions[atom_id].begin(), upper_exclusions[atom_id].end());
             total_exclusions += upper_exclusions[atom_id].size();
         }
+        std::ostringstream out;
         out << topology.exclusions.size() << " " << total_exclusions << "\n";
         for (const auto& exclusions : upper_exclusions) {
             out << exclusions.size();
@@ -340,17 +348,22 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
             }
             out << "\n";
         }
-        remember(outputs, "exclude", path);
-    }
-    {
-        const auto path = output_path(dirname, actual_prefix, "nb14");
-        std::ofstream out(path);
+        return OutputBuffer{"exclude", out.str()};
+    }));
+    futures.emplace_back("nb14", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        std::ostringstream out;
         out << topology.nb14s.size() << "\n";
         out << std::fixed << std::setprecision(6);
         for (const auto& nb14 : topology.nb14s) {
             out << nb14.atom1 << " " << nb14.atom2 << " " << nb14.k_lj << " " << nb14.k_ee << "\n";
         }
-        remember(outputs, "nb14", path);
+        return OutputBuffer{"nb14", out.str()};
+    }));
+    for (auto& future : futures) {
+        const auto buffer = future.second.get();
+        if (buffer) {
+            write_output_buffer(dirname, actual_prefix, outputs, *buffer);
+        }
     }
     if (!molecule.virtual_atoms.empty()) {
         const auto path = output_path(dirname, actual_prefix, "virtual_atom");

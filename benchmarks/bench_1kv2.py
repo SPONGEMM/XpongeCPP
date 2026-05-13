@@ -24,7 +24,7 @@ def _load_paths_module():
 PDB_1KV2_H = _load_paths_module().PDB_1KV2_H
 
 
-def bench_xpongecpp(n_solvent: int, n_repeat: int) -> dict[str, float]:
+def bench_xpongecpp(padding: float, n_solvent: int, n_repeat: int) -> dict[str, float]:
     import XpongeCPP as Xponge
 
     import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
@@ -48,7 +48,7 @@ def bench_xpongecpp(n_solvent: int, n_repeat: int) -> dict[str, float]:
         timings["load_pdb"].append(time.perf_counter() - start)
 
         start = time.perf_counter()
-        Xponge.Add_Solvent_Box(mol, water, 8.0, tolerance=2.5, n_solvent=n_solvent)
+        Xponge.Add_Solvent_Box(mol, water, padding, tolerance=2.5, n_solvent=n_solvent, seed=20260509)
         timings["solvate"].append(time.perf_counter() - start)
 
         start = time.perf_counter()
@@ -76,20 +76,28 @@ def try_import_old_xponge():
         return None
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repeat", type=int, default=5)
     parser.add_argument("--n-solvent", type=int, default=512)
+    parser.add_argument("--padding", type=float, nargs="+", default=[8.0, 20.0])
     parser.add_argument("--smoke", action="store_true")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     repeat = 1 if args.smoke else args.repeat
     n_solvent = 64 if args.smoke else args.n_solvent
-    result = bench_xpongecpp(n_solvent=n_solvent, n_repeat=repeat)
+    paddings = [8.0] if args.smoke else args.padding
 
-    print("XpongeCPP median wall time (seconds)")
-    for key, value in result.items():
-        print(f"{key:18s} {value:.6f}")
+    for padding in paddings:
+        result = bench_xpongecpp(padding=padding, n_solvent=n_solvent, n_repeat=repeat)
+        print(f"XpongeCPP median wall time (seconds), padding={padding:.1f}A")
+        for key, value in result.items():
+            print(f"{key:18s} {value:.6f}")
+        print()
 
     if try_import_old_xponge() is None:
         print("old_xponge        unavailable; run from an environment with Xponge installed for ratio comparison")

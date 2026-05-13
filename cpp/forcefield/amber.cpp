@@ -6,6 +6,7 @@
 #include <fstream>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -25,8 +26,8 @@ std::unordered_map<std::string, Molecule>& molecule_templates() {
     return registry;
 }
 
-std::mutex& registry_mutex() {
-    static std::mutex mutex;
+std::shared_mutex& registry_mutex() {
+    static std::shared_mutex mutex;
     return mutex;
 }
 
@@ -211,10 +212,6 @@ std::pair<std::array<std::string, 4>, std::vector<std::string>> amber_atoms_word
     return {atoms, words};
 }
 
-std::string proper_key(const std::array<std::string, 4>& types) {
-    return types[0] + "-" + types[1] + "-" + types[2] + "-" + types[3];
-}
-
 void upsert_bond_parameter(const std::string& atom_type1, const std::string& atom_type2, const BondTerm& term) {
     auto& parameters = bond_parameters();
     auto it = std::find_if(parameters.begin(), parameters.end(), [&](const BondParameter& parameter) {
@@ -395,7 +392,7 @@ void register_amber_parmdat_file(const std::filesystem::path& filename) {
     if (!input) {
         throw std::runtime_error("failed to open Amber parmdat file: " + filename.string());
     }
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
 
     std::string line;
     std::getline(input, line);
@@ -488,7 +485,7 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
     if (!input) {
         throw std::runtime_error("failed to open Amber frcmod file: " + filename.string());
     }
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
 
     std::string line;
     std::string flag;
@@ -587,14 +584,14 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
 
 void register_amber_lj_parameter(const std::string& atom_type, const std::string& lj_type, double epsilon,
                                  double rmin) {
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     upsert_lj_atom_type(atom_type, lj_type);
     upsert_lj_parameter(lj_type, epsilon, rmin);
 }
 
 void register_amber_bond_parameter(const std::string& atom_type1, const std::string& atom_type2, double k,
                                    double length) {
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     upsert_bond_parameter(atom_type1, atom_type2, {k, length});
 }
 
@@ -603,12 +600,12 @@ void register_amber_cmap_parameter(const std::string& key, std::uint32_t resolut
     if (resolution == 0 || parameters.size() != static_cast<std::size_t>(resolution) * resolution) {
         throw std::invalid_argument("Amber CMAP parameter count should equal resolution * resolution");
     }
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     upsert_amber_cmap_key(key, resolution, parameters);
 }
 
 bool has_amber_cmap_parameters() {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     return !amber_cmap_parameters().empty();
 }
 
@@ -616,7 +613,7 @@ void apply_amber_cmaps(Molecule& molecule) {
     if (!molecule.cmaps.empty()) {
         return;
     }
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     if (amber_cmap_parameters().empty() || molecule.residues.size() < 3) {
         return;
     }
@@ -652,7 +649,7 @@ void apply_amber_cmaps(Molecule& molecule) {
 }
 
 std::vector<DihedralTerm> find_amber_proper_terms(const std::array<std::string, 4>& atom_types) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     const std::array<std::string, 4> reverse{atom_types[3], atom_types[2], atom_types[1], atom_types[0]};
     int best_score = -1;
     std::size_t best_order = 0;
@@ -675,7 +672,7 @@ std::vector<DihedralTerm> find_amber_proper_terms(const std::array<std::string, 
 }
 
 std::optional<DihedralTerm> find_amber_improper_term(const std::array<std::string, 4>& atom_types) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     int best_score = -1;
     std::size_t best_order = 0;
     std::optional<DihedralTerm> out;
@@ -694,7 +691,7 @@ std::optional<DihedralTerm> find_amber_improper_term(const std::array<std::strin
 }
 
 std::optional<AmberImproperMatch> find_amber_improper_match(const std::array<std::string, 4>& atom_types) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     for (auto it = improper_parameters().rbegin(); it != improper_parameters().rend(); ++it) {
         if (it->types == atom_types) {
             return AmberImproperMatch{it->term, true, 0};
@@ -721,7 +718,7 @@ std::optional<AmberImproperMatch> find_amber_improper_match(const std::array<std
 }
 
 std::optional<NB14Scale> find_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     int best_score = -1;
     std::size_t best_order = 0;
     std::optional<NB14Scale> out;
@@ -741,7 +738,7 @@ std::optional<NB14Scale> find_amber_nb14_scale(const std::string& atom_type1, co
 }
 
 std::optional<BondTerm> find_amber_bond_term(const std::string& atom_type1, const std::string& atom_type2) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     int best_score = -1;
     std::size_t best_order = 0;
     std::optional<BondTerm> out;
@@ -761,7 +758,7 @@ std::optional<BondTerm> find_amber_bond_term(const std::string& atom_type1, cons
 }
 
 std::optional<AngleTerm> find_amber_angle_term(const std::array<std::string, 3>& atom_types) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     const std::array<std::string, 3> reverse{atom_types[2], atom_types[1], atom_types[0]};
     int best_score = -1;
     std::size_t best_order = 0;
@@ -782,7 +779,7 @@ std::optional<AngleTerm> find_amber_angle_term(const std::array<std::string, 3>&
 }
 
 std::string find_amber_lj_type(const std::string& atom_type) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     const auto it = lj_type_by_atom_type().find(atom_type);
     if (it != lj_type_by_atom_type().end()) {
         return it->second;
@@ -791,7 +788,7 @@ std::string find_amber_lj_type(const std::string& atom_type) {
 }
 
 std::optional<std::pair<double, double>> find_amber_lj_parameter(const std::string& lj_type) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     const auto it = lj_parameters().find(lj_type);
     if (it == lj_parameters().end()) {
         return std::nullopt;
@@ -800,7 +797,7 @@ std::optional<std::pair<double, double>> find_amber_lj_parameter(const std::stri
 }
 
 void register_ff14sb() {
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     constexpr std::array<const char*, 30> names{
         "ALA", "ARG", "ASH", "ASN", "ASP", "CYM", "CYS", "CYX", "GLH", "GLN",
         "GLU", "GLY", "HID", "HIE", "HIP", "HIS", "ILE", "LEU", "LYS", "MET",
@@ -814,7 +811,7 @@ void register_ff14sb() {
 }
 
 void register_tip3p() {
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
 
     ResidueType wat("WAT");
     wat.add_atom("O", "OW", 0.0000, 0.0000, 0.0000, -0.834, 16.0);
@@ -870,7 +867,7 @@ void register_residue_templates_from_mol2_text(const std::string& text) {
         }
     }
 
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     for (auto& residue_type : residue_types) {
         put_template(std::move(residue_type.second));
     }
@@ -898,7 +895,7 @@ void register_template_molecule_from_mol2_file(const std::filesystem::path& file
         throw std::invalid_argument("mol2 template file contains no residues: " + filename.string());
     }
 
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     for (const auto& residue : molecule.residues) {
         put_template(residue_type_from_molecule_residue(molecule, residue));
     }
@@ -908,7 +905,7 @@ void register_template_molecule_from_mol2_file(const std::filesystem::path& file
 void register_template_virtual_atom2(const std::string& template_name, const std::string& virtual_atom,
                                      const std::string& atom0, const std::string& atom1, const std::string& atom2,
                                      double k1, double k2) {
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     auto it = molecule_templates().find(template_name);
     if (it == molecule_templates().end()) {
         throw std::out_of_range("molecule template not found: " + template_name);
@@ -933,7 +930,7 @@ void register_template_virtual_atom2(const std::string& template_name, const std
 
 void configure_residue_template_head(const std::string& template_name, const std::string& atom,
                                      double length, const std::string& next) {
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     auto it = templates().find(template_name);
     if (it == templates().end()) {
         throw std::out_of_range("residue template not found: " + template_name);
@@ -943,7 +940,7 @@ void configure_residue_template_head(const std::string& template_name, const std
 
 void configure_residue_template_tail(const std::string& template_name, const std::string& atom,
                                      double length, const std::string& next) {
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     auto it = templates().find(template_name);
     if (it == templates().end()) {
         throw std::out_of_range("residue template not found: " + template_name);
@@ -953,7 +950,7 @@ void configure_residue_template_tail(const std::string& template_name, const std
 
 void configure_residue_template_connect_atom(const std::string& template_name, const std::string& key,
                                              const std::string& atom) {
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     auto it = templates().find(template_name);
     if (it == templates().end()) {
         throw std::out_of_range("residue template not found: " + template_name);
@@ -962,7 +959,7 @@ void configure_residue_template_connect_atom(const std::string& template_name, c
 }
 
 void register_residue_template_alias(const std::string& alias_name, const std::string& template_name) {
-    std::scoped_lock lock(registry_mutex());
+    std::unique_lock lock(registry_mutex());
     const auto it = templates().find(template_name);
     if (it == templates().end()) {
         throw std::out_of_range("residue template not found: " + template_name);
@@ -999,12 +996,12 @@ void register_residue_template_alias(const std::string& alias_name, const std::s
 }
 
 bool has_template(const std::string& name) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     return templates().find(name) != templates().end();
 }
 
 std::size_t template_atom_count(const std::string& name) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     const auto it = templates().find(name);
     if (it == templates().end()) {
         throw std::out_of_range("residue template not found: " + name);
@@ -1013,7 +1010,7 @@ std::size_t template_atom_count(const std::string& name) {
 }
 
 std::vector<std::string> registered_template_names() {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     std::vector<std::string> names;
     names.reserve(templates().size());
     for (const auto& [name, _template] : templates()) {
@@ -1024,7 +1021,7 @@ std::vector<std::string> registered_template_names() {
 }
 
 const ResidueType& get_residue_template(const std::string& name) {
-    std::scoped_lock lock(registry_mutex());
+    std::shared_lock lock(registry_mutex());
     const auto it = templates().find(name);
     if (it == templates().end()) {
         throw std::out_of_range("residue template not found: " + name);
@@ -1034,7 +1031,7 @@ const ResidueType& get_residue_template(const std::string& name) {
 
 Molecule get_template_molecule(const std::string& name) {
     {
-        std::scoped_lock lock(registry_mutex());
+        std::shared_lock lock(registry_mutex());
         const auto molecule_it = molecule_templates().find(name);
         if (molecule_it != molecule_templates().end()) {
             return molecule_it->second;

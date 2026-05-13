@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "parallel_utils.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -55,88 +56,121 @@ std::vector<std::string> deterministic_ion_order(const std::unordered_map<std::s
     return order;
 }
 
-void append_solvent_unit(Molecule& molecule, const Molecule& solvent, const std::array<double, 3>& placement) {
-    const AtomId atom_offset = static_cast<AtomId>(molecule.atoms.size());
-    const ResidueId residue_offset = static_cast<ResidueId>(molecule.residues.size());
+struct SolventLayout {
+    std::size_t atoms{0};
+    std::size_t residues{0};
+    std::size_t explicit_bonds{0};
+    std::size_t residue_links{0};
+    std::size_t virtual_atoms{0};
+    std::size_t harmonic_impropers{0};
+    std::size_t cmap_types{0};
+    std::size_t cmaps{0};
+    std::size_t nb14_extras{0};
+    std::size_t urey_bradleys{0};
+    std::size_t ryckaert_bellemans{0};
+    std::size_t soft_bonds{0};
+    std::size_t listed_force_definitions{0};
+};
 
-    molecule.residues.reserve(molecule.residues.size() + solvent.residues.size());
-    molecule.atoms.reserve(molecule.atoms.size() + solvent.atoms.size());
-    molecule.explicit_bonds.reserve(molecule.explicit_bonds.size() + solvent.explicit_bonds.size());
-    molecule.residue_links.reserve(molecule.residue_links.size() + solvent.residue_links.size());
-    molecule.virtual_atoms.reserve(molecule.virtual_atoms.size() + solvent.virtual_atoms.size());
-    molecule.harmonic_impropers.reserve(molecule.harmonic_impropers.size() + solvent.harmonic_impropers.size());
-    molecule.cmap_types.reserve(molecule.cmap_types.size() + solvent.cmap_types.size());
-    molecule.cmaps.reserve(molecule.cmaps.size() + solvent.cmaps.size());
-    molecule.nb14_extras.reserve(molecule.nb14_extras.size() + solvent.nb14_extras.size());
-    molecule.urey_bradleys.reserve(molecule.urey_bradleys.size() + solvent.urey_bradleys.size());
-    molecule.ryckaert_bellemans.reserve(molecule.ryckaert_bellemans.size() + solvent.ryckaert_bellemans.size());
-    molecule.soft_bonds.reserve(molecule.soft_bonds.size() + solvent.soft_bonds.size());
-    molecule.listed_force_definitions.reserve(molecule.listed_force_definitions.size() +
-                                              solvent.listed_force_definitions.size());
+SolventLayout solvent_layout(const Molecule& solvent) {
+    return {
+        solvent.atoms.size(),
+        solvent.residues.size(),
+        solvent.explicit_bonds.size(),
+        solvent.residue_links.size(),
+        solvent.virtual_atoms.size(),
+        solvent.harmonic_impropers.size(),
+        solvent.cmap_types.size(),
+        solvent.cmaps.size(),
+        solvent.nb14_extras.size(),
+        solvent.urey_bradleys.size(),
+        solvent.ryckaert_bellemans.size(),
+        solvent.soft_bonds.size(),
+        solvent.listed_force_definitions.size(),
+    };
+}
 
-    for (const auto& residue : solvent.residues) {
-        Residue copied = residue;
+void fill_solvent_unit(Molecule& molecule, const Molecule& solvent, const std::array<double, 3>& placement,
+                       std::size_t placement_index, const SolventLayout& layout, const SolventLayout& base) {
+    const AtomId atom_offset = static_cast<AtomId>(base.atoms + placement_index * layout.atoms);
+    const ResidueId residue_offset = static_cast<ResidueId>(base.residues + placement_index * layout.residues);
+    const std::size_t bond_offset = base.explicit_bonds + placement_index * layout.explicit_bonds;
+    const std::size_t link_offset = base.residue_links + placement_index * layout.residue_links;
+    const std::size_t virtual_offset = base.virtual_atoms + placement_index * layout.virtual_atoms;
+    const std::size_t improper_offset = base.harmonic_impropers + placement_index * layout.harmonic_impropers;
+    const std::uint32_t cmap_type_offset = static_cast<std::uint32_t>(base.cmap_types + placement_index * layout.cmap_types);
+    const std::size_t cmap_offset = base.cmaps + placement_index * layout.cmaps;
+    const std::size_t nb14_offset = base.nb14_extras + placement_index * layout.nb14_extras;
+    const std::size_t ub_offset = base.urey_bradleys + placement_index * layout.urey_bradleys;
+    const std::size_t rb_offset = base.ryckaert_bellemans + placement_index * layout.ryckaert_bellemans;
+    const std::size_t soft_offset = base.soft_bonds + placement_index * layout.soft_bonds;
+    const std::size_t listed_offset = base.listed_force_definitions + placement_index * layout.listed_force_definitions;
+
+    for (std::size_t i = 0; i < solvent.residues.size(); ++i) {
+        Residue copied = solvent.residues[i];
         copied.atom_begin += atom_offset;
-        molecule.residues.push_back(std::move(copied));
+        molecule.residues[base.residues + placement_index * layout.residues + i] = std::move(copied);
     }
-    for (const auto& source_atom : solvent.atoms) {
-        Atom atom = source_atom;
+    for (std::size_t i = 0; i < solvent.atoms.size(); ++i) {
+        Atom atom = solvent.atoms[i];
         atom.residue += residue_offset;
         atom.x += placement[0];
         atom.y += placement[1];
         atom.z += placement[2];
-        molecule.atoms.push_back(std::move(atom));
+        molecule.atoms[base.atoms + placement_index * layout.atoms + i] = std::move(atom);
     }
-    for (const auto& bond : solvent.explicit_bonds) {
-        molecule.explicit_bonds.push_back({bond.atom1 + atom_offset, bond.atom2 + atom_offset});
+    for (std::size_t i = 0; i < solvent.explicit_bonds.size(); ++i) {
+        const auto& bond = solvent.explicit_bonds[i];
+        molecule.explicit_bonds[bond_offset + i] = {bond.atom1 + atom_offset, bond.atom2 + atom_offset};
     }
-    for (const auto& link : solvent.residue_links) {
-        molecule.residue_links.push_back({link.atom1 + atom_offset, link.atom2 + atom_offset});
+    for (std::size_t i = 0; i < solvent.residue_links.size(); ++i) {
+        const auto& link = solvent.residue_links[i];
+        molecule.residue_links[link_offset + i] = {link.atom1 + atom_offset, link.atom2 + atom_offset};
     }
-    for (const auto& vatom : solvent.virtual_atoms) {
-        molecule.virtual_atoms.push_back({vatom.virtual_atom + atom_offset, vatom.atom0 + atom_offset,
-                                          vatom.atom1 + atom_offset, vatom.atom2 + atom_offset,
-                                          vatom.k1, vatom.k2});
+    for (std::size_t i = 0; i < solvent.virtual_atoms.size(); ++i) {
+        const auto& vatom = solvent.virtual_atoms[i];
+        molecule.virtual_atoms[virtual_offset + i] = {vatom.virtual_atom + atom_offset, vatom.atom0 + atom_offset,
+                                                      vatom.atom1 + atom_offset, vatom.atom2 + atom_offset,
+                                                      vatom.k1, vatom.k2};
     }
-    for (const auto& improper : solvent.harmonic_impropers) {
-        molecule.harmonic_impropers.push_back({improper.atom0 + atom_offset, improper.atom1 + atom_offset,
-                                               improper.atom2 + atom_offset, improper.atom3 + atom_offset,
-                                               improper.k, improper.phi0});
+    for (std::size_t i = 0; i < solvent.harmonic_impropers.size(); ++i) {
+        const auto& improper = solvent.harmonic_impropers[i];
+        molecule.harmonic_impropers[improper_offset + i] = {
+            improper.atom0 + atom_offset, improper.atom1 + atom_offset, improper.atom2 + atom_offset,
+            improper.atom3 + atom_offset, improper.k, improper.phi0};
     }
-    const std::uint32_t cmap_type_offset = static_cast<std::uint32_t>(molecule.cmap_types.size());
-    for (const auto& type : solvent.cmap_types) {
-        molecule.cmap_types.push_back(type);
+    for (std::size_t i = 0; i < solvent.cmap_types.size(); ++i) {
+        molecule.cmap_types[base.cmap_types + placement_index * layout.cmap_types + i] = solvent.cmap_types[i];
     }
-    for (const auto& cmap : solvent.cmaps) {
-        molecule.cmaps.push_back({cmap.atom0 + atom_offset, cmap.atom1 + atom_offset, cmap.atom2 + atom_offset,
-                                  cmap.atom3 + atom_offset, cmap.atom4 + atom_offset, cmap.type + cmap_type_offset});
+    for (std::size_t i = 0; i < solvent.cmaps.size(); ++i) {
+        const auto& cmap = solvent.cmaps[i];
+        molecule.cmaps[cmap_offset + i] = {cmap.atom0 + atom_offset, cmap.atom1 + atom_offset, cmap.atom2 + atom_offset,
+                                           cmap.atom3 + atom_offset, cmap.atom4 + atom_offset, cmap.type + cmap_type_offset};
     }
-    for (const auto& nb14 : solvent.nb14_extras) {
-        molecule.nb14_extras.push_back({nb14.atom1 + atom_offset, nb14.atom2 + atom_offset,
-                                        nb14.a, nb14.b, nb14.kee});
+    for (std::size_t i = 0; i < solvent.nb14_extras.size(); ++i) {
+        const auto& nb14 = solvent.nb14_extras[i];
+        molecule.nb14_extras[nb14_offset + i] = {nb14.atom1 + atom_offset, nb14.atom2 + atom_offset,
+                                                 nb14.a, nb14.b, nb14.kee};
     }
-    for (const auto& angle : solvent.urey_bradleys) {
-        molecule.urey_bradleys.push_back({angle.atom0 + atom_offset, angle.atom1 + atom_offset,
-                                          angle.atom2 + atom_offset, angle.k, angle.b, angle.k_ub, angle.r13});
+    for (std::size_t i = 0; i < solvent.urey_bradleys.size(); ++i) {
+        const auto& angle = solvent.urey_bradleys[i];
+        molecule.urey_bradleys[ub_offset + i] = {angle.atom0 + atom_offset, angle.atom1 + atom_offset,
+                                                 angle.atom2 + atom_offset, angle.k, angle.b, angle.k_ub, angle.r13};
     }
-    for (const auto& dihedral : solvent.ryckaert_bellemans) {
-        molecule.ryckaert_bellemans.push_back({dihedral.atom0 + atom_offset, dihedral.atom1 + atom_offset,
-                                               dihedral.atom2 + atom_offset, dihedral.atom3 + atom_offset,
-                                               dihedral.c0, dihedral.c1, dihedral.c2,
-                                               dihedral.c3, dihedral.c4, dihedral.c5});
+    for (std::size_t i = 0; i < solvent.ryckaert_bellemans.size(); ++i) {
+        const auto& dihedral = solvent.ryckaert_bellemans[i];
+        molecule.ryckaert_bellemans[rb_offset + i] = {
+            dihedral.atom0 + atom_offset, dihedral.atom1 + atom_offset, dihedral.atom2 + atom_offset,
+            dihedral.atom3 + atom_offset, dihedral.c0, dihedral.c1, dihedral.c2,
+            dihedral.c3, dihedral.c4, dihedral.c5};
     }
-    for (const auto& bond : solvent.soft_bonds) {
-        molecule.soft_bonds.push_back({bond.atom1 + atom_offset, bond.atom2 + atom_offset,
-                                       bond.k, bond.b, bond.from_a_or_b});
+    for (std::size_t i = 0; i < solvent.soft_bonds.size(); ++i) {
+        const auto& bond = solvent.soft_bonds[i];
+        molecule.soft_bonds[soft_offset + i] = {bond.atom1 + atom_offset, bond.atom2 + atom_offset,
+                                                bond.k, bond.b, bond.from_a_or_b};
     }
-    for (const auto& definition : solvent.listed_force_definitions) {
-        molecule.listed_force_definitions.push_back(definition);
-    }
-    for (const auto& [name, parameter] : solvent.sw_parameters) {
-        molecule.sw_parameters[name] = parameter;
-    }
-    for (const auto& [name, parameter] : solvent.edip_parameters) {
-        molecule.edip_parameters[name] = parameter;
+    for (std::size_t i = 0; i < solvent.listed_force_definitions.size(); ++i) {
+        molecule.listed_force_definitions[listed_offset + i] = solvent.listed_force_definitions[i];
     }
 }
 
@@ -171,9 +205,6 @@ void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::arr
         std::max(2.4, solvent_max[1] - solvent_min[1] + tolerance),
         std::max(2.4, solvent_max[2] - solvent_min[2] + tolerance),
     };
-    const std::size_t atoms_per_solvent = solvent.atoms.size();
-    const std::size_t residues_per_solvent = solvent.residues.size();
-
     std::vector<std::array<double, 3>> placements;
     const std::array<std::int64_t, 3> inner_grid{
         static_cast<std::int64_t>(std::floor((maxv[0] - minv[0]) / solvent_shape[0])),
@@ -265,10 +296,48 @@ void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::arr
                               boxmin[2] + index[2] * solvent_shape[2]});
     }
 
-    molecule.atoms.reserve(molecule.atoms.size() + placements.size() * atoms_per_solvent);
-    molecule.residues.reserve(molecule.residues.size() + placements.size() * residues_per_solvent);
-    for (const auto& placement : placements) {
-        append_solvent_unit(molecule, solvent, placement);
+    const auto solvent_sizes = solvent_layout(solvent);
+    const SolventLayout base_sizes{
+        molecule.atoms.size(),
+        molecule.residues.size(),
+        molecule.explicit_bonds.size(),
+        molecule.residue_links.size(),
+        molecule.virtual_atoms.size(),
+        molecule.harmonic_impropers.size(),
+        molecule.cmap_types.size(),
+        molecule.cmaps.size(),
+        molecule.nb14_extras.size(),
+        molecule.urey_bradleys.size(),
+        molecule.ryckaert_bellemans.size(),
+        molecule.soft_bonds.size(),
+        molecule.listed_force_definitions.size(),
+    };
+    molecule.atoms.resize(base_sizes.atoms + placements.size() * solvent_sizes.atoms);
+    molecule.residues.resize(base_sizes.residues + placements.size() * solvent_sizes.residues);
+    molecule.explicit_bonds.resize(base_sizes.explicit_bonds + placements.size() * solvent_sizes.explicit_bonds);
+    molecule.residue_links.resize(base_sizes.residue_links + placements.size() * solvent_sizes.residue_links);
+    molecule.virtual_atoms.resize(base_sizes.virtual_atoms + placements.size() * solvent_sizes.virtual_atoms);
+    molecule.harmonic_impropers.resize(base_sizes.harmonic_impropers + placements.size() * solvent_sizes.harmonic_impropers);
+    molecule.cmap_types.resize(base_sizes.cmap_types + placements.size() * solvent_sizes.cmap_types);
+    molecule.cmaps.resize(base_sizes.cmaps + placements.size() * solvent_sizes.cmaps);
+    molecule.nb14_extras.resize(base_sizes.nb14_extras + placements.size() * solvent_sizes.nb14_extras);
+    molecule.urey_bradleys.resize(base_sizes.urey_bradleys + placements.size() * solvent_sizes.urey_bradleys);
+    molecule.ryckaert_bellemans.resize(base_sizes.ryckaert_bellemans + placements.size() * solvent_sizes.ryckaert_bellemans);
+    molecule.soft_bonds.resize(base_sizes.soft_bonds + placements.size() * solvent_sizes.soft_bonds);
+    molecule.listed_force_definitions.resize(
+        base_sizes.listed_force_definitions + placements.size() * solvent_sizes.listed_force_definitions);
+
+    parallel_for_chunks(placements.size(), 8, [&](std::size_t begin, std::size_t end) {
+        for (std::size_t i = begin; i < end; ++i) {
+            fill_solvent_unit(molecule, solvent, placements[i], i, solvent_sizes, base_sizes);
+        }
+    });
+
+    for (const auto& [name, parameter] : solvent.sw_parameters) {
+        molecule.sw_parameters[name] = parameter;
+    }
+    for (const auto& [name, parameter] : solvent.edip_parameters) {
+        molecule.edip_parameters[name] = parameter;
     }
 }
 
