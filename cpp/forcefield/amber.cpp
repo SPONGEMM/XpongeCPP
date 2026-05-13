@@ -1012,6 +1012,17 @@ std::size_t template_atom_count(const std::string& name) {
     return it->second.atom_count();
 }
 
+std::vector<std::string> registered_template_names() {
+    std::scoped_lock lock(registry_mutex());
+    std::vector<std::string> names;
+    names.reserve(templates().size());
+    for (const auto& [name, _template] : templates()) {
+        names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
 const ResidueType& get_residue_template(const std::string& name) {
     std::scoped_lock lock(registry_mutex());
     const auto it = templates().find(name);

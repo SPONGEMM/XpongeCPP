@@ -718,6 +718,7 @@ PYBIND11_MODULE(_core, m) {
           py::arg("hie"), py::arg("hip"));
     m.def("has_template", &has_template);
     m.def("template_atom_count", &template_atom_count);
+    m.def("registered_template_names", &registered_template_names);
     m.def("get_template_molecule", &get_template_molecule_object);
     m.def("molecule_from_residuetype", [](const ResidueType& residue_type) {
         auto molecule = std::make_shared<Molecule>(residue_type.name());

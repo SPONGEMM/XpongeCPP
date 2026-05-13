@@ -515,6 +515,7 @@ void configure_residue_template_connect_atom(const std::string& template_name, c
 void register_residue_template_alias(const std::string& alias_name, const std::string& template_name);
 bool has_template(const std::string& name);
 std::size_t template_atom_count(const std::string& name);
+std::vector<std::string> registered_template_names();
 Molecule get_template_molecule(const std::string& name);
 const ResidueType& get_residue_template(const std::string& name);
 void register_pdb_residue_name_mapping(const std::string& place, const std::string& pdb_name,
