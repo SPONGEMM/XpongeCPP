@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <mutex>
 #include <queue>
 #include <stdexcept>
 #include <string>
@@ -47,6 +48,234 @@ struct DihedralOccurrence {
 struct DihedralChunk {
     std::vector<DihedralOccurrence> dihedrals;
     std::vector<std::uint64_t> nb14_pairs;
+};
+
+struct PairTypeKey {
+    std::uint32_t type1{0};
+    std::uint32_t type2{0};
+
+    bool operator==(const PairTypeKey& other) const noexcept {
+        return type1 == other.type1 && type2 == other.type2;
+    }
+};
+
+struct PairTypeKeyHash {
+    std::size_t operator()(const PairTypeKey& key) const noexcept {
+        return (static_cast<std::size_t>(key.type1) << 32U) ^ key.type2;
+    }
+};
+
+struct TripleTypeKey {
+    std::uint32_t type1{0};
+    std::uint32_t type2{0};
+    std::uint32_t type3{0};
+
+    bool operator==(const TripleTypeKey& other) const noexcept {
+        return type1 == other.type1 && type2 == other.type2 && type3 == other.type3;
+    }
+};
+
+struct TripleTypeKeyHash {
+    std::size_t operator()(const TripleTypeKey& key) const noexcept {
+        std::size_t seed = key.type1;
+        seed = seed * 1315423911U + key.type2;
+        seed = seed * 1315423911U + key.type3;
+        return seed;
+    }
+};
+
+struct QuadTypeKey {
+    std::uint32_t type1{0};
+    std::uint32_t type2{0};
+    std::uint32_t type3{0};
+    std::uint32_t type4{0};
+
+    bool operator==(const QuadTypeKey& other) const noexcept {
+        return type1 == other.type1 && type2 == other.type2 &&
+               type3 == other.type3 && type4 == other.type4;
+    }
+};
+
+struct QuadTypeKeyHash {
+    std::size_t operator()(const QuadTypeKey& key) const noexcept {
+        std::size_t seed = key.type1;
+        seed = seed * 1315423911U + key.type2;
+        seed = seed * 1315423911U + key.type3;
+        seed = seed * 1315423911U + key.type4;
+        return seed;
+    }
+};
+
+struct BfsScratch {
+    std::vector<std::uint32_t> visit_generation;
+    std::vector<std::uint8_t> depth;
+    std::vector<AtomId> queue;
+    std::uint32_t generation{0};
+
+    void ensure_size(std::size_t atom_count) {
+        if (visit_generation.size() != atom_count) {
+            visit_generation.assign(atom_count, 0);
+            depth.assign(atom_count, 0);
+            queue.reserve(atom_count);
+            generation = 0;
+        }
+    }
+
+    void begin(std::size_t atom_count) {
+        ensure_size(atom_count);
+        ++generation;
+        if (generation == 0) {
+            std::fill(visit_generation.begin(), visit_generation.end(), 0);
+            generation = 1;
+        }
+        queue.clear();
+    }
+
+    bool visited(AtomId atom) const noexcept {
+        return visit_generation[atom] == generation;
+    }
+
+    void mark(AtomId atom, std::uint8_t atom_depth) {
+        visit_generation[atom] = generation;
+        depth[atom] = atom_depth;
+    }
+};
+
+PairTypeKey canonical_pair_key(std::uint32_t type1, std::uint32_t type2) {
+    if (type2 < type1) {
+        std::swap(type1, type2);
+    }
+    return {type1, type2};
+}
+
+TripleTypeKey canonical_angle_key(std::uint32_t type1, std::uint32_t type2, std::uint32_t type3) {
+    if (std::tie(type3, type2, type1) < std::tie(type1, type2, type3)) {
+        return {type3, type2, type1};
+    }
+    return {type1, type2, type3};
+}
+
+QuadTypeKey canonical_proper_key(std::uint32_t type1, std::uint32_t type2, std::uint32_t type3, std::uint32_t type4) {
+    if (std::tie(type4, type3, type2, type1) < std::tie(type1, type2, type3, type4)) {
+        return {type4, type3, type2, type1};
+    }
+    return {type1, type2, type3, type4};
+}
+
+QuadTypeKey ordered_improper_key(std::uint32_t type1, std::uint32_t type2, std::uint32_t type3, std::uint32_t type4) {
+    return {type1, type2, type3, type4};
+}
+
+AtomQuadKey canonical_improper_group_key(const std::array<AtomId, 4>& atoms) {
+    std::array<AtomId, 3> outer{atoms[0], atoms[1], atoms[3]};
+    std::sort(outer.begin(), outer.end());
+    return {outer[0], outer[1], atoms[2], outer[2]};
+}
+
+class TopologyLookupCache {
+public:
+    explicit TopologyLookupCache(const Molecule& molecule) : molecule_(molecule) {
+        std::unordered_map<std::string, std::uint32_t> type_to_id;
+        type_to_id.reserve(molecule.atoms.size());
+        atom_type_ids_.reserve(molecule.atoms.size());
+        std::uint32_t next_id = 1;
+        for (const auto& atom : molecule.atoms) {
+            const auto [it, inserted] = type_to_id.emplace(atom.type, next_id);
+            if (inserted) {
+                ++next_id;
+            }
+            atom_type_ids_.push_back(it->second);
+        }
+    }
+
+    std::optional<BondTerm> bond(AtomId atom1, AtomId atom2) {
+        const auto key = canonical_pair_key(atom_type_ids_[atom1], atom_type_ids_[atom2]);
+        {
+            std::lock_guard<std::mutex> lock(bond_mutex_);
+            const auto it = bond_terms_.find(key);
+            if (it != bond_terms_.end()) {
+                return it->second;
+            }
+        }
+        const auto result = find_amber_bond_term(molecule_.atoms[atom1].type, molecule_.atoms[atom2].type);
+        std::lock_guard<std::mutex> lock(bond_mutex_);
+        return bond_terms_.emplace(key, result).first->second;
+    }
+
+    std::optional<AngleTerm> angle(AtomId atom1, AtomId atom2, AtomId atom3) {
+        const auto key = canonical_angle_key(atom_type_ids_[atom1], atom_type_ids_[atom2], atom_type_ids_[atom3]);
+        {
+            std::lock_guard<std::mutex> lock(angle_mutex_);
+            const auto it = angle_terms_.find(key);
+            if (it != angle_terms_.end()) {
+                return it->second;
+            }
+        }
+        const auto result = find_amber_angle_term(
+            {molecule_.atoms[atom1].type, molecule_.atoms[atom2].type, molecule_.atoms[atom3].type});
+        std::lock_guard<std::mutex> lock(angle_mutex_);
+        return angle_terms_.emplace(key, result).first->second;
+    }
+
+    std::vector<DihedralTerm> proper(AtomId atom1, AtomId atom2, AtomId atom3, AtomId atom4) {
+        const auto key = canonical_proper_key(atom_type_ids_[atom1], atom_type_ids_[atom2], atom_type_ids_[atom3],
+                                              atom_type_ids_[atom4]);
+        {
+            std::lock_guard<std::mutex> lock(proper_mutex_);
+            const auto it = proper_terms_.find(key);
+            if (it != proper_terms_.end()) {
+                return it->second;
+            }
+        }
+        const auto result = find_amber_proper_terms(
+            {molecule_.atoms[atom1].type, molecule_.atoms[atom2].type, molecule_.atoms[atom3].type, molecule_.atoms[atom4].type});
+        std::lock_guard<std::mutex> lock(proper_mutex_);
+        return proper_terms_.emplace(key, result).first->second;
+    }
+
+    std::optional<AmberImproperMatch> improper(AtomId atom1, AtomId atom2, AtomId atom3, AtomId atom4) {
+        const auto key = ordered_improper_key(atom_type_ids_[atom1], atom_type_ids_[atom2], atom_type_ids_[atom3],
+                                              atom_type_ids_[atom4]);
+        {
+            std::lock_guard<std::mutex> lock(improper_mutex_);
+            const auto it = improper_terms_.find(key);
+            if (it != improper_terms_.end()) {
+                return it->second;
+            }
+        }
+        const auto result = find_amber_improper_match(
+            {molecule_.atoms[atom1].type, molecule_.atoms[atom2].type, molecule_.atoms[atom3].type, molecule_.atoms[atom4].type});
+        std::lock_guard<std::mutex> lock(improper_mutex_);
+        return improper_terms_.emplace(key, result).first->second;
+    }
+
+    std::optional<NB14Scale> nb14(AtomId atom1, AtomId atom2) {
+        const auto key = canonical_pair_key(atom_type_ids_[atom1], atom_type_ids_[atom2]);
+        {
+            std::lock_guard<std::mutex> lock(nb14_mutex_);
+            const auto it = nb14_scales_.find(key);
+            if (it != nb14_scales_.end()) {
+                return it->second;
+            }
+        }
+        const auto result = find_amber_nb14_scale(molecule_.atoms[atom1].type, molecule_.atoms[atom2].type);
+        std::lock_guard<std::mutex> lock(nb14_mutex_);
+        return nb14_scales_.emplace(key, result).first->second;
+    }
+
+private:
+    const Molecule& molecule_;
+    std::vector<std::uint32_t> atom_type_ids_;
+    std::mutex bond_mutex_;
+    std::mutex angle_mutex_;
+    std::mutex proper_mutex_;
+    std::mutex improper_mutex_;
+    std::mutex nb14_mutex_;
+    std::unordered_map<PairTypeKey, std::optional<BondTerm>, PairTypeKeyHash> bond_terms_;
+    std::unordered_map<TripleTypeKey, std::optional<AngleTerm>, TripleTypeKeyHash> angle_terms_;
+    std::unordered_map<QuadTypeKey, std::vector<DihedralTerm>, QuadTypeKeyHash> proper_terms_;
+    std::unordered_map<QuadTypeKey, std::optional<AmberImproperMatch>, QuadTypeKeyHash> improper_terms_;
+    std::unordered_map<PairTypeKey, std::optional<NB14Scale>, PairTypeKeyHash> nb14_scales_;
 };
 
 std::uint64_t pair_key(AtomId atom1, AtomId atom2) {
@@ -95,7 +324,7 @@ std::unordered_map<std::string, AtomId> residue_atom_map(const Molecule& molecul
 }
 
 void add_bond(std::vector<Bond>& bonds, std::unordered_set<std::uint64_t>& seen, AtomId atom1, AtomId atom2,
-              const Molecule& molecule) {
+              const Molecule& molecule, TopologyLookupCache* lookup_cache = nullptr) {
     if (atom1 == atom2 || atom1 >= molecule.atoms.size() || atom2 >= molecule.atoms.size()) {
         return;
     }
@@ -105,7 +334,8 @@ void add_bond(std::vector<Bond>& bonds, std::unordered_set<std::uint64_t>& seen,
     }
     const auto lo = std::min(atom1, atom2);
     const auto hi = std::max(atom1, atom2);
-    const auto term = find_amber_bond_term(molecule.atoms[lo].type, molecule.atoms[hi].type);
+    const auto term = lookup_cache ? lookup_cache->bond(lo, hi)
+                                   : find_amber_bond_term(molecule.atoms[lo].type, molecule.atoms[hi].type);
     if (term) {
         bonds.push_back({lo, hi, term->k, term->length});
     } else {
@@ -143,27 +373,28 @@ std::array<std::vector<std::vector<AtomId>>, 5> build_linked_atoms(const std::ve
         layer.resize(adjacency.size());
     }
     parallel_for_chunks(adjacency.size(), 64, [&](std::size_t begin, std::size_t end) {
+        BfsScratch scratch;
+        scratch.ensure_size(adjacency.size());
         for (AtomId start = static_cast<AtomId>(begin); start < end; ++start) {
-            std::vector<int> depth(adjacency.size(), -1);
-            std::queue<AtomId> queue;
-            depth[start] = 0;
-            queue.push(start);
-            while (!queue.empty()) {
-                const AtomId current = queue.front();
-                queue.pop();
-                if (depth[current] >= 3) {
+            scratch.begin(adjacency.size());
+            scratch.mark(start, 0);
+            scratch.queue.push_back(start);
+            for (std::size_t head = 0; head < scratch.queue.size(); ++head) {
+                const AtomId current = scratch.queue[head];
+                if (scratch.depth[current] >= 3) {
                     continue;
                 }
                 for (const AtomId next : adjacency[current]) {
-                    if (depth[next] != -1) {
+                    if (scratch.visited(next)) {
                         continue;
                     }
-                    depth[next] = depth[current] + 1;
-                    const int xponge_link_type = depth[next] + 1;
+                    const auto next_depth = static_cast<std::uint8_t>(scratch.depth[current] + 1U);
+                    scratch.mark(next, next_depth);
+                    const int xponge_link_type = next_depth + 1;
                     if (xponge_link_type <= 4) {
                         linked[xponge_link_type][start].push_back(next);
                     }
-                    queue.push(next);
+                    scratch.queue.push_back(next);
                 }
             }
             for (auto& layer : linked) {
@@ -211,7 +442,7 @@ std::vector<std::array<AtomId, 4>> improper_same_force(const std::array<AtomId, 
 }
 
 void add_xponge_impropers(const Molecule& molecule, const std::vector<std::vector<AtomId>>& adjacency,
-                          std::vector<Dihedral>& dihedrals) {
+                          std::vector<Dihedral>& dihedrals, TopologyLookupCache& lookup_cache) {
     const auto linked = build_linked_atoms(adjacency);
     const std::array<int, 4> topology_like{1, 3, 2, 3};
     const std::array<std::array<int, 4>, 4> topology_matrix{{
@@ -221,11 +452,14 @@ void add_xponge_impropers(const Molecule& molecule, const std::vector<std::vecto
         {{1, 1, 1, 1}},
     }};
 
-    std::vector<std::array<AtomId, 4>> candidates;
     const auto candidate_chunks = parallel_collect_chunks(molecule.atoms.size(), 32, [&](std::size_t begin, std::size_t end) {
         std::vector<std::array<AtomId, 4>> local;
         for (AtomId atom0 = static_cast<AtomId>(begin); atom0 < end; ++atom0) {
             std::vector<std::vector<std::array<AtomId, 4>>> backups(4);
+            const auto adjacency_degree = adjacency[atom0].size();
+            if (adjacency_degree > 0) {
+                local.reserve(local.size() + adjacency_degree * adjacency_degree);
+            }
             backups[0].push_back({atom0, 0, 0, 0});
             for (std::size_t i = 1; i < topology_like.size(); ++i) {
                 for (const AtomId atom1 : linked[topology_like[i]][atom0]) {
@@ -258,31 +492,35 @@ void add_xponge_impropers(const Molecule& molecule, const std::vector<std::vecto
         }
         return local;
     });
+    std::vector<std::pair<AtomQuadKey, std::array<AtomId, 4>>> grouped_candidates;
+    std::size_t total_candidates = 0;
     for (auto& chunk : candidate_chunks) {
-        candidates.insert(candidates.end(), chunk.begin(), chunk.end());
+        total_candidates += chunk.size();
     }
-
-    std::vector<std::vector<std::array<AtomId, 4>>> groups;
-    std::unordered_map<AtomQuadKey, std::size_t, AtomQuadKeyHash> group_by_key;
-    for (const auto& candidate : candidates) {
-        const auto key = force_key(candidate);
-        const auto it = group_by_key.find(key);
-        if (it != group_by_key.end()) {
-            groups[it->second].push_back(candidate);
-            continue;
-        }
-        const auto group_index = groups.size();
-        groups.push_back({candidate});
-        for (const auto& equivalent : improper_same_force(candidate)) {
-            group_by_key[force_key(equivalent)] = group_index;
+    grouped_candidates.reserve(total_candidates);
+    for (auto& chunk : candidate_chunks) {
+        for (const auto& candidate : chunk) {
+            grouped_candidates.emplace_back(canonical_improper_group_key(candidate), candidate);
         }
     }
+    std::sort(grouped_candidates.begin(), grouped_candidates.end(),
+              [](const auto& lhs, const auto& rhs) {
+        return std::tie(lhs.first.atom0, lhs.first.atom1, lhs.first.atom2, lhs.first.atom3,
+                        lhs.second[0], lhs.second[1], lhs.second[2], lhs.second[3]) <
+               std::tie(rhs.first.atom0, rhs.first.atom1, rhs.first.atom2, rhs.first.atom3,
+                        rhs.second[0], rhs.second[1], rhs.second[2], rhs.second[3]);
+    });
 
-    for (const auto& group : groups) {
+    std::size_t begin = 0;
+    while (begin < grouped_candidates.size()) {
+        std::size_t end = begin + 1;
+        while (end < grouped_candidates.size() && grouped_candidates[end].first == grouped_candidates[begin].first) {
+            ++end;
+        }
         std::optional<std::pair<std::array<AtomId, 4>, AmberImproperMatch>> selected;
-        for (const auto& candidate : group) {
-            const auto match = find_amber_improper_match(atom_types_for(molecule, candidate[0], candidate[1],
-                                                                        candidate[2], candidate[3]));
+        for (std::size_t index = begin; index < end; ++index) {
+            const auto& candidate = grouped_candidates[index].second;
+            const auto match = lookup_cache.improper(candidate[0], candidate[1], candidate[2], candidate[3]);
             if (match && match->exact) {
                 selected = std::make_pair(candidate, *match);
                 break;
@@ -290,9 +528,9 @@ void add_xponge_impropers(const Molecule& molecule, const std::vector<std::vecto
         }
         if (!selected) {
             int least_x = 999;
-            for (const auto& candidate : group) {
-                const auto match = find_amber_improper_match(atom_types_for(molecule, candidate[0], candidate[1],
-                                                                            candidate[2], candidate[3]));
+            for (std::size_t index = begin; index < end; ++index) {
+                const auto& candidate = grouped_candidates[index].second;
+                const auto match = lookup_cache.improper(candidate[0], candidate[1], candidate[2], candidate[3]);
                 if (!match || match->exact || match->wildcard_count > least_x) {
                     continue;
                 }
@@ -304,6 +542,7 @@ void add_xponge_impropers(const Molecule& molecule, const std::vector<std::vecto
             const auto& atoms = selected->first;
             push_oriented_dihedral(dihedrals, atoms[0], atoms[1], atoms[2], atoms[3], selected->second.term);
         }
+        begin = end;
     }
 }
 
@@ -318,12 +557,13 @@ Topology build_topology(const Molecule& molecule) {
     }
 
     Topology topology;
+    TopologyLookupCache lookup_cache(molecule);
 
     std::unordered_set<std::uint64_t> seen_bonds;
     seen_bonds.reserve(molecule.atoms.size() * 2);
     std::vector<bool> residue_has_explicit_bond(molecule.residues.size(), false);
     for (const auto& bond : molecule.explicit_bonds) {
-        add_bond(topology.bonds, seen_bonds, bond.atom1, bond.atom2, molecule);
+        add_bond(topology.bonds, seen_bonds, bond.atom1, bond.atom2, molecule, &lookup_cache);
         if (bond.atom1 < molecule.atoms.size()) {
             residue_has_explicit_bond[molecule.atoms[bond.atom1].residue] = true;
         }
@@ -332,7 +572,7 @@ Topology build_topology(const Molecule& molecule) {
         }
     }
     for (const auto& link : molecule.residue_links) {
-        add_bond(topology.bonds, seen_bonds, link.atom1, link.atom2, molecule);
+        add_bond(topology.bonds, seen_bonds, link.atom1, link.atom2, molecule, &lookup_cache);
     }
     for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
         const auto& residue = molecule.residues[residue_id];
@@ -348,7 +588,7 @@ Topology build_topology(const Molecule& molecule) {
                 const auto it1 = atoms_by_name.find(atom_name1);
                 const auto it2 = atoms_by_name.find(atom_name2);
                 if (it1 != atoms_by_name.end() && it2 != atoms_by_name.end()) {
-                    add_bond(topology.bonds, seen_bonds, it1->second, it2->second, molecule);
+                    add_bond(topology.bonds, seen_bonds, it1->second, it2->second, molecule, &lookup_cache);
                 }
             }
             continue;
@@ -374,10 +614,13 @@ Topology build_topology(const Molecule& molecule) {
                 continue;
             }
             const auto& neighbors = adjacency[center];
+            if (neighbors.size() < 2) {
+                continue;
+            }
+            local.reserve(local.size() + (neighbors.size() * (neighbors.size() - 1)) / 2);
             for (std::size_t i = 0; i < neighbors.size(); ++i) {
                 for (std::size_t k = i + 1; k < neighbors.size(); ++k) {
-                    const auto term = find_amber_angle_term(
-                        {molecule.atoms[neighbors[i]].type, molecule.atoms[center].type, molecule.atoms[neighbors[k]].type});
+                    const auto term = lookup_cache.angle(neighbors[i], center, neighbors[k]);
                     if (term && term->k != 0.0) {
                         local.push_back({neighbors[i], center, neighbors[k], term->k, term->theta});
                     } else if (!term) {
@@ -398,6 +641,7 @@ Topology build_topology(const Molecule& molecule) {
             const auto& bond = topology.bonds[bond_index];
             const AtomId j = bond.atom1;
             const AtomId k = bond.atom2;
+            local.dihedrals.reserve(local.dihedrals.size() + adjacency[j].size() * adjacency[k].size());
             for (const AtomId i : adjacency[j]) {
                 if (i == k) {
                     continue;
@@ -406,37 +650,78 @@ Topology build_topology(const Molecule& molecule) {
                     if (l == j || l == i) {
                         continue;
                     }
-                    const auto a = std::min(i, l);
-                    const auto d = std::max(i, l);
-                    local.dihedrals.push_back({{a, j, k, d}, i, j, k, l});
+                    const bool swap_outer = l < i;
+                    local.dihedrals.push_back({
+                        {swap_outer ? l : i, j, k, swap_outer ? i : l},
+                        i,
+                        j,
+                        k,
+                        l,
+                    });
                     if (!has_shorter_path_than_three(adjacency, i, l)) {
                         local.nb14_pairs.push_back(pair_key(i, l));
                     }
                 }
             }
         }
+        std::sort(local.dihedrals.begin(), local.dihedrals.end(),
+                  [](const DihedralOccurrence& lhs, const DihedralOccurrence& rhs) {
+            return std::tie(lhs.key.atom0, lhs.key.atom1, lhs.key.atom2, lhs.key.atom3,
+                            lhs.atom1, lhs.atom2, lhs.atom3, lhs.atom4) <
+                   std::tie(rhs.key.atom0, rhs.key.atom1, rhs.key.atom2, rhs.key.atom3,
+                            rhs.atom1, rhs.atom2, rhs.atom3, rhs.atom4);
+        });
+        local.dihedrals.erase(
+            std::unique(local.dihedrals.begin(), local.dihedrals.end(),
+                        [](const DihedralOccurrence& lhs, const DihedralOccurrence& rhs) {
+                return lhs.key == rhs.key &&
+                       lhs.atom1 == rhs.atom1 && lhs.atom2 == rhs.atom2 &&
+                       lhs.atom3 == rhs.atom3 && lhs.atom4 == rhs.atom4;
+            }),
+            local.dihedrals.end());
+        std::sort(local.nb14_pairs.begin(), local.nb14_pairs.end());
+        local.nb14_pairs.erase(std::unique(local.nb14_pairs.begin(), local.nb14_pairs.end()), local.nb14_pairs.end());
         return local;
     });
 
-    std::unordered_set<std::uint64_t> seen_14;
-    std::unordered_set<AtomQuadKey, AtomQuadKeyHash> seen_dihedrals;
+    std::vector<DihedralOccurrence> merged_dihedrals;
+    std::size_t total_dihedral_occurrences = 0;
+    std::size_t total_nb14_pairs = 0;
     for (const auto& chunk : dihedral_chunks) {
-        for (const auto& occurrence : chunk.dihedrals) {
-            if (seen_dihedrals.insert(occurrence.key).second) {
-                const auto terms = find_amber_proper_terms(
-                    atom_types_for(molecule, occurrence.atom1, occurrence.atom2, occurrence.atom3, occurrence.atom4));
-                for (const auto& term : terms) {
-                    push_oriented_dihedral(topology.dihedrals, occurrence.atom1, occurrence.atom2,
-                                           occurrence.atom3, occurrence.atom4, term);
-                }
-            }
-        }
-        for (const auto pair : chunk.nb14_pairs) {
-            seen_14.insert(pair);
+        total_dihedral_occurrences += chunk.dihedrals.size();
+        total_nb14_pairs += chunk.nb14_pairs.size();
+    }
+    merged_dihedrals.reserve(total_dihedral_occurrences);
+    std::vector<std::uint64_t> seen_14;
+    seen_14.reserve(total_nb14_pairs);
+    for (const auto& chunk : dihedral_chunks) {
+        merged_dihedrals.insert(merged_dihedrals.end(), chunk.dihedrals.begin(), chunk.dihedrals.end());
+        seen_14.insert(seen_14.end(), chunk.nb14_pairs.begin(), chunk.nb14_pairs.end());
+    }
+    std::sort(merged_dihedrals.begin(), merged_dihedrals.end(),
+              [](const DihedralOccurrence& lhs, const DihedralOccurrence& rhs) {
+        return std::tie(lhs.key.atom0, lhs.key.atom1, lhs.key.atom2, lhs.key.atom3,
+                        lhs.atom1, lhs.atom2, lhs.atom3, lhs.atom4) <
+               std::tie(rhs.key.atom0, rhs.key.atom1, rhs.key.atom2, rhs.key.atom3,
+                        rhs.atom1, rhs.atom2, rhs.atom3, rhs.atom4);
+    });
+    merged_dihedrals.erase(
+        std::unique(merged_dihedrals.begin(), merged_dihedrals.end(),
+                    [](const DihedralOccurrence& lhs, const DihedralOccurrence& rhs) {
+            return lhs.key == rhs.key;
+        }),
+        merged_dihedrals.end());
+    for (const auto& occurrence : merged_dihedrals) {
+        const auto terms = lookup_cache.proper(occurrence.atom1, occurrence.atom2, occurrence.atom3, occurrence.atom4);
+        for (const auto& term : terms) {
+            push_oriented_dihedral(topology.dihedrals, occurrence.atom1, occurrence.atom2,
+                                   occurrence.atom3, occurrence.atom4, term);
         }
     }
+    std::sort(seen_14.begin(), seen_14.end());
+    seen_14.erase(std::unique(seen_14.begin(), seen_14.end()), seen_14.end());
 
-    add_xponge_impropers(molecule, adjacency, topology.dihedrals);
+    add_xponge_impropers(molecule, adjacency, topology.dihedrals, lookup_cache);
 
     std::sort(topology.dihedrals.begin(), topology.dihedrals.end(), [](const Dihedral& lhs, const Dihedral& rhs) {
         return std::tie(lhs.atom1, lhs.atom2, lhs.atom3, lhs.atom4, lhs.periodicity, lhs.k, lhs.phase) <
@@ -445,27 +730,30 @@ Topology build_topology(const Molecule& molecule) {
 
     topology.exclusions.resize(molecule.atoms.size());
     parallel_for_chunks(adjacency.size(), 32, [&](std::size_t begin, std::size_t end) {
+        BfsScratch scratch;
+        scratch.ensure_size(adjacency.size());
         for (AtomId start = static_cast<AtomId>(begin); start < end; ++start) {
-            std::vector<int> depth(adjacency.size(), -1);
-            std::queue<AtomId> queue;
-            depth[start] = 0;
-            queue.push(start);
-            while (!queue.empty()) {
-                const AtomId current = queue.front();
-                queue.pop();
-                if (depth[current] >= 3) {
+            auto& excluded = topology.exclusions[start];
+            excluded.clear();
+            scratch.begin(adjacency.size());
+            scratch.mark(start, 0);
+            scratch.queue.push_back(start);
+            for (std::size_t head = 0; head < scratch.queue.size(); ++head) {
+                const AtomId current = scratch.queue[head];
+                if (scratch.depth[current] >= 3) {
                     continue;
                 }
                 for (const AtomId next : adjacency[current]) {
-                    if (depth[next] != -1) {
+                    if (scratch.visited(next)) {
                         continue;
                     }
-                    depth[next] = depth[current] + 1;
-                    queue.push(next);
-                    topology.exclusions[start].push_back(next);
+                    const auto next_depth = static_cast<std::uint8_t>(scratch.depth[current] + 1U);
+                    scratch.mark(next, next_depth);
+                    scratch.queue.push_back(next);
+                    excluded.push_back(next);
                 }
             }
-            std::sort(topology.exclusions[start].begin(), topology.exclusions[start].end());
+            std::sort(excluded.begin(), excluded.end());
         }
     });
 
@@ -473,7 +761,7 @@ Topology build_topology(const Molecule& molecule) {
     for (const auto key : seen_14) {
         const AtomId atom1 = static_cast<AtomId>(key >> 32U);
         const AtomId atom2 = static_cast<AtomId>(key & 0xffffffffU);
-        if (const auto scale = find_amber_nb14_scale(molecule.atoms[atom1].type, molecule.atoms[atom2].type)) {
+        if (const auto scale = lookup_cache.nb14(atom1, atom2)) {
             if (scale->k_lj != 0.0 && scale->k_ee != 0.0) {
                 topology.nb14s.push_back({atom1, atom2, scale->k_lj, scale->k_ee});
             }
