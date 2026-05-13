@@ -1,8 +1,16 @@
 import math
 import io
+import json
+import subprocess
+import sys
+import textwrap
 
 import pytest
 import XpongeCPP as Xponge
+from conftest import original_xponge_repo
+
+
+XPONGE_REPO = original_xponge_repo()
 
 
 def _assignment(name, atoms, bonds, formal_charges=None):
@@ -21,6 +29,21 @@ def _assert_charges_close(actual, expected, tol=1e-6):
     assert len(actual) == len(expected)
     for got, want in zip(actual, expected):
         assert math.isclose(got, want, abs_tol=tol)
+
+
+def _run_original_xponge(script):
+    if not XPONGE_REPO.exists():
+        pytest.skip("local Xponge reference repository is not available")
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=XPONGE_REPO,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"local Xponge reference failed: {result.stderr[-500:]}")
+    return result.stdout
 
 
 def test_tpacm4_calculate_charge_matches_xponge_methane_and_ethane():
@@ -191,6 +214,100 @@ def test_set_ph_deprotonates_carboxylic_acid_like_xponge_phmodel():
     assert acetic_acid.bond_count == 6
 
 
+def test_set_ph_protonates_deprotonated_alcohol_like_xponge_phmodel():
+    methoxide = _assignment(
+        "methoxide",
+        ["C", "O", "H", "H", "H"],
+        [(0, 1, 1), (0, 2, 1), (0, 3, 1), (0, 4, 1)],
+        {1: -1},
+    )
+
+    total_charge = methoxide.set_ph(7.0)
+
+    assert total_charge == 0
+    assert methoxide.atoms == ["C", "O", "H", "H", "H", "H"]
+    assert methoxide.formal_charges == [0, 0, 0, 0, 0, 0]
+    assert methoxide.bond_count == 5
+
+
+def test_set_ph_protonates_acetate_like_xponge_phmodel():
+    acetate = _assignment(
+        "acetate",
+        ["C", "C", "O", "O", "H", "H", "H"],
+        [(0, 1, 1), (0, 4, 1), (0, 5, 1), (0, 6, 1), (1, 2, 2), (1, 3, 1)],
+        {3: -1},
+    )
+
+    total_charge = acetate.set_ph(2.0)
+
+    assert total_charge == 0
+    assert acetate.atoms == ["C", "C", "O", "O", "H", "H", "H", "H"]
+    assert acetate.formal_charges == [0, 0, 0, 0, 0, 0, 0, 0]
+    assert acetate.bond_count == 7
+
+
+def test_set_ph_protonates_phenoxide_like_xponge_phmodel():
+    phenoxide = _assignment(
+        "phenoxide",
+        ["C", "C", "C", "C", "C", "C", "O", "H", "H", "H", "H", "H"],
+        [
+            (0, 1, 1),
+            (1, 2, 2),
+            (2, 3, 1),
+            (3, 4, 2),
+            (4, 5, 1),
+            (5, 0, 2),
+            (0, 7, 1),
+            (1, 8, 1),
+            (2, 9, 1),
+            (3, 10, 1),
+            (4, 11, 1),
+            (5, 6, 1),
+        ],
+        {6: -1},
+    )
+
+    total_charge = phenoxide.set_ph(2.0)
+
+    assert total_charge == 0
+    assert phenoxide.atoms == ["C", "C", "C", "C", "C", "C", "O", "H", "H", "H", "H", "H", "H"]
+    assert phenoxide.formal_charges == [0] * 13
+    assert phenoxide.bond_count == 13
+
+
+def test_phmodel_typing_matches_original_xponge_reference_for_carboxylic_acid():
+    acetic_acid = _assignment(
+        "acetic_acid",
+        ["C", "C", "O", "O", "H", "H", "H", "H"],
+        [(0, 1, 1), (0, 4, 1), (0, 5, 1), (0, 6, 1), (1, 2, 2), (1, 3, 1), (3, 7, 1)],
+    )
+    current_types = acetic_acid.determine_atom_type("phmodel")
+    current = [[index, atom_type] for index, atom_type in enumerate(current_types)]
+
+    script = textwrap.dedent(
+        f"""
+        import json
+        import sys
+        import builtins
+        sys.path.insert(0, {str(XPONGE_REPO)!r})
+        import Xponge
+
+        builtins.set_global_alternative_names = Xponge.set_global_alternative_names
+        import Xponge.assign.phmodel
+
+        assign = Xponge.Assign("acetic_acid")
+        for index, element in enumerate(["C", "C", "O", "O", "H", "H", "H", "H"]):
+            assign.Add_Atom(element, float(index), 0.0, 0.0, f"{{element}}{{index + 1}}", 0.0)
+        for atom1, atom2, order in [(0, 1, 1), (0, 4, 1), (0, 5, 1), (0, 6, 1), (1, 2, 2), (1, 3, 1), (3, 7, 1)]:
+            assign.add_bond(atom1, atom2, order)
+        print(json.dumps(sorted(assign.determine_atom_type("phmodel").items())))
+        """
+    )
+    reference = json.loads(_run_original_xponge(script))
+
+    assert current == reference
+
+
 def test_determine_connectivity_accepts_xponge_tolerance_signature():
     assignment = Xponge.Assign("water")
     assignment.add_atom("O", 0.0, 0.0, 0.0)
@@ -258,6 +375,147 @@ C1 H1 1.0
     assignment, lattice = Xponge.get_assignment_from_cif(cif, keep_cell_angle=False)
     assert assignment.name == "frac"
     assert assignment.coordinates[0] == pytest.approx([5.0, 5.0, 3.0])
+
+
+def test_cif_assignment_handles_nonorthogonal_cell_and_multiple_symmetry_ops():
+    cif = """
+data_skew
+_cell_length_a    10.0
+_cell_length_b    11.0
+_cell_length_c    12.0
+_cell_angle_alpha 80.0
+_cell_angle_beta  90.0
+_cell_angle_gamma 100.0
+_symmetry_equiv_pos_as_xyz
+'x,y,z
+x+1/2,y+1/2,z
+x,y,z+1/2'
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+C1 C 0.1 0.2 0.3
+H1 H 0.2 0.2 0.3
+loop_
+_geom_bond_atom_site_label_1
+_geom_bond_atom_site_label_2
+_geom_bond_distance
+C1 H1 1.0
+"""
+    assignment, lattice = Xponge.get_assignment_from_cif(cif)
+
+    assert assignment.name == "skew"
+    assert assignment.atoms == ["C", "H"]
+    assert assignment.bond_count == 1
+    assert lattice["cell_length"] == [10.0, 11.0, 12.0]
+    assert lattice["cell_angle"] == [80.0, 90.0, 100.0]
+    assert lattice["basis_position"] == [[1, 1, 1], [1.5, 1.5, 1], [1, 1, 1.5]]
+    assert assignment.coordinates[0][0] != pytest.approx(1.0)
+
+
+def test_cif_assignment_handles_richer_fractional_crystal_case():
+    cif = """
+data_rich
+_cell_length_a    9.1
+_cell_length_b    10.2
+_cell_length_c    11.3
+_cell_angle_alpha 75.0
+_cell_angle_beta  88.0
+_cell_angle_gamma 96.0
+_symmetry_equiv_pos_as_xyz
+'x,y,z
+-x,y+1/2,z+1/2
+x+1/2,-y,z+1/2'
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+C1 C 0.1 0.2 0.3
+O1 O 0.2 0.2 0.3
+H1 H 0.25 0.28 0.3
+loop_
+_geom_bond_atom_site_label_1
+_geom_bond_atom_site_label_2
+_geom_bond_distance
+C1 O1 1.2
+O1 H1 1.0
+"""
+    assignment, lattice = Xponge.get_assignment_from_cif(cif)
+
+    assert assignment.name == "rich"
+    assert assignment.atoms == ["C", "O", "H"]
+    assert assignment.bond_count == 2
+    assert lattice["cell_length"] == [9.1, 10.2, 11.3]
+    assert lattice["cell_angle"] == [75.0, 88.0, 96.0]
+    assert lattice["basis_position"] == [[1, 1, 1], [-1, 1.5, 1.5], [1.5, -1, 1.5]]
+
+
+def test_cif_fractional_assignment_matches_original_xponge_reference():
+    cif = """
+data_frac
+_cell_length_a    10.0
+_cell_length_b    20.0
+_cell_length_c    30.0
+_cell_angle_alpha 90.0
+_cell_angle_beta  90.0
+_cell_angle_gamma 90.0
+_symmetry_equiv_pos_as_xyz
+'x,y,z
+x+1/2,y,z'
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+C1 C 0.5 0.25 0.1
+H1 H 0.6 0.25 0.1
+loop_
+_geom_bond_atom_site_label_1
+_geom_bond_atom_site_label_2
+_geom_bond_distance
+C1 H1 1.0
+"""
+    assignment, lattice = Xponge.get_assignment_from_cif(cif, keep_cell_angle=False)
+    current = {
+        "name": assignment.name,
+        "atoms": assignment.atoms,
+        "coordinates": assignment.coordinates,
+        "cell_length": lattice["cell_length"],
+        "cell_angle": lattice["cell_angle"],
+    }
+
+    script = textwrap.dedent(
+        f"""
+        import json
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        sys.path.insert(0, {str(XPONGE_REPO)!r})
+        import Xponge
+
+        cif = {cif!r}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cif_path = Path(tmpdir) / "frac.cif"
+            cif_path.write_text(cif)
+            assignment, lattice = Xponge.get_assignment_from_cif(str(cif_path), keep_cell_angle=False)
+        print(json.dumps({{
+            "name": assignment.name,
+            "atoms": assignment.atoms,
+            "coordinates": assignment.coordinate.tolist(),
+            "cell_length": lattice["cell_length"],
+            "cell_angle": lattice["cell_angle"],
+        }}, sort_keys=True))
+        """
+    )
+    reference = json.loads(_run_original_xponge(script))
+
+    assert current == reference
     assert assignment.bond_count == 1
     assert lattice["cell_angle"] == [90, 90, 90]
     assert lattice["basis_position"] == [[1, 1, 1], [1.5, 1, 1]]
@@ -323,6 +581,71 @@ def test_resp_uses_pyscf_backend_or_reports_missing_dependency():
         return
     assert len(water.charges) == 3
     assert math.isclose(sum(water.charges), 0.0, abs_tol=1e-5)
+
+
+def test_resp_supports_nontrivial_small_molecule_under_pyscf():
+    methyl_acetate = _assignment(
+        "methyl_acetate",
+        ["C", "C", "O", "O", "C", "H", "H", "H", "H", "H", "H"],
+        [
+            (0, 1, 1),
+            (0, 5, 1),
+            (0, 6, 1),
+            (0, 7, 1),
+            (1, 2, 2),
+            (1, 3, 1),
+            (3, 4, 1),
+            (4, 8, 1),
+            (4, 9, 1),
+            (4, 10, 1),
+        ],
+    )
+    try:
+        methyl_acetate.calculate_charge(
+            "resp",
+            basis="sto-3g",
+            charge=0,
+            grid_density=1,
+            grid_cell_layer=1,
+            only_esp=True,
+            two_stage=False,
+        )
+    except ImportError as exc:
+        assert "PySCF" in str(exc)
+        return
+
+    assert len(methyl_acetate.charges) == 11
+    assert math.isclose(sum(methyl_acetate.charges), 0.0, abs_tol=1e-5)
+    assert methyl_acetate.charges[2] < 0.0
+    assert methyl_acetate.charges[3] > 0.0
+    assert methyl_acetate.charges[4] < 0.0
+
+
+def test_resp_supports_formamide_under_pyscf():
+    formamide = _assignment(
+        "formamide",
+        ["C", "O", "N", "H", "H", "H"],
+        [(0, 1, 2), (0, 2, 1), (0, 3, 1), (2, 4, 1), (2, 5, 1)],
+    )
+    try:
+        formamide.calculate_charge(
+            "resp",
+            basis="sto-3g",
+            charge=0,
+            grid_density=1,
+            grid_cell_layer=1,
+            only_esp=True,
+            two_stage=False,
+        )
+    except ImportError as exc:
+        assert "PySCF" in str(exc)
+        return
+
+    assert len(formamide.charges) == 6
+    assert math.isclose(sum(formamide.charges), 0.0, abs_tol=1e-5)
+    assert formamide.charges[0] < 0.0
+    assert formamide.charges[1] > 0.0
+    assert formamide.charges[2] < 0.0
 
 
 def test_assign_rule_custom_registry_supports_xponge_pure_string_semantics():

@@ -1,5 +1,6 @@
 from pathlib import Path
 import subprocess
+import sys
 import textwrap
 
 import pytest
@@ -40,7 +41,7 @@ def _write_xponge_b96_reference(dirname):
         """
     )
     result = subprocess.run(
-        ["python", "-c", script],
+        [sys.executable, "-c", script],
         cwd=XPONGE_REPO,
         check=False,
         text=True,

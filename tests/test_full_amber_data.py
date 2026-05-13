@@ -153,6 +153,36 @@ def test_spce_import_registers_three_site_water_without_virtual_atom(tmp_path):
     assert (tmp_path / "spce_bond.txt").read_text().splitlines()[0] == "3"
 
 
+def test_water_model_ion_replacement_workflows_validate_across_supported_amber_models():
+    solute = Xponge.load_pdb(
+        StringIO(
+            "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
+        )
+    )
+
+    for module_name, expected_atoms_per_water in [
+        ("XpongeCPP.forcefield.amber.tip3p", 3),
+        ("XpongeCPP.forcefield.amber.spce", 3),
+        ("XpongeCPP.forcefield.amber.tip4p", 4),
+        ("XpongeCPP.forcefield.amber.tip4pew", 4),
+        ("XpongeCPP.forcefield.amber.opc", 4),
+    ]:
+        module = importlib.import_module(module_name)
+        importlib.reload(module)
+
+        mol = solute.copy()
+        water = Xponge.get_template_molecule("WAT")
+        assert water.atom_count == expected_atoms_per_water
+
+        Xponge.Add_Solvent_Box(mol, water, 4.0, tolerance=2.5, n_solvent=4, seed=20260509)
+        Xponge.Add_Ions(mol, {"NA": 1}, seed=20260509)
+
+        counts = mol.residue_counts()
+        assert counts["NA"] == 1
+        assert counts["WAT"] == 3
+        assert mol.validate()
+
+
 def test_amber_frcmod_cmap_is_generated_automatically(tmp_path):
     frcmod = tmp_path / "mini_cmap.frcmod"
     frcmod.write_text(
@@ -228,6 +258,73 @@ def test_full_amber_ecosystem_import_modules_register_packaged_templates_and_par
     assert Xponge.template_atom_count("A") > 20
     assert Xponge.template_atom_count("ACE") == 6
     assert Xponge.template_atom_count("NME") == 6
+
+
+def test_amber_nucleic_lipid_and_glycam_modules_support_representative_export_workflows(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.bsc1  # noqa: F401
+    import XpongeCPP.forcefield.amber.ol3  # noqa: F401
+    import XpongeCPP.forcefield.amber.lipid17  # noqa: F401
+    import XpongeCPP.forcefield.amber.glycam_06j.d_pyranose  # noqa: F401
+
+    cases = [
+        ("dna", Xponge.get_template_molecule("DA5") + Xponge.get_template_molecule("DT3"), ["DA5", "DT3"]),
+        ("rna", Xponge.get_template_molecule("A5") + Xponge.get_template_molecule("U3"), ["A5", "U3"]),
+        ("lipid", Xponge.get_template_molecule("PA"), ["PA"]),
+        ("glycam", Xponge.get_template_molecule("0GA") + Xponge.get_template_molecule("4YB"), ["0GA", "4YB"]),
+    ]
+
+    for prefix, mol, expected_resnames in cases:
+        assert [res.name for res in mol.residues] == expected_resnames
+        assert mol.validate()
+
+        out = Xponge.Save_SPONGE_Input(mol, prefix=prefix, dirname=str(tmp_path))
+
+        assert sorted(out) == [
+            "LJ",
+            "angle",
+            "atom_name",
+            "atom_type_name",
+            "bond",
+            "charge",
+            "coordinate",
+            "dihedral",
+            "exclude",
+            "mass",
+            "nb14",
+            "residue",
+            "resname",
+        ]
+        assert int((tmp_path / f"{prefix}_bond.txt").read_text().splitlines()[0]) > 0
+        assert (tmp_path / f"{prefix}_resname.txt").read_text().splitlines() == [str(len(expected_resnames)), *expected_resnames]
+
+
+def test_amber_nucleic_lipid_and_glycam_modules_support_broader_assembled_export_workflows(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.bsc1  # noqa: F401
+    import XpongeCPP.forcefield.amber.ol3  # noqa: F401
+    import XpongeCPP.forcefield.amber.lipid17  # noqa: F401
+    import XpongeCPP.forcefield.amber.glycam_06j.d_pyranose  # noqa: F401
+
+    cases = [
+        ("dna3", Xponge.get_template_molecule("DA5") + Xponge.get_template_molecule("DT") + Xponge.get_template_molecule("DG3"), ["DA5", "DT", "DG3"]),
+        ("rna3", Xponge.get_template_molecule("A5") + Xponge.get_template_molecule("U") + Xponge.get_template_molecule("G3"), ["A5", "U", "G3"]),
+        ("lipid2", Xponge.get_template_molecule("PC") + Xponge.get_template_molecule("OL"), ["PC", "OL"]),
+        ("glycam3", Xponge.get_template_molecule("0GA") + Xponge.get_template_molecule("4YB") + Xponge.get_template_molecule("4YB"), ["0GA", "4YB", "4YB"]),
+    ]
+
+    for prefix, mol, expected_resnames in cases:
+        assert [res.name for res in mol.residues] == expected_resnames
+        assert mol.atom_count > len(expected_resnames)
+        assert mol.validate()
+
+        out = Xponge.Save_SPONGE_Input(mol, prefix=prefix, dirname=str(tmp_path))
+
+        assert {"bond", "angle", "dihedral", "exclude", "nb14", "residue", "resname"}.issubset(out)
+        assert int((tmp_path / f"{prefix}_bond.txt").read_text().splitlines()[0]) > 0
+        assert int((tmp_path / f"{prefix}_angle.txt").read_text().splitlines()[0]) > 0
+        assert int((tmp_path / f"{prefix}_dihedral.txt").read_text().splitlines()[0]) > 0
+        assert (tmp_path / f"{prefix}_resname.txt").read_text().splitlines() == [str(len(expected_resnames)), *expected_resnames]
 
 
 def test_pdb_terminal_mapping_is_chain_local_and_keeps_ace_nme_caps():

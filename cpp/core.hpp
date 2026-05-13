@@ -359,6 +359,9 @@ public:
                        double beta, double eta, double gamma, double lambda, double mu, double rho, double sigma,
                        double q0, double u1, double u2, double u3, double u4);
     void set_box_padding(double padding, bool center);
+    void replace_residues(const std::unordered_map<ResidueId, Molecule>& replacements,
+                          const std::vector<double>& residue_sort_keys = {}, bool sort = true);
+    void reorder_atoms_by_template(const Molecule& template_molecule);
     bool validate() const;
     std::unordered_map<std::string, std::size_t> residue_counts() const;
 };
@@ -503,6 +506,13 @@ void register_template_molecule_from_mol2_file(const std::filesystem::path& file
 void register_template_virtual_atom2(const std::string& template_name, const std::string& virtual_atom,
                                      const std::string& atom0, const std::string& atom1, const std::string& atom2,
                                      double k1, double k2);
+void configure_residue_template_head(const std::string& template_name, const std::string& atom,
+                                     double length = 1.5, const std::string& next = "");
+void configure_residue_template_tail(const std::string& template_name, const std::string& atom,
+                                     double length = 1.5, const std::string& next = "");
+void configure_residue_template_connect_atom(const std::string& template_name, const std::string& key,
+                                             const std::string& atom);
+void register_residue_template_alias(const std::string& alias_name, const std::string& template_name);
 bool has_template(const std::string& name);
 std::size_t template_atom_count(const std::string& name);
 Molecule get_template_molecule(const std::string& name);

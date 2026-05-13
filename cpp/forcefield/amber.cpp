@@ -931,6 +931,73 @@ void register_template_virtual_atom2(const std::string& template_name, const std
                                find_atom_by_name(atom1), find_atom_by_name(atom2), k1, k2);
 }
 
+void configure_residue_template_head(const std::string& template_name, const std::string& atom,
+                                     double length, const std::string& next) {
+    std::scoped_lock lock(registry_mutex());
+    auto it = templates().find(template_name);
+    if (it == templates().end()) {
+        throw std::out_of_range("residue template not found: " + template_name);
+    }
+    it->second.set_head(atom, length, next);
+}
+
+void configure_residue_template_tail(const std::string& template_name, const std::string& atom,
+                                     double length, const std::string& next) {
+    std::scoped_lock lock(registry_mutex());
+    auto it = templates().find(template_name);
+    if (it == templates().end()) {
+        throw std::out_of_range("residue template not found: " + template_name);
+    }
+    it->second.set_tail(atom, length, next);
+}
+
+void configure_residue_template_connect_atom(const std::string& template_name, const std::string& key,
+                                             const std::string& atom) {
+    std::scoped_lock lock(registry_mutex());
+    auto it = templates().find(template_name);
+    if (it == templates().end()) {
+        throw std::out_of_range("residue template not found: " + template_name);
+    }
+    it->second.set_connect_atom(key, atom);
+}
+
+void register_residue_template_alias(const std::string& alias_name, const std::string& template_name) {
+    std::scoped_lock lock(registry_mutex());
+    const auto it = templates().find(template_name);
+    if (it == templates().end()) {
+        throw std::out_of_range("residue template not found: " + template_name);
+    }
+    ResidueType alias(alias_name);
+    for (const auto& atom : it->second.atoms()) {
+        alias.add_atom(atom.name, atom.type, atom.x, atom.y, atom.z, atom.charge, atom.mass);
+    }
+    for (const auto& bond : it->second.bonds()) {
+        alias.add_connectivity(it->second.atoms()[bond.atom1].name, it->second.atoms()[bond.atom2].name);
+    }
+    if (!it->second.head().empty()) {
+        alias.set_head(it->second.head(), it->second.head_length(), it->second.head_next());
+    }
+    if (!it->second.tail().empty()) {
+        alias.set_tail(it->second.tail(), it->second.tail_length(), it->second.tail_next());
+    }
+    for (const auto& [key, atom] : it->second.connect_atoms()) {
+        alias.set_connect_atom(key, atom);
+    }
+    templates().insert_or_assign(alias_name, std::move(alias));
+
+    const auto molecule_it = molecule_templates().find(template_name);
+    if (molecule_it != molecule_templates().end()) {
+        Molecule alias_molecule = molecule_it->second;
+        alias_molecule.name = alias_name;
+        for (auto& residue : alias_molecule.residues) {
+            residue.name = alias_name;
+            residue.type_name = alias_name;
+            residue.original_name = alias_name;
+        }
+        molecule_templates().insert_or_assign(alias_name, std::move(alias_molecule));
+    }
+}
+
 bool has_template(const std::string& name) {
     std::scoped_lock lock(registry_mutex());
     return templates().find(name) != templates().end();

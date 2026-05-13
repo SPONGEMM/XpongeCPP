@@ -37,15 +37,20 @@ from ._core import (
     load_sw_parameter_file,
     merge_dual_topology,
     merge_force_field,
+    molecule_from_residuetype,
+    reorder_atoms_by_template,
     register_ff14sb,
     register_amber_frcmod_file,
     register_amber_bond_parameter,
     register_amber_lj_parameter,
     register_amber_cmap_parameter,
     register_amber_parmdat_file,
+    register_residue_templates_from_mol2_text,
     register_residue_templates_from_mol2_file,
+    register_residue_template_alias,
     register_pdb_residue_alias_mapping,
     register_pdb_residue_name_mapping,
+    register_his_mapping,
     register_template_molecule_from_mol2_file,
     register_template_virtual_atom2,
     register_tip3p,
@@ -54,6 +59,10 @@ from ._core import (
     save_mol2,
     save_sponge_input,
     set_box_padding,
+    configure_residue_template_connect_atom,
+    configure_residue_template_head,
+    configure_residue_template_tail,
+    replace_residues,
     template_atom_count,
 )
 from .assign import AssignRule
@@ -690,19 +699,91 @@ def h_mass_repartition(molecule, repartition_mass=1.1, repartition_rate=3, exclu
     for residue in molecule.residues:
         if residue.name == exclude_residue_name:
             continue
+        template_name = residue.type_name or residue.name
+        template_neighbors = None
+        if has_template(template_name):
+            template = get_template_molecule(template_name)
+            template_neighbors = {atom.name: set() for atom in template.residues[0].atoms}
+            for atom1, atom2 in template.explicit_bonds:
+                atom1_name = template.atoms[int(atom1)].name
+                atom2_name = template.atoms[int(atom2)].name
+                template_neighbors[atom1_name].add(atom2_name)
+                template_neighbors[atom2_name].add(atom1_name)
         residue_indices = {int(atom.index) for atom in residue.atoms}
         for atom in residue.atoms:
             if atom.mass > repartition_mass:
                 continue
-            neighbors = [index for index in adjacency[int(atom.index)] if index in residue_indices]
-            if len(neighbors) > 1:
-                raise AssertionError("The atom to repartition mass can have at most 1 bond")
-            if not neighbors:
-                continue
-            heavy_atom = molecule.atoms[neighbors[0]]
+            heavy_atom = None
+            if template_neighbors is not None:
+                neighbor_names = sorted(template_neighbors.get(atom.name, set()))
+                if len(neighbor_names) == 1:
+                    heavy_atom = residue.name2atom(neighbor_names[0])
+            if heavy_atom is None:
+                neighbors = [index for index in adjacency[int(atom.index)] if index in residue_indices]
+                if len(neighbors) != 1:
+                    continue
+                heavy_atom = molecule.atoms[neighbors[0]]
             origin_mass = atom.mass
             atom.mass *= repartition_rate
             heavy_atom.mass -= atom.mass - origin_mass
+
+
+def _single_residue_molecule(value, parameter_name):
+    if isinstance(value, Molecule):
+        if value.residue_count != 1:
+            raise TypeError(f"{parameter_name} molecules should contain exactly one residue")
+        return value
+    if isinstance(value, ResidueType):
+        return molecule_from_residuetype(value)
+    if hasattr(value, "name") and has_template(value.name):
+        return get_template_molecule(value.name)
+    raise TypeError(
+        f"{parameter_name} should be a Molecule with one residue, a ResidueType, "
+        "or an object whose name matches a registered template"
+    )
+
+
+def solvent_replace(molecule, select, toreplace, sort=True):
+    if not callable(select):
+        if isinstance(select, Molecule):
+            if select.residue_count != 1:
+                raise TypeError("select molecules should contain exactly one residue")
+            resname = select.residues[0].name
+        elif isinstance(select, ResidueType):
+            resname = select.name
+        elif hasattr(select, "name"):
+            resname = select.name
+        else:
+            raise TypeError("select should be callable, a Molecule, a ResidueType, or an object with a name")
+        select = lambda residue, target_name=resname: residue.name == target_name
+
+    selected = []
+    residue_sort_keys = []
+    for residue in molecule.residues:
+        if select(residue):
+            selected.append(int(residue.index))
+            residue_sort_keys.append(float("inf"))
+        else:
+            residue_sort_keys.append(float("-inf"))
+
+    np.random.shuffle(selected)
+    replacements = {}
+    count = 0
+    for key, value in toreplace.items():
+        replacement = _single_residue_molecule(key, "toreplace keys")
+        value = int(value)
+        indices = selected[count:count + value]
+        count += value
+        for residue_index in indices:
+            replacements[residue_index] = replacement
+            residue_sort_keys[residue_index] = float(count)
+    replace_residues(molecule, replacements, residue_sort_keys, sort)
+
+
+def sort_atoms_by(mol, template):
+    if not isinstance(mol, Molecule) or not isinstance(template, Molecule):
+        raise TypeError("the type of the input should be Xponge.Molecule")
+    reorder_atoms_by_template(mol, template)
 
 
 def optimize(mol, step=2000, only_bad_coordinate=True, dt=1e-8, pbc=True, extra_commands=None):
@@ -714,6 +795,8 @@ def optimize(mol, step=2000, only_bad_coordinate=True, dt=1e-8, pbc=True, extra_
     executable = "SPONGE" if pbc else "SPONGE_NOPBC"
     if shutil.which(executable) is None:
         raise RuntimeError(f"{executable} executable is required for optimize()")
+    if extra_commands is not None and not hasattr(extra_commands, "items"):
+        raise TypeError("extra_commands should be a mapping of command names to values")
     with tempfile.TemporaryDirectory() as tempdir:
         prefix = "temp"
         save_prefix = os.path.join(tempdir, prefix)
@@ -755,10 +838,14 @@ dont_check_input = 1
         command = [executable, "-mdin", mdin_name, "-dt", str(dt)]
         if only_bad_coordinate:
             command.extend(["-mass_in_file", f"{save_prefix}_fake_mass.txt"])
-        result = subprocess.run(command, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        result = subprocess.run(command, check=False, text=True, capture_output=True)
         if result.returncode != 0:
-            raise RuntimeError("The optimization failed")
-        load_coordinate(f"{output_prefix}_coordinate.txt", mol)
+            message = result.stderr.strip() or result.stdout.strip() or "The optimization failed"
+            raise RuntimeError(message)
+        coordinate_filename = f"{output_prefix}_coordinate.txt"
+        if not os.path.exists(coordinate_filename):
+            raise RuntimeError("The optimization did not produce coordinate output")
+        load_coordinate(coordinate_filename, mol)
 
 
 class Region:
@@ -1048,6 +1135,8 @@ Impose_Dihedral = impose_dihedral
 Main_Axis_Rotate = main_axis_rotate
 Get_Peptide_From_Sequence = get_peptide_from_sequence
 H_Mass_Repartition = h_mass_repartition
+Solvent_Replace = solvent_replace
+Sort_Atoms_By = sort_atoms_by
 Optimize = optimize
 
 
@@ -1092,6 +1181,8 @@ Load_Parmdat = load_parmdat
 AddIons = Add_Ions
 AddMolecule = Add_Molecule
 AddSolventBox = Add_Solvent_Box
+SolventReplace = solvent_replace
+SortAtomsBy = sort_atoms_by
 SetBoxPadding = Set_Box_Padding
 SaveSpongeInput = Save_SPONGE_Input
 Save_SPONGEInput = Save_SPONGE_Input
@@ -1445,11 +1536,17 @@ __all__ = [
     "register_amber_lj_parameter",
     "register_amber_cmap_parameter",
     "register_amber_bond_parameter",
+    "register_residue_templates_from_mol2_text",
     "register_residue_templates_from_mol2_file",
+    "register_residue_template_alias",
     "register_pdb_residue_alias_mapping",
     "register_pdb_residue_name_mapping",
+    "register_his_mapping",
     "register_template_molecule_from_mol2_file",
     "register_template_virtual_atom2",
+    "configure_residue_template_head",
+    "configure_residue_template_tail",
+    "configure_residue_template_connect_atom",
     "has_template",
     "template_atom_count",
     "get_template_molecule",

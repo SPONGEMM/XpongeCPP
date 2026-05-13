@@ -94,7 +94,7 @@ XpongeCPP
 | `import XpongeCPP as Xponge` style | Supported | Common load/build/modeling aliases are exposed. |
 | Snake/camel/underscore aliases for common APIs | Partial | Common names are present; original global alias generation is not fully replicated. |
 | Original dynamic global namespace injection for all `AtomType`/`ResidueType` names | Partial | Templates are registered and queryable, but Xponge's full global variable behavior is not restored. |
-| `GlobalSetting` | Partial | GROMACS include path and bonded parser hooks exist for GROMACS compatibility; full original settings system is not complete. |
+| `GlobalSetting` | Partial | GROMACS include path, bonded parser hooks, HIS/PDB residue-name mapping helpers and related compatibility shims exist; the full original settings system is not complete. |
 | Old Python object model compatibility | Not supported | XpongeCPP intentionally uses C++ flat data structures. |
 
 ### Assign
@@ -107,10 +107,10 @@ XpongeCPP
 | `AssignRule` custom Python registry | Supported | User custom rules run in Python and do not affect built-in C++ hot paths. |
 | TPACM4 | Supported | C++ implementation with regression tests. |
 | Gasteiger | Supported with optional dependency | Uses RDKit when installed. |
-| RESP | Partial | PySCF backend exists; small-system tests pass. Large and all-parameter Xponge RESP parity is not complete. |
-| pH model | Partial | Common phenol/carboxyl/alcohol behavior exists; full original edge coverage is not complete. |
+| RESP | Partial | PySCF backend exists; water plus multiple nontrivial small-molecule regressions pass under `pixi`. Large and all-parameter Xponge RESP parity is not complete. |
+| pH model | Partial | Common phenol/carboxyl/alcohol behavior exists, including reference-backed typing checks and protonation/deprotonation coverage in both directions for the current supported chemistry classes. Full original edge coverage is not complete. |
 | PubChem real network behavior | Partial | Signature and dependency behavior are present; live network regression is opt-in. |
-| CIF symmetry/crystal expansion | Partial | Basic cell/fractional coordinate support exists; full original CIF crystallographic behavior is not complete. |
+| CIF symmetry/crystal expansion | Partial | Basic cell/fractional coordinate support exists, including reference-backed fractional-coordinate cases plus richer non-orthogonal symmetry-basis coverage. Full original CIF crystallographic behavior is not complete. |
 
 ### Loaders
 
@@ -124,9 +124,9 @@ XpongeCPP
 | `load_gro` | Supported for tested cases | Orthogonal/triclinic box, fixed coordinate columns, velocity ignore, `read_box_angle=False`. |
 | `load_molpsf` | Partial | NATOM/NBOND, header variants, connectivity split, charge/type conflict handling. Full PSF ecosystem sections are intentionally skipped like current target behavior. |
 | `GromacsTopologyIterator` | Supported | Include stack, macro define/undef, ifdef/ifndef/else/endif, continuation lines, comments. |
-| `load_ffitp` | Partial to supported common Xponge behavior | Returns Xponge-style parameter buffers for common atomtypes, pairtypes, bondtypes, angletypes, dihedraltypes, cmaptypes, nonbond params. Unsupported GROMACS function types still raise. |
-| `load_molitp` | Partial | Builds molecules/system from moleculetype/atoms/bonds/system/molecules with head/tail prefix. More complex GROMACS molecule blocks and custom bonded parser effects are not fully migrated. |
-| Full CHARMM/GROMACS/OPLS topology ecosystem | Partial | Fixture-level non-Amber parsers exist; not yet full Xponge equivalence. |
+| `load_ffitp` | Supported for common Xponge workflows | Returns Xponge-style parameter buffers for common atomtypes, pairtypes, bondtypes, angletypes, dihedraltypes, cmaptypes and nonbond params, with baseline-backed regression against the original loader. Unsupported GROMACS function types still raise. |
+| `load_molitp` | Supported for common Xponge workflows | Builds molecules/system from moleculetype/atoms/bonds/system/molecules, including Xponge-style head/tail-derived residue variants and molecule multiplicity, with reference-backed common-path regression. More exotic GROMACS molecule blocks and custom bonded parser effects are still partial. |
+| Full CHARMM/GROMACS/OPLS topology ecosystem | Partial | GROMACS common loader paths plus broader CHARMM/OPLS loader-driven assembled export regression are covered; full ecosystem equivalence is not complete. |
 
 ### Build, topology and export
 
@@ -150,15 +150,15 @@ XpongeCPP
 | `Add_Ions` | Supported | Random deterministic replacement by seed, custom solvent residue name. |
 | `Set_Box_Padding` | Supported | Explicit box handling and implicit coordinate export behavior are tested. |
 | Molecule merge, `+`, `|`, `*` semantics | Supported for tested paths | Link/no-link/repeat behavior covered. |
-| `impose_bond`, `impose_angle`, `impose_dihedral` | Not supported | Geometry manipulation routines are not migrated. |
-| `h_mass_repartition` | Not supported | No equivalent batch mass repartitioning API yet. |
-| `solvent_replace` | Not supported | Ion replacement exists; general selection-based solvent replacement does not. |
-| `main_axis_rotate` | Not supported | No principal-axis rotation helper yet. |
-| `get_peptide_from_sequence` | Not supported | No sequence-to-peptide builder yet. |
-| `sort_atoms_by` | Not supported | No template-based atom reorder helper yet. |
-| `optimize` | Not supported | Original external SPONGE minimization helper is not migrated. |
-| `Region`, `UnionRegion`, `IntersectRegion`, `BlockRegion`, `SphereRegion`, `FrustumRegion`, `PrismRegion` | Not supported | Region boolean geometry is still missing. |
-| `Lattice` and crystal building | Not supported | SC/BCC/FCC/HCP/DIAMOND/custom lattice and periodic bonds are not migrated. |
+| `impose_bond`, `impose_angle`, `impose_dihedral` | Supported for current geometry workflows | Geometry manipulation routines are implemented and covered by migration regression. |
+| `h_mass_repartition` | Supported for current workflows | Batch hydrogen mass repartitioning exists and matches current regression behavior. |
+| `solvent_replace` | Supported for current replacement workflows | Arbitrary selected solvent residue replacement is available for one-residue template or molecule replacements, including mixed deterministic replacement paths. |
+| `main_axis_rotate` | Supported | Principal-axis alignment helper exists and is regression tested. |
+| `get_peptide_from_sequence` | Supported for Amber peptide templates | Sequence-to-peptide builder exists for current one-letter amino-acid workflows. |
+| `sort_atoms_by` | Supported | Template-based atom reorder helper exists for compatible residue layouts. |
+| `optimize` | Partial | External SPONGE minimization wrapper exists; argument handling and failure paths are regression covered, and there is a conditional real-engine success-path test when local SPONGE executables are available. |
+| `Region`, `UnionRegion`, `IntersectRegion`, `BlockRegion`, `SphereRegion`, `FrustumRegion`, `PrismRegion` | Supported for current geometry workflows | Region boolean geometry helpers exist and are covered by current migration tests. |
+| `Lattice` and crystal building | Supported for current lattice workflows | SC/BCC/FCC/HCP/DIAMOND/custom lattice creation and periodic-bond handling exist for current tested workflows. |
 
 ### Forcefields
 
@@ -166,12 +166,12 @@ XpongeCPP
 | --- | --- | --- |
 | Amber ff14SB | Supported | 1KV2 workflows and packaged data are covered. |
 | Amber ff19SB / RSFF2C CMAP | Supported for current tests | CMAP generation and export are tested. |
-| Amber nucleic acid/lipid/glycam modules | Partial | Import modules and packaged data exist; broad molecular regression is not complete. |
+| Amber nucleic acid/lipid/glycam modules | Partial | Import modules, packaged data, template registration and broader multi-residue assembled export workflows for `bsc1`, `ol3`, `ol15`, `lipid14`, `lipid17` and GLYCAM variants are regression covered; broad assembled-molecule regression is not complete. |
 | TIP3P/TIP4P/TIP4PEW/OPC/SPCE | Supported for current tests | Multi-site virtual atom output covered. |
 | GAFF/GAFF2 | Supported for current typed MOL2 and assignment tests | Larger ChEMBL full-run remains optional/local. |
-| Common ions | Supported for Amber water models currently tested | Broad ion/water-model matrix still needs larger regression. |
-| CHARMM/OPLS/GROMACS parsers | Partial | Minimal/parser-fixture functionality; full ecosystem equivalence is not complete. |
-| Martini | Not supported | Data may be packaged in reference tree, but runtime model construction is not migrated. |
+| Common ions | Supported for Amber water models currently tested | Multi-water-model ion replacement regression exists for TIP3P/SPCE/TIP4P/TIP4PEW/OPC; a broader ion/water-model matrix still needs larger regression. |
+| CHARMM/OPLS/GROMACS parsers | Partial | GROMACS common loader paths are baseline-backed, and CHARMM/OPLS packaged modules now register residue templates and terminal mappings with reference checks plus broader loader-driven assembled export regression. Full ecosystem equivalence is not complete. |
+| Martini | Partial | Packaged Martini 3.0.0 data now supports multiple loader-driven runtime workflows, with explicit regression for a current connectivity/template limitation on constrained small molecules. Broader runtime construction and ecosystem parity are still incomplete. |
 | SW/EDIP | Partial | Parameter parser/writer fixture paths exist. |
 | SYBYL | Partial | Assign/save typing support exists; full original helper ecosystem not complete. |
 
@@ -192,31 +192,33 @@ The current test suite covers the following migration surfaces:
 - B96 typed MOL2 + GAFF/frcmod single molecule and 1KV2+B96 assembly headers.
 - PDB chain, terminal, SSBOND/LINK/CONECT, hybrid-36 and round-trip behavior.
 - MOL2 explicit bonds and custom solvent/ion replacement.
-- Amber data packaging and forcefield import modules, including multi-site waters.
-- Assign TPACM4, GAFF rules, optional RDKit/PySCF paths, pH model helpers, custom `AssignRule`, custom bond order parameters.
+- Amber data packaging and forcefield import modules, including multi-site waters, common water/ion replacement paths, and broader nucleic-acid/lipid/GLYCAM assembled export workflows.
+- Assign TPACM4, GAFF rules, optional RDKit/PySCF paths, broader RESP/pH-model helpers, richer CIF symmetry cases, custom `AssignRule`, custom bond order parameters, and selected original-Xponge reference comparisons.
 - PSF/GRO/coordinate/rst7 IO fixtures.
-- Non-Amber fixture-level parsers for GROMACS/OPLS/CHARMM/SW/EDIP/FEP softcore.
+- Process-modeling parity for `impose_*`, `solvent_replace`, `sort_atoms_by`, `h_mass_repartition`, `optimize` failure/argument handling, conditional real-engine `optimize` success-path coverage, peptide building, region geometry and lattice construction.
+- Baseline-backed GROMACS `load_ffitp/load_molitp` common workflows, plus broader CHARMM/OPLS loader-driven assembled exports and multiple Martini loader-driven workflows with explicit constrained-topology limitation coverage.
+- Non-Amber fixture-level parsers for SW/EDIP/FEP softcore.
 
 Typical verification commands:
 
 ```bash
-rtk uv run pytest -q
-pixi run test
-pixi run test-assign-full
+rtk pixi run pytest -q
+rtk pixi run test -q -rs
+rtk pixi run test-assign-full
 ```
 
-At the time this document was written, the full `rtk uv` suite had `112 passed,
-2 skipped`.
+At the time this document was written, the full `pixi` suite had `155 passed`
+with `1 skipped` when local SPONGE executables were unavailable for the
+conditional `optimize` real-engine success-path test.
 
 ## 5. Migration Priorities From Here
 
 Recommended order if the goal is to replace Xponge's modeling API:
 
-1. Finish GROMACS `load_ffitp/load_molitp` edge cases against original Xponge baselines.
-2. Migrate `process.py` geometry, Region/Lattice and crystal building.
-3. Deepen non-Amber forcefield parsers from fixture-level to Xponge-equivalent.
-4. Expand Amber/nucleic acid/lipid/glycam regression beyond import smoke tests.
-5. Decide whether dynamic Python writer plugins are required. If not required,
+1. Deepen non-Amber support beyond the current broader assembled export parity, especially for larger real CHARMM/OPLS systems and remaining special-term edge cases.
+2. Expand Amber nucleic-acid/lipid/glycam regression from the current broader assembled exports into larger loader-driven or more realistic multi-residue workflows.
+3. Continue broadening assign parity, especially larger RESP cases and richer CIF/crystal scenarios beyond the current edge coverage.
+4. Decide whether dynamic Python writer plugins are required. If not required,
    keep C++ fixed writers as the supported architecture.
-6. Treat CLI/tools/analysis/mdrun as a separate compatibility layer after the
+5. Treat CLI/tools/analysis/mdrun as a separate compatibility layer after the
    modeling API is stable.

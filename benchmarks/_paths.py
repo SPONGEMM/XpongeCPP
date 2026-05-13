@@ -13,4 +13,11 @@ def original_xponge_repo() -> Path:
     configured = os.environ.get("XPONGE_REFERENCE_REPO")
     if configured:
         return Path(configured)
-    return REPO_ROOT.parent / "Xponge"
+    candidates = [
+        REPO_ROOT.parent / "Xponge-origin",
+        REPO_ROOT.parent / "Xponge",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]

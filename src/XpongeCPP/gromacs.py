@@ -7,6 +7,8 @@ import os
 class GlobalSetting:
     GMXIncludePaths = []
     _gmx_bonded_type_parsers = {}
+    PDBProteinResidueNames = set()
+    HISMap = {}
 
     @classmethod
     def Add_GMX_Include_Path(cls, path):
@@ -19,6 +21,25 @@ class GlobalSetting:
     @classmethod
     def get_gmx_bonded_type_parser(cls, force_name, func):
         return cls._gmx_bonded_type_parsers.get((force_name, int(func)), lambda words, mol, stat: None)
+
+    @classmethod
+    def Add_PDB_Residue_Name_Mapping(cls, place, pdb_name, real_name):
+        from . import register_pdb_residue_name_mapping
+
+        register_pdb_residue_name_mapping(place, pdb_name, real_name)
+
+    @classmethod
+    def Add_PDB_Residue_Alias_Mapping(cls, pdb_name, real_name):
+        from . import register_pdb_residue_alias_mapping
+
+        register_pdb_residue_alias_mapping(pdb_name, real_name)
+
+    @classmethod
+    def Add_HIS_Mapping(cls, residue_name, hid, hie, hip):
+        from . import register_his_mapping
+
+        register_his_mapping(residue_name, hid, hie, hip)
+        cls.HISMap[residue_name] = {"HID": hid, "HIE": hie, "HIP": hip}
 
 
 class GromacsTopologyIterator:
@@ -277,6 +298,90 @@ def _molitp_to_mol2(name, atoms, bonds):
     return "\n".join(out) + "\n"
 
 
+def _molitp_next_generated_residue_name(base_name, generated_variants, has_template):
+    candidate = base_name
+    suffix = 1
+    while candidate in generated_variants or has_template(candidate):
+        candidate = f"{base_name}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _molitp_residue_signature_key(signature):
+    return tuple(sorted((atom_name, atom_type, round(charge, 8)) for atom_name, (atom_type, charge) in signature.items()))
+
+
+def _molitp_apply_template_variants(mol_specs, molecule_order):
+    from . import get_template_molecule, has_template
+
+    template_signatures = {}
+    generated_variants = {}
+    signature_to_name = {}
+
+    def get_signature(name):
+        if name in generated_variants:
+            return generated_variants[name]
+        if name not in template_signatures:
+            template = get_template_molecule(name)
+            template_signatures[name] = {
+                atom.name: (atom.type, atom.charge)
+                for atom in template.residues[0].atoms
+            }
+        return template_signatures[name]
+
+    for mol_name in molecule_order:
+        residues = {}
+        residue_order = []
+        for atom in mol_specs[mol_name]["atoms"]:
+            residues.setdefault(atom["resnr"], []).append(atom)
+            if atom["resnr"] not in residue_order:
+                residue_order.append(atom["resnr"])
+
+        for resnr in residue_order:
+            residue_atoms = residues[resnr]
+            base_name = residue_atoms[0]["resname"]
+            if not has_template(base_name):
+                continue
+
+            current_name = base_name
+            current_signature = dict(get_signature(base_name))
+            for atom in residue_atoms:
+                atom_name = atom["atom_name"]
+                desired = (atom["atom_type"], atom["charge"])
+                if current_signature.get(atom_name) == desired:
+                    continue
+
+                compatible_name = None
+                compatible_signature = None
+                for candidate_name, candidate_signature in generated_variants.items():
+                    if candidate_name != base_name and not candidate_name.startswith(base_name + "_"):
+                        continue
+                    if candidate_signature.get(atom_name) != desired:
+                        continue
+                    compatible_name = candidate_name
+                    compatible_signature = candidate_signature
+                    break
+
+                if compatible_name is not None:
+                    current_name = compatible_name
+                    current_signature = dict(compatible_signature)
+                    continue
+
+                new_name = _molitp_next_generated_residue_name(base_name, generated_variants, has_template)
+                new_signature = dict(current_signature)
+                new_signature[atom_name] = desired
+                generated_variants[new_name] = new_signature
+                signature_to_name.setdefault(_molitp_residue_signature_key(new_signature), new_name)
+                current_name = new_name
+                current_signature = new_signature
+
+            final_signature_key = _molitp_residue_signature_key(current_signature)
+            current_name = signature_to_name.get(final_signature_key, current_name)
+            signature_to_name.setdefault(final_signature_key, current_name)
+            for atom in residue_atoms:
+                atom["resname"] = current_name
+
+
 def load_molitp(filename, water_replace=True, head_prefix="N", tail_prefix="C", macros=None):
     from . import get_template_molecule, load_mol2
 
@@ -334,6 +439,8 @@ def load_molitp(filename, water_replace=True, head_prefix="N", tail_prefix="C", 
             system_name = line.strip()
         elif iterator.flag == "molecules":
             system_counts.append((words[0], int(words[1])))
+
+    _molitp_apply_template_variants(mol_specs, molecule_order)
 
     mols = {}
     for name in molecule_order:

@@ -236,6 +236,22 @@ void add_molecule_object(const std::shared_ptr<Molecule>& molecule, const std::s
     molecule->add_molecule(*other);
 }
 
+void replace_residues_object(const std::shared_ptr<Molecule>& molecule,
+                             const std::unordered_map<ResidueId, std::shared_ptr<Molecule>>& replacements,
+                             const std::vector<double>& residue_sort_keys, bool sort) {
+    std::unordered_map<ResidueId, Molecule> copied_replacements;
+    copied_replacements.reserve(replacements.size());
+    for (const auto& [residue_id, replacement] : replacements) {
+        copied_replacements.emplace(residue_id, *replacement);
+    }
+    molecule->replace_residues(copied_replacements, residue_sort_keys, sort);
+}
+
+void reorder_atoms_by_template_object(const std::shared_ptr<Molecule>& molecule,
+                                      const std::shared_ptr<Molecule>& template_molecule) {
+    molecule->reorder_atoms_by_template(*template_molecule);
+}
+
 std::shared_ptr<Molecule> molecule_binary_add(const std::shared_ptr<Molecule>& lhs,
                                               const std::shared_ptr<Molecule>& rhs, bool link) {
     auto out = std::make_shared<Molecule>(*lhs);
@@ -645,6 +661,10 @@ PYBIND11_MODULE(_core, m) {
     m.def("add_ions", &add_ions_object, py::arg("molecule"), py::arg("counts"), py::arg("seed") = 0,
           py::arg("solvent") = "WAT");
     m.def("add_molecule", &add_molecule_object, py::arg("molecule"), py::arg("other"));
+    m.def("replace_residues", &replace_residues_object, py::arg("molecule"), py::arg("replacements"),
+          py::arg("residue_sort_keys") = std::vector<double>{}, py::arg("sort") = true);
+    m.def("reorder_atoms_by_template", &reorder_atoms_by_template_object, py::arg("molecule"),
+          py::arg("template_molecule"));
     m.def("set_box_padding", &set_box_padding_object, py::arg("molecule"), py::arg("padding") = 0.5,
           py::arg("center") = true);
     m.def("save_sponge_input", &save_sponge_input_object, py::arg("molecule"), py::arg("prefix") = "",
@@ -673,6 +693,8 @@ PYBIND11_MODULE(_core, m) {
           py::arg("atom_type2"), py::arg("k"), py::arg("length"));
     m.def("register_amber_cmap_parameter", &register_amber_cmap_parameter, py::arg("key"),
           py::arg("resolution"), py::arg("parameters"));
+    m.def("register_residue_templates_from_mol2_text", &register_residue_templates_from_mol2_text,
+          py::arg("text"));
     m.def("register_residue_templates_from_mol2_file",
           [](const std::string& filename) { register_residue_templates_from_mol2_file(filename); });
     m.def("register_template_molecule_from_mol2_file",
@@ -680,11 +702,26 @@ PYBIND11_MODULE(_core, m) {
     m.def("register_template_virtual_atom2", &register_template_virtual_atom2, py::arg("template_name"),
           py::arg("virtual_atom"), py::arg("atom0"), py::arg("atom1"), py::arg("atom2"), py::arg("k1"),
           py::arg("k2"));
+    m.def("configure_residue_template_head", &configure_residue_template_head, py::arg("template_name"),
+          py::arg("atom"), py::arg("length") = 1.5, py::arg("next") = "");
+    m.def("configure_residue_template_tail", &configure_residue_template_tail, py::arg("template_name"),
+          py::arg("atom"), py::arg("length") = 1.5, py::arg("next") = "");
+    m.def("configure_residue_template_connect_atom", &configure_residue_template_connect_atom,
+          py::arg("template_name"), py::arg("key"), py::arg("atom"));
+    m.def("register_residue_template_alias", &register_residue_template_alias, py::arg("alias_name"),
+          py::arg("template_name"));
     m.def("register_pdb_residue_name_mapping", &register_pdb_residue_name_mapping, py::arg("place"),
           py::arg("pdb_name"), py::arg("real_name"));
     m.def("register_pdb_residue_alias_mapping", &register_pdb_residue_alias_mapping, py::arg("pdb_name"),
           py::arg("real_name"));
+    m.def("register_his_mapping", &register_his_mapping, py::arg("residue_name"), py::arg("hid"),
+          py::arg("hie"), py::arg("hip"));
     m.def("has_template", &has_template);
     m.def("template_atom_count", &template_atom_count);
     m.def("get_template_molecule", &get_template_molecule_object);
+    m.def("molecule_from_residuetype", [](const ResidueType& residue_type) {
+        auto molecule = std::make_shared<Molecule>(residue_type.name());
+        molecule->append_residue_from_type(residue_type, 0.0, 0.0, 0.0);
+        return molecule;
+    }, py::arg("residue_type"));
 }
