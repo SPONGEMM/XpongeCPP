@@ -19,6 +19,11 @@ pybind11_add_module(_core
     cpp/core/molecule.cpp
     cpp/core/template_ops.cpp
     cpp/forcefield/amber.cpp
+    cpp/forcefield/amber_builtins.cpp
+    cpp/forcefield/amber_names.cpp
+    cpp/forcefield/amber_parser.cpp
+    cpp/forcefield/amber_registry.cpp
+    cpp/forcefield/amber_templates.cpp
     cpp/forcefield/fep.cpp
     cpp/forcefield/nonamber.cpp
     cpp/forcefield/special/gb.cpp

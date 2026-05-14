@@ -140,6 +140,25 @@ Constraints:
 - preserve current import side effects
 - preserve public Python entrypoints
 
+Phase 2 execution notes:
+
+- split registry state to `cpp/forcefield/amber_registry.cpp`
+- split Amber naming helpers to `cpp/forcefield/amber_names.cpp`
+- split built-in ff14sb and tip3p registration to `cpp/forcefield/amber_builtins.cpp`
+- split Amber parameter parsing and lookup logic to `cpp/forcefield/amber_parser.cpp`
+- split template and mol2 registration logic to `cpp/forcefield/amber_templates.cpp`
+- added shared internal declarations in `cpp/forcefield/amber_internal.hpp`
+- reduced `cpp/forcefield/amber.cpp` to a thin translation unit
+- updated `CMakeLists.txt` to compile the new translation units
+- fixed validation gate after the split:
+  - `rtk pixi run test -q -rs`: passed, with one expected skipped test:
+    - `tests/test_process_migration.py:392` because local SPONGE executables are not available
+  - `rtk pixi run pytest -q tests/test_8ryk_regression.py -k spg_init`: passed
+  - `rtk pixi run python benchmarks/bench_1kv2.py --padding 8 20 --repeat 5`: passed
+  - `bench_1kv2.py` median wall time snapshot after Phase 2:
+    - `padding=8.0A total=0.088539s`
+    - `padding=20.0A total=0.200590s`
+
 ## Phase 3
 
 Split `cpp/forcefield/nonamber.cpp`.
@@ -200,7 +219,7 @@ Constraints:
 - [x] Phase 0 baseline validation complete
 - [x] Phase 0 committed
 - [x] Phase 1 complete
-- [ ] Phase 2 complete
+- [x] Phase 2 complete
 - [ ] Phase 3 complete
 - [ ] Phase 4 complete
 - [ ] Phase 5 complete
