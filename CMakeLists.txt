@@ -15,10 +15,13 @@ pybind11_add_module(_core
     cpp/assign/mol2_assignment.cpp
     cpp/assign/ring.cpp
     cpp/assign/tpacm4.cpp
+    cpp/core/element_mass.cpp
     cpp/core/molecule.cpp
+    cpp/core/template_ops.cpp
     cpp/forcefield/amber.cpp
     cpp/forcefield/fep.cpp
     cpp/forcefield/nonamber.cpp
+    cpp/forcefield/special/gb.cpp
     cpp/io/coordinate.cpp
     cpp/io/mol2.cpp
     cpp/io/gro.cpp

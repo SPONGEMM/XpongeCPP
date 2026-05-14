@@ -106,6 +106,21 @@ Constraints:
 - no topology logic moves in this phase
 - no Python binding changes in this phase
 
+Phase 1 execution notes:
+
+- moved element and mass helpers to `cpp/core/element_mass.cpp`
+- moved molecule rebuild and template reorder helpers to `cpp/core/template_ops.cpp`
+- moved GB radius helpers to `cpp/forcefield/special/gb.cpp`
+- updated `CMakeLists.txt` to compile the new translation units
+- fixed validation gate after the split:
+  - `rtk pixi run test -q -rs`: passed, with one expected skipped test:
+    - `tests/test_process_migration.py:392` because local SPONGE executables are not available
+  - `rtk pixi run pytest -q tests/test_8ryk_regression.py -k spg_init`: passed
+  - `rtk pixi run python benchmarks/bench_1kv2.py --padding 8 20 --repeat 5`: passed
+  - `bench_1kv2.py` median wall time snapshot after Phase 1:
+    - `padding=8.0A total=0.084241s`
+    - `padding=20.0A total=0.188769s`
+
 ## Phase 2
 
 Split `cpp/forcefield/amber.cpp`.
@@ -183,8 +198,8 @@ Constraints:
 
 - [x] Phase 0 plan file created
 - [x] Phase 0 baseline validation complete
-- [ ] Phase 0 committed
-- [ ] Phase 1 complete
+- [x] Phase 0 committed
+- [x] Phase 1 complete
 - [ ] Phase 2 complete
 - [ ] Phase 3 complete
 - [ ] Phase 4 complete
