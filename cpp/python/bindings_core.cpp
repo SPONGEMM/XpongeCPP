@@ -1,0 +1,277 @@
+#include "bindings_internal.hpp"
+
+namespace xpongecpp {
+namespace {
+
+std::shared_ptr<Molecule> get_template_molecule_object(const std::string& name) {
+    return std::make_shared<Molecule>(get_template_molecule(name));
+}
+
+void set_box_padding_object(const std::shared_ptr<Molecule>& molecule, double padding, bool center) {
+    molecule->set_box_padding(padding, center);
+}
+
+void add_molecule_object(const std::shared_ptr<Molecule>& molecule, const std::shared_ptr<Molecule>& other) {
+    molecule->add_molecule(*other);
+}
+
+void replace_residues_object(const std::shared_ptr<Molecule>& molecule,
+                             const std::unordered_map<ResidueId, std::shared_ptr<Molecule>>& replacements,
+                             const std::vector<double>& residue_sort_keys, bool sort) {
+    std::unordered_map<ResidueId, Molecule> copied_replacements;
+    copied_replacements.reserve(replacements.size());
+    for (const auto& [residue_id, replacement] : replacements) {
+        copied_replacements.emplace(residue_id, *replacement);
+    }
+    molecule->replace_residues(copied_replacements, residue_sort_keys, sort);
+}
+
+void reorder_atoms_by_template_object(const std::shared_ptr<Molecule>& molecule,
+                                      const std::shared_ptr<Molecule>& template_molecule) {
+    molecule->reorder_atoms_by_template(*template_molecule);
+}
+
+std::shared_ptr<Molecule> molecule_binary_add(const std::shared_ptr<Molecule>& lhs,
+                                              const std::shared_ptr<Molecule>& rhs, bool link) {
+    auto out = std::make_shared<Molecule>(*lhs);
+    out->add_molecule_linked(*rhs, link);
+    return out;
+}
+
+std::shared_ptr<Molecule> molecule_repeat(const std::shared_ptr<Molecule>& molecule, int count) {
+    if (count < 1) {
+        throw std::invalid_argument("multiple should be not less than 1");
+    }
+    auto out = std::make_shared<Molecule>(*molecule);
+    for (int i = 1; i < count; ++i) {
+        out->add_molecule_linked(*molecule, true);
+    }
+    return out;
+}
+
+std::unordered_map<std::string, std::string> save_sponge_input_object(const std::shared_ptr<Molecule>& molecule,
+                                                                      const std::string& prefix,
+                                                                      const std::string& dirname) {
+    const auto paths = save_sponge_input(*molecule, prefix.empty() ? molecule->name : prefix, dirname);
+    std::unordered_map<std::string, std::string> out;
+    for (const auto& [key, value] : paths) {
+        out[key] = value.string();
+    }
+    return out;
+}
+
+py::tuple merge_dual_topology_object(const std::shared_ptr<Molecule>& molecule, ResidueId residue_index,
+                                     const std::shared_ptr<Molecule>& residue_b_molecule,
+                                     const std::unordered_map<std::uint32_t, std::uint32_t>& match_b_to_a) {
+    auto [from_a, to_b] = merge_dual_topology(*molecule, residue_index, *residue_b_molecule, match_b_to_a);
+    return py::make_tuple(std::make_shared<Molecule>(std::move(from_a)),
+                          std::make_shared<Molecule>(std::move(to_b)),
+                          match_b_to_a);
+}
+
+std::shared_ptr<Molecule> merge_force_field_object(
+    const std::shared_ptr<Molecule>& molecule_a, const std::shared_ptr<Molecule>& molecule_b, double default_lambda,
+    const std::unordered_map<std::string, double>& specific_lambda) {
+    return std::make_shared<Molecule>(merge_force_field(*molecule_a, *molecule_b, default_lambda, specific_lambda));
+}
+
+}  // namespace
+
+void bind_core_module(py::module_& m) {
+    py::class_<AtomView>(m, "Atom")
+        .def_property_readonly("index", [](const AtomView& self) { return self.id; })
+        .def_property_readonly("name", [](const AtomView& self) { return self.get().name; })
+        .def_property("type", [](const AtomView& self) { return self.get().type; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).type = value; })
+        .def_property_readonly("element", [](const AtomView& self) { return self.get().element; })
+        .def_property("x", [](const AtomView& self) { return self.get().x; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).x = value; })
+        .def_property("y", [](const AtomView& self) { return self.get().y; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).y = value; })
+        .def_property("z", [](const AtomView& self) { return self.get().z; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).z = value; })
+        .def_property("charge", [](const AtomView& self) { return self.get().charge; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).charge = value; })
+        .def_property("mass", [](const AtomView& self) { return self.get().mass; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).mass = value; })
+        .def_property("lj_type_b", [](const AtomView& self) { return self.get().lj_type_b; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).lj_type_b = value; })
+        .def_property("sw_type", [](const AtomView& self) { return self.get().sw_type; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).sw_type = value; })
+        .def_property("edip_type", [](const AtomView& self) { return self.get().edip_type; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).edip_type = value; })
+        .def_property("gb_radius", [](const AtomView& self) { return self.get().gb_radius; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).gb_radius = value; })
+        .def_property("gb_scaler", [](const AtomView& self) { return self.get().gb_scaler; },
+                      [](AtomView& self, double value) { self.molecule->atom(self.id).gb_scaler = value; })
+        .def_property("subsys", [](const AtomView& self) { return self.get().subsys; },
+                      [](AtomView& self, int value) { self.molecule->atom(self.id).subsys = value; })
+        .def_property("bad_coordinate", [](const AtomView& self) { return self.get().bad_coordinate; },
+                      [](AtomView& self, bool value) { self.molecule->atom(self.id).bad_coordinate = value; })
+        .def_property("zero_lj_atom", [](const AtomView& self) { return self.get().zero_lj_atom; },
+                      [](AtomView& self, bool value) { self.molecule->atom(self.id).zero_lj_atom = value; })
+        .def_property_readonly("serial", [](const AtomView& self) { return self.get().serial; })
+        .def_property_readonly("altloc", [](const AtomView& self) { return std::string(1, self.get().altloc); })
+        .def_property_readonly("occupancy", [](const AtomView& self) { return self.get().occupancy; })
+        .def_property_readonly("temp_factor", [](const AtomView& self) { return self.get().temp_factor; })
+        .def_property_readonly("record_name", [](const AtomView& self) { return self.get().record_name; });
+
+    py::class_<ResidueView>(m, "Residue")
+        .def_property_readonly("index", [](const ResidueView& self) { return self.id; })
+        .def_property_readonly("name", [](const ResidueView& self) { return self.get().name; })
+        .def_property_readonly("type_name", [](const ResidueView& self) { return self.get().type_name; })
+        .def_property_readonly("chain_id", [](const ResidueView& self) { return std::string(1, self.get().chain_id); })
+        .def_property_readonly("effective_chain_id",
+                               [](const ResidueView& self) { return std::string(1, self.get().effective_chain_id); })
+        .def_property_readonly("segment_id", [](const ResidueView& self) { return self.get().segment_id; })
+        .def_property_readonly("pdb_resseq", [](const ResidueView& self) { return self.get().pdb_resseq; })
+        .def_property_readonly("insertion_code",
+                               [](const ResidueView& self) { return std::string(1, self.get().insertion_code); })
+        .def_property_readonly("is_hetero", [](const ResidueView& self) { return self.get().is_hetero; })
+        .def_property_readonly("atom_count", [](const ResidueView& self) { return self.get().atom_count; })
+        .def_property_readonly("atoms", &residue_atom_views)
+        .def("atom", &ResidueView::atom)
+        .def("name2atom", &ResidueView::name2atom)
+        .def("Name2Atom", &ResidueView::name2atom);
+
+    py::class_<Molecule, std::shared_ptr<Molecule>>(m, "Molecule")
+        .def(py::init<std::string>(), py::arg("name") = "MOL")
+        .def_readwrite("name", &Molecule::name)
+        .def_property_readonly("atom_count", &Molecule::atom_count)
+        .def_property_readonly("residue_count", &Molecule::residue_count)
+        .def_property_readonly("atoms", &molecule_atom_views)
+        .def_property_readonly("residues", &residue_views)
+        .def_property_readonly("explicit_bonds", &molecule_explicit_bonds)
+        .def_property_readonly("residue_links", &molecule_residue_links)
+        .def_readwrite("box_length", &Molecule::box_length)
+        .def_readwrite("box_angle", &Molecule::box_angle)
+        .def("set_box_padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
+        .def("Set_Box_Padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
+        .def("add_molecule", &Molecule::add_molecule, py::arg("other"))
+        .def("Add_Molecule", &Molecule::add_molecule, py::arg("other"))
+        .def("add_residue_link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
+        .def("Add_Residue_Link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
+        .def("copy", [](const std::shared_ptr<Molecule>& self) { return std::make_shared<Molecule>(*self); })
+        .def("deepcopy", [](const std::shared_ptr<Molecule>& self) { return std::make_shared<Molecule>(*self); })
+        .def("__add__", [](const std::shared_ptr<Molecule>& self, const std::shared_ptr<Molecule>& other) {
+            return molecule_binary_add(self, other, true);
+        }, py::is_operator())
+        .def("__or__", [](const std::shared_ptr<Molecule>& self, const std::shared_ptr<Molecule>& other) {
+            return molecule_binary_add(self, other, false);
+        }, py::is_operator())
+        .def("__mul__", [](const std::shared_ptr<Molecule>& self, int count) { return molecule_repeat(self, count); },
+             py::is_operator())
+        .def("__rmul__", [](const std::shared_ptr<Molecule>& self, int count) { return molecule_repeat(self, count); },
+             py::is_operator())
+        .def("__iadd__", [](const std::shared_ptr<Molecule>& self, const std::shared_ptr<Molecule>& other) {
+            self->add_molecule_linked(*other, true);
+            return self;
+        }, py::is_operator())
+        .def("__ior__", [](const std::shared_ptr<Molecule>& self, const std::shared_ptr<Molecule>& other) {
+            self->add_molecule_linked(*other, false);
+            return self;
+        }, py::is_operator())
+        .def("__imul__", [](const std::shared_ptr<Molecule>& self, int count) {
+            if (count < 1) {
+                throw std::invalid_argument("multiple should be not less than 1");
+            }
+            const Molecule base = *self;
+            for (int i = 1; i < count; ++i) {
+                self->add_molecule_linked(base, true);
+            }
+            return self;
+        }, py::is_operator())
+        .def("add_virtual_atom2", &Molecule::add_virtual_atom2, py::arg("virtual_atom"), py::arg("atom0"),
+             py::arg("atom1"), py::arg("atom2"), py::arg("k1"), py::arg("k2"))
+        .def("Add_Virtual_Atom2", &Molecule::add_virtual_atom2, py::arg("virtual_atom"), py::arg("atom0"),
+             py::arg("atom1"), py::arg("atom2"), py::arg("k1"), py::arg("k2"))
+        .def("add_improper_dihedral", &Molecule::add_improper_dihedral, py::arg("atom0"), py::arg("atom1"),
+             py::arg("atom2"), py::arg("atom3"), py::arg("k"), py::arg("phi0"))
+        .def("Add_Improper_Dihedral", &Molecule::add_improper_dihedral, py::arg("atom0"), py::arg("atom1"),
+             py::arg("atom2"), py::arg("atom3"), py::arg("k"), py::arg("phi0"))
+        .def("add_cmap_type", &Molecule::add_cmap_type, py::arg("resolution"), py::arg("parameters"))
+        .def("Add_CMap_Type", &Molecule::add_cmap_type, py::arg("resolution"), py::arg("parameters"))
+        .def("add_cmap", &Molecule::add_cmap, py::arg("atom0"), py::arg("atom1"), py::arg("atom2"),
+             py::arg("atom3"), py::arg("atom4"), py::arg("type"))
+        .def("Add_CMap", &Molecule::add_cmap, py::arg("atom0"), py::arg("atom1"), py::arg("atom2"),
+             py::arg("atom3"), py::arg("atom4"), py::arg("type"))
+        .def("add_nb14_extra", &Molecule::add_nb14_extra, py::arg("atom1"), py::arg("atom2"), py::arg("a"),
+             py::arg("b"), py::arg("kee"))
+        .def("Add_NB14_Extra", &Molecule::add_nb14_extra, py::arg("atom1"), py::arg("atom2"), py::arg("a"),
+             py::arg("b"), py::arg("kee"))
+        .def("add_urey_bradley", &Molecule::add_urey_bradley, py::arg("atom0"), py::arg("atom1"),
+             py::arg("atom2"), py::arg("k"), py::arg("b"), py::arg("kUB"), py::arg("r13"))
+        .def("Add_Urey_Bradley", &Molecule::add_urey_bradley, py::arg("atom0"), py::arg("atom1"),
+             py::arg("atom2"), py::arg("k"), py::arg("b"), py::arg("kUB"), py::arg("r13"))
+        .def("add_ryckaert_bellemans", &Molecule::add_ryckaert_bellemans, py::arg("atom0"),
+             py::arg("atom1"), py::arg("atom2"), py::arg("atom3"), py::arg("c0"), py::arg("c1"),
+             py::arg("c2"), py::arg("c3"), py::arg("c4"), py::arg("c5"))
+        .def("Add_Ryckaert_Bellemans", &Molecule::add_ryckaert_bellemans, py::arg("atom0"),
+             py::arg("atom1"), py::arg("atom2"), py::arg("atom3"), py::arg("c0"), py::arg("c1"),
+             py::arg("c2"), py::arg("c3"), py::arg("c4"), py::arg("c5"))
+        .def("add_bond_soft", &Molecule::add_bond_soft, py::arg("atom1"), py::arg("atom2"), py::arg("k"),
+             py::arg("b"), py::arg("from_AorB"))
+        .def("Add_Bond_Soft", &Molecule::add_bond_soft, py::arg("atom1"), py::arg("atom2"), py::arg("k"),
+             py::arg("b"), py::arg("from_AorB"))
+        .def("add_listed_force_definition", &Molecule::add_listed_force_definition, py::arg("definition"))
+        .def("Add_Listed_Force_Definition", &Molecule::add_listed_force_definition, py::arg("definition"))
+        .def("set_gb_radius", &Molecule::set_gb_radius, py::arg("radius_set") = "modified_bondi_radii")
+        .def("Set_GB_Radius", &Molecule::set_gb_radius, py::arg("radius_set") = "modified_bondi_radii")
+        .def("enable_min_bonded_parameters", &Molecule::enable_min_bonded_parameters, py::arg("enabled") = true)
+        .def("Enable_Min_Bonded_Parameters", &Molecule::enable_min_bonded_parameters, py::arg("enabled") = true)
+        .def("enable_subsys_division", &Molecule::enable_subsys_division, py::arg("enabled") = true)
+        .def("Enable_Subsys_Division", &Molecule::enable_subsys_division, py::arg("enabled") = true)
+        .def("enable_lj_soft_core", &Molecule::enable_lj_soft_core, py::arg("enabled") = true)
+        .def("Enable_LJ_Soft_Core", &Molecule::enable_lj_soft_core, py::arg("enabled") = true)
+        .def("add_sw_type", &Molecule::add_sw_type, py::arg("name"), py::arg("A"), py::arg("B"),
+             py::arg("epsilon"), py::arg("p"), py::arg("q"), py::arg("a"), py::arg("gamma"),
+             py::arg("sigma"), py::arg("lambda_"), py::arg("b"))
+        .def("Add_SW_Type", &Molecule::add_sw_type, py::arg("name"), py::arg("A"), py::arg("B"),
+             py::arg("epsilon"), py::arg("p"), py::arg("q"), py::arg("a"), py::arg("gamma"),
+             py::arg("sigma"), py::arg("lambda_"), py::arg("b"))
+        .def("add_edip_type", &Molecule::add_edip_type, py::arg("name"), py::arg("A"), py::arg("B"),
+             py::arg("a"), py::arg("c"), py::arg("alpha"), py::arg("beta"), py::arg("eta"),
+             py::arg("gamma"), py::arg("lambda_"), py::arg("mu"), py::arg("rho"), py::arg("sigma"),
+             py::arg("Q0"), py::arg("u1"), py::arg("u2"), py::arg("u3"), py::arg("u4"))
+        .def("Add_EDIP_Type", &Molecule::add_edip_type, py::arg("name"), py::arg("A"), py::arg("B"),
+             py::arg("a"), py::arg("c"), py::arg("alpha"), py::arg("beta"), py::arg("eta"),
+             py::arg("gamma"), py::arg("lambda_"), py::arg("mu"), py::arg("rho"), py::arg("sigma"),
+             py::arg("Q0"), py::arg("u1"), py::arg("u2"), py::arg("u3"), py::arg("u4"))
+        .def("validate", &Molecule::validate)
+        .def("residue_counts", &Molecule::residue_counts);
+
+    py::class_<ResidueType>(m, "ResidueType")
+        .def(py::init<std::string>())
+        .def_property_readonly("name", &ResidueType::name)
+        .def_property_readonly("version", &ResidueType::version)
+        .def_property_readonly("atom_count", &ResidueType::atom_count)
+        .def_property_readonly("bond_count", &ResidueType::bond_count)
+        .def("add_atom", &ResidueType::add_atom, py::arg("name"), py::arg("atom_type"), py::arg("x"),
+             py::arg("y"), py::arg("z"), py::arg("charge") = 0.0, py::arg("mass") = 0.0)
+        .def("Add_Atom", &ResidueType::add_atom, py::arg("name"), py::arg("atom_type"), py::arg("x"),
+             py::arg("y"), py::arg("z"), py::arg("charge") = 0.0, py::arg("mass") = 0.0)
+        .def("add_connectivity", &ResidueType::add_connectivity)
+        .def("Add_Connectivity", &ResidueType::add_connectivity);
+
+    m.def("add_molecule", &add_molecule_object, py::arg("molecule"), py::arg("other"));
+    m.def("replace_residues", &replace_residues_object, py::arg("molecule"), py::arg("replacements"),
+          py::arg("residue_sort_keys") = std::vector<double>{}, py::arg("sort") = true);
+    m.def("reorder_atoms_by_template", &reorder_atoms_by_template_object, py::arg("molecule"),
+          py::arg("template_molecule"));
+    m.def("set_box_padding", &set_box_padding_object, py::arg("molecule"), py::arg("padding") = 0.5,
+          py::arg("center") = true);
+    m.def("save_sponge_input", &save_sponge_input_object, py::arg("molecule"), py::arg("prefix") = "",
+          py::arg("dirname") = ".");
+    m.def("merge_dual_topology", &merge_dual_topology_object, py::arg("molecule"), py::arg("residue_index"),
+          py::arg("residue_b_molecule"), py::arg("match_b_to_a"));
+    m.def("merge_force_field", &merge_force_field_object, py::arg("molecule_a"), py::arg("molecule_b"),
+          py::arg("default_lambda"), py::arg("specific_lambda") = std::unordered_map<std::string, double>{});
+    m.def("get_template_molecule", &get_template_molecule_object);
+    m.def("molecule_from_residuetype", [](const ResidueType& residue_type) {
+        auto molecule = std::make_shared<Molecule>(residue_type.name());
+        molecule->append_residue_from_type(residue_type, 0.0, 0.0, 0.0);
+        return molecule;
+    }, py::arg("residue_type"));
+}
+
+}  // namespace xpongecpp

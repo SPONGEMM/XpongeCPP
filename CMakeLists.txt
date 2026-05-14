@@ -36,10 +36,16 @@ pybind11_add_module(_core
     cpp/io/gro.cpp
     cpp/io/pdb_hybrid36.cpp
     cpp/io/pdb.cpp
+    cpp/io/pdb_reader.cpp
+    cpp/io/pdb_writer.cpp
     cpp/io/psf.cpp
     cpp/io/sponge_coordinate.cpp
     cpp/io/sponge.cpp
     cpp/python/bindings.cpp
+    cpp/python/bindings_assign.cpp
+    cpp/python/bindings_core.cpp
+    cpp/python/bindings_forcefield.cpp
+    cpp/python/bindings_io.cpp
     cpp/solvation/solvation.cpp
     cpp/topology/topology.cpp
 )

@@ -213,6 +213,28 @@ Constraints:
 - preserve all current Python names
 - preserve current PDB read and write behavior
 
+Phase 4 execution notes:
+
+- split shared PDB mapping and parsing helpers to `cpp/io/pdb_internal.hpp`
+- reduced `cpp/io/pdb.cpp` to shared registration and helper implementations
+- split PDB load logic to `cpp/io/pdb_reader.cpp`
+- split PDB save logic to `cpp/io/pdb_writer.cpp`
+- split the pybind module facade to `cpp/python/bindings_internal.hpp`
+- reduced `cpp/python/bindings.cpp` to a thin `PYBIND11_MODULE` aggregator
+- split class and molecule bindings to `cpp/python/bindings_core.cpp`
+- split file format bindings to `cpp/python/bindings_io.cpp`
+- split forcefield and template bindings to `cpp/python/bindings_forcefield.cpp`
+- split assignment bindings to `cpp/python/bindings_assign.cpp`
+- updated `CMakeLists.txt` to compile the new translation units
+- fixed validation gate after the split:
+  - `rtk pixi run test -q -rs`: passed, with one expected skipped test:
+    - `tests/test_process_migration.py:392` because local SPONGE executables are not available
+  - `rtk pixi run pytest -q tests/test_8ryk_regression.py -k spg_init`: passed
+  - `rtk pixi run python benchmarks/bench_1kv2.py --padding 8 20 --repeat 5`: passed
+  - `bench_1kv2.py` median wall time snapshot after Phase 4:
+    - `padding=8.0A total=0.090908s`
+    - `padding=20.0A total=0.189705s`
+
 ## Phase 5
 
 Split `src/XpongeCPP/__init__.py` and separate runtime code from data assets.
@@ -239,5 +261,5 @@ Constraints:
 - [x] Phase 1 complete
 - [x] Phase 2 complete
 - [x] Phase 3 complete
-- [ ] Phase 4 complete
+- [x] Phase 4 complete
 - [ ] Phase 5 complete
