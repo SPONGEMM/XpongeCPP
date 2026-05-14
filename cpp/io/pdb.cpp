@@ -704,6 +704,30 @@ void save_pdb(const Molecule& molecule, const std::filesystem::path& filename) {
         }
     }
 
+    const auto pdb_output_element = [&](const Residue& residue, const Atom& atom) {
+        if (!atom.element.empty()) {
+            return atom.element;
+        }
+        if (has_template(residue.name)) {
+            try {
+                const auto& residue_type = get_residue_template(residue.name);
+                const auto template_index = residue_type.atom_index(atom.name);
+                const auto& template_atom = residue_type.atoms()[template_index];
+                if (!template_atom.element.empty()) {
+                    return template_atom.element;
+                }
+                if (template_atom.mass > 0.0) {
+                    return guess_element_from_mass(template_atom.mass);
+                }
+            } catch (const std::exception&) {
+            }
+        }
+        if (atom.mass > 0.0) {
+            return guess_element_from_mass(atom.mass);
+        }
+        return guess_element(atom.name, "");
+    };
+
     struct LinkRecord {
         char chain_a{' '};
         int resseq_a{0};
@@ -791,7 +815,7 @@ void save_pdb(const Molecule& molecule, const std::filesystem::path& filename) {
                 << resname << " " << chain_ids[residue_index] << pdb_int_field(4, resseq) << "    "
                 << std::setw(8) << atom.x << std::setw(8) << atom.y << std::setw(8) << atom.z << std::setw(6)
                 << std::setprecision(2) << atom.occupancy << std::setw(6) << atom.temp_factor << std::setprecision(3)
-                << "          " << std::setw(2) << atom.element.substr(0, 2) << "\n";
+                << "          " << std::setw(2) << pdb_output_element(residue, atom).substr(0, 2) << "\n";
             ++serial;
         }
         const bool is_last = residue_index + 1 == molecule.residues.size();

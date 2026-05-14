@@ -1,0 +1,430 @@
+{
+  "boundaryTerms": {
+    "ANGLE": [
+      {
+        "aliases": [
+          "H-N-c",
+          "c-N-H"
+        ],
+        "baselineMissing": true,
+        "name": "H-N-c",
+        "required": false
+      },
+      {
+        "aliases": [
+          "CX-N-c",
+          "c-N-CX"
+        ],
+        "baselineMissing": true,
+        "name": "CX-N-c",
+        "required": false
+      },
+      {
+        "aliases": [
+          "N-c-c3",
+          "c3-c-N"
+        ],
+        "baselineMissing": true,
+        "name": "N-c-c3",
+        "required": false
+      },
+      {
+        "aliases": [
+          "N-c-o",
+          "o-c-N"
+        ],
+        "baselineMissing": true,
+        "name": "N-c-o",
+        "required": false
+      },
+      {
+        "aliases": [
+          "CX-C-n",
+          "n-C-CX"
+        ],
+        "baselineMissing": true,
+        "name": "CX-C-n",
+        "required": false
+      },
+      {
+        "aliases": [
+          "O-C-n",
+          "n-C-O"
+        ],
+        "baselineMissing": true,
+        "name": "O-C-n",
+        "required": false
+      },
+      {
+        "aliases": [
+          "C-n-hn",
+          "hn-n-C"
+        ],
+        "baselineMissing": true,
+        "name": "C-n-hn",
+        "required": false
+      },
+      {
+        "aliases": [
+          "C-n-c3",
+          "c3-n-C"
+        ],
+        "baselineMissing": true,
+        "name": "C-n-c3",
+        "required": false
+      },
+      {
+        "aliases": [
+          "c3-c-N",
+          "N-c-c3"
+        ],
+        "baselineMissing": true,
+        "name": "c3-c-N",
+        "required": false
+      },
+      {
+        "aliases": [
+          "o-c-N",
+          "N-c-o"
+        ],
+        "baselineMissing": true,
+        "name": "o-c-N",
+        "required": false
+      },
+      {
+        "aliases": [
+          "c-N-H",
+          "H-N-c"
+        ],
+        "baselineMissing": true,
+        "name": "c-N-H",
+        "required": false
+      },
+      {
+        "aliases": [
+          "c-N-CX",
+          "CX-N-c"
+        ],
+        "baselineMissing": true,
+        "name": "c-N-CX",
+        "required": false
+      }
+    ],
+    "BOND": [
+      {
+        "aliases": [
+          "N-c",
+          "c-N"
+        ],
+        "baselineMissing": true,
+        "name": "N-c",
+        "required": true
+      },
+      {
+        "aliases": [
+          "C-n",
+          "n-C"
+        ],
+        "baselineMissing": true,
+        "name": "C-n",
+        "required": true
+      },
+      {
+        "aliases": [
+          "c-N",
+          "N-c"
+        ],
+        "baselineMissing": true,
+        "name": "c-N",
+        "required": true
+      }
+    ],
+    "DIHE": [
+      {
+        "aliases": [
+          "H-N-c-c3",
+          "c3-c-N-H"
+        ],
+        "baselineMissing": true,
+        "name": "H-N-c-c3",
+        "required": false
+      },
+      {
+        "aliases": [
+          "H-N-c-o",
+          "o-c-N-H"
+        ],
+        "baselineMissing": true,
+        "name": "H-N-c-o",
+        "required": false
+      },
+      {
+        "aliases": [
+          "CX-N-c-c3",
+          "c3-c-N-CX"
+        ],
+        "baselineMissing": true,
+        "name": "CX-N-c-c3",
+        "required": false
+      },
+      {
+        "aliases": [
+          "CX-N-c-o",
+          "o-c-N-CX"
+        ],
+        "baselineMissing": true,
+        "name": "CX-N-c-o",
+        "required": false
+      },
+      {
+        "aliases": [
+          "C-CX-N-c",
+          "c-N-CX-C"
+        ],
+        "baselineMissing": true,
+        "name": "C-CX-N-c",
+        "required": false
+      },
+      {
+        "aliases": [
+          "H1-CX-N-c",
+          "c-N-CX-H1"
+        ],
+        "baselineMissing": true,
+        "name": "H1-CX-N-c",
+        "required": false
+      },
+      {
+        "aliases": [
+          "CT-CX-N-c",
+          "c-N-CX-CT"
+        ],
+        "baselineMissing": true,
+        "name": "CT-CX-N-c",
+        "required": false
+      },
+      {
+        "aliases": [
+          "ss-c3-c-N",
+          "N-c-c3-ss"
+        ],
+        "baselineMissing": true,
+        "name": "ss-c3-c-N",
+        "required": false
+      },
+      {
+        "aliases": [
+          "h1-c3-c-N",
+          "N-c-c3-h1"
+        ],
+        "baselineMissing": true,
+        "name": "h1-c3-c-N",
+        "required": false
+      },
+      {
+        "aliases": [
+          "CX-C-n-hn",
+          "hn-n-C-CX"
+        ],
+        "baselineMissing": true,
+        "name": "CX-C-n-hn",
+        "required": false
+      },
+      {
+        "aliases": [
+          "CX-C-n-c3",
+          "c3-n-C-CX"
+        ],
+        "baselineMissing": true,
+        "name": "CX-C-n-c3",
+        "required": false
+      },
+      {
+        "aliases": [
+          "O-C-n-hn",
+          "hn-n-C-O"
+        ],
+        "baselineMissing": true,
+        "name": "O-C-n-hn",
+        "required": false
+      },
+      {
+        "aliases": [
+          "O-C-n-c3",
+          "c3-n-C-O"
+        ],
+        "baselineMissing": true,
+        "name": "O-C-n-c3",
+        "required": false
+      },
+      {
+        "aliases": [
+          "N-CX-C-n",
+          "n-C-CX-N"
+        ],
+        "baselineMissing": true,
+        "name": "N-CX-C-n",
+        "required": false
+      },
+      {
+        "aliases": [
+          "2C-CX-C-n",
+          "n-C-CX-2C"
+        ],
+        "baselineMissing": true,
+        "name": "2C-CX-C-n",
+        "required": false
+      },
+      {
+        "aliases": [
+          "H1-CX-C-n",
+          "n-C-CX-H1"
+        ],
+        "baselineMissing": true,
+        "name": "H1-CX-C-n",
+        "required": false
+      },
+      {
+        "aliases": [
+          "c3-c3-n-C",
+          "C-n-c3-c3"
+        ],
+        "baselineMissing": true,
+        "name": "c3-c3-n-C",
+        "required": false
+      },
+      {
+        "aliases": [
+          "c-c3-n-C",
+          "C-n-c3-c"
+        ],
+        "baselineMissing": true,
+        "name": "c-c3-n-C",
+        "required": false
+      },
+      {
+        "aliases": [
+          "h1-c3-n-C",
+          "C-n-c3-h1"
+        ],
+        "baselineMissing": true,
+        "name": "h1-c3-n-C",
+        "required": false
+      },
+      {
+        "aliases": [
+          "c3-c-N-H",
+          "H-N-c-c3"
+        ],
+        "baselineMissing": true,
+        "name": "c3-c-N-H",
+        "required": false
+      },
+      {
+        "aliases": [
+          "c3-c-N-CX",
+          "CX-N-c-c3"
+        ],
+        "baselineMissing": true,
+        "name": "c3-c-N-CX",
+        "required": false
+      },
+      {
+        "aliases": [
+          "o-c-N-H",
+          "H-N-c-o"
+        ],
+        "baselineMissing": true,
+        "name": "o-c-N-H",
+        "required": false
+      },
+      {
+        "aliases": [
+          "o-c-N-CX",
+          "CX-N-c-o"
+        ],
+        "baselineMissing": true,
+        "name": "o-c-N-CX",
+        "required": false
+      },
+      {
+        "aliases": [
+          "n-c3-c-N",
+          "N-c-c3-n"
+        ],
+        "baselineMissing": true,
+        "name": "n-c3-c-N",
+        "required": false
+      },
+      {
+        "aliases": [
+          "c3-c3-c-N",
+          "N-c-c3-c3"
+        ],
+        "baselineMissing": true,
+        "name": "c3-c3-c-N",
+        "required": false
+      }
+    ],
+    "IMPROPER": [
+      {
+        "aliases": [
+          "H-CX-N-c",
+          "H-c-N-CX",
+          "CX-H-N-c",
+          "CX-c-N-H",
+          "c-H-N-CX",
+          "c-CX-N-H"
+        ],
+        "baselineMissing": true,
+        "name": "H-CX-N-c",
+        "required": false
+      },
+      {
+        "aliases": [
+          "c3-o-c-N",
+          "c3-N-c-o",
+          "o-c3-c-N",
+          "o-N-c-c3",
+          "N-c3-c-o",
+          "N-o-c-c3"
+        ],
+        "baselineMissing": true,
+        "name": "c3-o-c-N",
+        "required": false
+      },
+      {
+        "aliases": [
+          "CX-O-C-n",
+          "CX-n-C-O",
+          "O-CX-C-n",
+          "O-n-C-CX",
+          "n-CX-C-O",
+          "n-O-C-CX"
+        ],
+        "baselineMissing": true,
+        "name": "CX-O-C-n",
+        "required": false
+      },
+      {
+        "aliases": [
+          "hn-c3-n-C",
+          "hn-C-n-c3",
+          "c3-hn-n-C",
+          "c3-C-n-hn",
+          "C-hn-n-c3",
+          "C-c3-n-hn"
+        ],
+        "baselineMissing": true,
+        "name": "hn-c3-n-C",
+        "required": false
+      }
+    ]
+  },
+  "environment": {
+    "platform": "Linux-6.12.86+deb13-amd64-x86_64-with-glibc2.41",
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]",
+    "xponge": "1.5b1",
+    "xpongeLibPath": "/media/yuh/BCDC9249DC91FDB8/Software/Mokda/Mokda/.pixi/envs/default/lib/python3.12/site-packages/XpongeLib/__init__.py"
+  }
+}

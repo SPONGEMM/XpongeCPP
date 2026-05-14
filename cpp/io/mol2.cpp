@@ -79,10 +79,16 @@ Molecule load_mol2_text(const std::string& text) {
             atom.y = std::stod(words[3]);
             atom.z = std::stod(words[4]);
             atom.type = words[5];
-            atom.element = guess_element(atom.name, atom.type);
             atom.residue = residue_id;
             atom.charge = std::stod(words[8]);
-            atom.mass = default_mass_for_element(atom.element);
+            if (const auto amber_mass = find_amber_atom_type_mass(atom.type)) {
+                atom.mass = *amber_mass;
+            } else if (const auto external_mass = find_external_atom_type_mass(atom.type)) {
+                atom.mass = *external_mass;
+            } else {
+                atom.mass = default_mass_for_element(guess_element(atom.name, ""));
+            }
+            atom.element = atom.mass > 0.0 ? guess_element_from_mass(atom.mass) : guess_element(atom.name, "");
             mol2_to_atom[mol2_id] = static_cast<AtomId>(molecule.atoms.size());
             molecule.atoms.push_back(std::move(atom));
             molecule.residues[residue_id].atom_count += 1;

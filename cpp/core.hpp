@@ -495,6 +495,8 @@ std::optional<BondTerm> find_amber_bond_term(const std::string& atom_type1, cons
 std::optional<AngleTerm> find_amber_angle_term(const std::array<std::string, 3>& atom_types);
 std::string find_amber_lj_type(const std::string& atom_type);
 std::optional<std::pair<double, double>> find_amber_lj_parameter(const std::string& lj_type);
+std::optional<double> find_amber_atom_type_mass(const std::string& atom_type);
+std::optional<double> find_external_atom_type_mass(const std::string& atom_type);
 std::pair<Molecule, Molecule> merge_dual_topology(const Molecule& molecule, ResidueId residue_index,
                                                   const Molecule& residue_b_molecule,
                                                   const std::unordered_map<std::uint32_t, std::uint32_t>& match_b_to_a);
@@ -525,6 +527,7 @@ void register_his_mapping(const std::string& residue_name, const std::string& hi
                           const std::string& hip);
 
 double default_mass_for_element(const std::string& element);
+std::string guess_element_from_mass(double mass);
 std::string guess_element(const std::string& atom_name, const std::string& explicit_element = "");
 
 }  // namespace xpongecpp

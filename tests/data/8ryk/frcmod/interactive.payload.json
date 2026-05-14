@@ -1,0 +1,126 @@
+{
+  "boundaryMetadataPath": "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/frcmod/interactive.boundary.json",
+  "components": [
+    {
+      "atomNames": [
+        "N",
+        "CA",
+        "C",
+        "O",
+        "CB",
+        "CG",
+        "CD1",
+        "CD2",
+        "CE1",
+        "CE2",
+        "CZ",
+        "HA",
+        "HB2",
+        "HB3",
+        "HD1",
+        "HD2",
+        "HE1",
+        "HE2",
+        "HZ",
+        "H"
+      ],
+      "gaffMol2Path": null,
+      "id": "D:1::PHE",
+      "kind": "standard",
+      "resName": "PHE",
+      "typingFragment": null
+    },
+    {
+      "atomNames": [
+        "N",
+        "CA",
+        "C",
+        "O",
+        "CB",
+        "CG",
+        "OD1",
+        "OD2",
+        "H",
+        "HA",
+        "HB2",
+        "HB3"
+      ],
+      "gaffMol2Path": null,
+      "id": "D:13::ASP",
+      "kind": "standard",
+      "resName": "ASP",
+      "typingFragment": null
+    },
+    {
+      "atomNames": [
+        "N",
+        "CA",
+        "CB",
+        "SG",
+        "CD",
+        "CE",
+        "OZ1",
+        "C",
+        "O",
+        "H10",
+        "H11",
+        "H12",
+        "H13",
+        "H14",
+        "H15"
+      ],
+      "gaffMol2Path": "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/edit_struct/CCS_3.gaff.mol2",
+      "id": "D:14::CCS",
+      "kind": "nonstandard",
+      "resName": "CCS",
+      "typingFragment": {
+        "capAtomCount": 18,
+        "cappedMol2Path": "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/edit_struct/CCS_3.gaff.capped.mol2",
+        "coreAtomCount": 15,
+        "explicitCapAtomCount": 13,
+        "typedCappedMol2Path": "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/edit_struct/CCS_3.gaff.capped.gaff.mol2"
+      }
+    },
+    {
+      "atomNames": [
+        "N",
+        "CA",
+        "C",
+        "O",
+        "H",
+        "HA2",
+        "HA3"
+      ],
+      "gaffMol2Path": null,
+      "id": "D:15::GLY",
+      "kind": "standard",
+      "resName": "GLY",
+      "typingFragment": null
+    }
+  ],
+  "links": [
+    {
+      "atomA": "N",
+      "atomB": "CE",
+      "componentAIndex": 1,
+      "componentBIndex": 3
+    },
+    {
+      "atomA": "C",
+      "atomB": "N",
+      "componentAIndex": 2,
+      "componentBIndex": 3
+    },
+    {
+      "atomA": "C",
+      "atomB": "N",
+      "componentAIndex": 3,
+      "componentBIndex": 4
+    }
+  ],
+  "rawMol2Path": "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/frcmod/interactive.raw.mol2",
+  "rawOutputFrcmod": "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/frcmod/interactive.raw.frcmod",
+  "standardForcefields": [
+    "Xponge.forcefield.amber.ff14sb"
+  ]
+}

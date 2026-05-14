@@ -108,6 +108,11 @@ std::unordered_map<std::string, std::pair<double, double>>& lj_parameters() {
     return parameters;
 }
 
+std::unordered_map<std::string, double>& mass_by_atom_type() {
+    static std::unordered_map<std::string, double> parameters;
+    return parameters;
+}
+
 bool is_standard_protein_residue(const std::string& name) {
     static const std::unordered_set<std::string> residues{
         "ALA", "ARG", "ASH", "ASN", "ASP", "CYM", "CYS", "CYX", "GLH", "GLN", "GLU", "GLY", "HID", "HIE",
@@ -145,6 +150,7 @@ void configure_xponge_residue_links(ResidueType& residue_type) {
 
 void put_template(ResidueType residue_type) {
     configure_xponge_residue_links(residue_type);
+    molecule_templates().erase(residue_type.name());
     templates().insert_or_assign(residue_type.name(), std::move(residue_type));
 }
 
@@ -273,6 +279,10 @@ void upsert_nb14_parameter(const std::string& atom_type1, const std::string& ato
 
 void upsert_lj_atom_type(const std::string& atom_type, const std::string& lj_type) {
     lj_type_by_atom_type()[atom_type] = lj_type;
+}
+
+void upsert_mass(const std::string& atom_type, double mass) {
+    mass_by_atom_type()[atom_type] = mass;
 }
 
 void upsert_lj_parameter(const std::string& lj_type, double epsilon, double rmin) {
@@ -508,6 +518,9 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
         if (flag.rfind("MASS", 0) == 0) {
             if (!words0.empty()) {
                 upsert_lj_atom_type(words0[0], words0[0]);
+                if (words0.size() >= 2) {
+                    upsert_mass(words0[0], std::stod(words0[1]));
+                }
             }
         } else if (flag.rfind("BOND", 0) == 0) {
             auto [atoms, words] = amber_atoms_words(line, 5);
@@ -796,6 +809,15 @@ std::optional<std::pair<double, double>> find_amber_lj_parameter(const std::stri
     return it->second;
 }
 
+std::optional<double> find_amber_atom_type_mass(const std::string& atom_type) {
+    std::shared_lock lock(registry_mutex());
+    const auto it = mass_by_atom_type().find(atom_type);
+    if (it == mass_by_atom_type().end() || it->second <= 0.0) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
 void register_ff14sb() {
     std::unique_lock lock(registry_mutex());
     constexpr std::array<const char*, 30> names{
@@ -895,9 +917,15 @@ void register_template_molecule_from_mol2_file(const std::filesystem::path& file
         throw std::invalid_argument("mol2 template file contains no residues: " + filename.string());
     }
 
-    std::unique_lock lock(registry_mutex());
+    std::vector<ResidueType> residue_types;
+    residue_types.reserve(molecule.residues.size());
     for (const auto& residue : molecule.residues) {
-        put_template(residue_type_from_molecule_residue(molecule, residue));
+        residue_types.push_back(residue_type_from_molecule_residue(molecule, residue));
+    }
+
+    std::unique_lock lock(registry_mutex());
+    for (auto& residue_type : residue_types) {
+        put_template(std::move(residue_type));
     }
     molecule_templates().insert_or_assign(molecule.residues.front().name, std::move(molecule));
 }

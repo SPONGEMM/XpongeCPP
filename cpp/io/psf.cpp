@@ -153,10 +153,10 @@ void append_psf_atom(Molecule& molecule, std::unordered_map<std::string, Residue
     Atom atom;
     atom.name = atom_name;
     atom.type = atom_type;
-    atom.element = guess_element(atom_name, atom_type);
     atom.residue = it->second;
     atom.charge = charge;
     atom.mass = mass;
+    atom.element = atom.mass > 0.0 ? guess_element_from_mass(atom.mass) : guess_element(atom_name, "");
     molecule.atoms.push_back(std::move(atom));
     ++residue.atom_count;
 }

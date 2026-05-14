@@ -77,6 +77,24 @@ def _snapshot_export_dir(path: Path) -> dict[str, str]:
     return {item.name: item.read_text() for item in sorted(path.iterdir()) if item.is_file()}
 
 
+def _make_missing_oxt_pdb():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    template = Xponge.get_template_molecule("CLYS")
+    lines = []
+    serial = 1
+    for atom in template.residues[0].atoms:
+        if atom.name == "OXT":
+            continue
+        lines.append(
+            f"ATOM  {serial:5d} {atom.name:>4s} CLYS A   1    "
+            f"{atom.x:8.3f}{atom.y:8.3f}{atom.z:8.3f}  1.00  0.00          {atom.element:>2s}"
+        )
+        serial += 1
+    lines.append("END")
+    return "\n".join(lines) + "\n"
+
+
 def test_load_pdb_preserves_molecule_residue_atom_layers():
     import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
 
@@ -166,6 +184,83 @@ def test_load_mol2_preserves_declared_residues_atom_properties():
     assert mol.residues[0].name2atom("H1").charge == 0.250
     assert mol.residues[1].name2atom("O2").type == "OW"
     assert mol.validate()
+
+
+def test_load_mol2_as_template_registers_legacy_residuetype_lookup():
+    Xponge.load_mol2(StringIO(MOL2_TEXT), as_template=True)
+
+    wat = Xponge.ResidueType.get_type("WAT")
+
+    assert wat.name == "WAT"
+    assert Xponge.has_template("WAT")
+
+
+def test_template_atoms_follow_forcefield_mass_and_element_inference():
+    import importlib
+    import XpongeCPP.forcefield.amber.ff14sb as ff14sb
+    import XpongeCPP.forcefield.amber.tip3p as tip3p
+
+    importlib.reload(ff14sb)
+    importlib.reload(tip3p)
+
+    hid = Xponge.get_template_molecule("HID")
+    nd1 = hid.residues[0].name2atom("ND1")
+    assert nd1.type == "NA"
+    assert nd1.element == "N"
+    assert nd1.mass == pytest.approx(14.01, abs=1e-6)
+
+    sodium = Xponge.get_template_molecule("NA")
+    assert sodium.residues[0].atoms[0].type == "Na+"
+    assert sodium.residues[0].atoms[0].element == "Na"
+    assert sodium.residues[0].atoms[0].mass == pytest.approx(22.99, abs=1e-6)
+
+
+def test_assignment_from_residuetype_uses_mass_based_elements():
+    hid = Xponge.ResidueType("HID_TMP")
+    hid.add_atom("ND1", "NA", 0.0, 0.0, 0.0, charge=-0.38, mass=14.01)
+    assignment = Xponge.get_assignment_from_residuetype(hid)
+
+    assert assignment.atoms == ["N"]
+
+
+def test_legacy_add_residue_link_accepts_atom_objects_and_atom_index_proxy():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    combined = Xponge.load_pdb(StringIO(PDB_TEXT)) + Xponge.load_pdb(StringIO(PDB_TEXT))
+    atom_a = combined.residues[0].name2atom("C")
+    atom_b = combined.residues[1].name2atom("N")
+
+    combined.add_residue_link(atom_a, atom_b)
+
+    assert combined.residue_links[-1] == [int(atom_a.index), int(atom_b.index)]
+    assert combined.atom_index[atom_a] == int(atom_a.index)
+    assert combined.atom_index[atom_b] == int(atom_b.index)
+
+
+def test_add_missing_atoms_restores_terminal_oxt_without_moving_existing_atoms():
+    import XpongeCPP.forcefield.amber as amber
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    data_dir = Path(__file__).resolve().parent / "data" / "8ryk"
+    amber.load_parameters_from_frcmod(data_dir / "frcmod" / "interactive.frcmod", prefix=False)
+    Xponge.load_mol2(data_dir / "edit_struct" / "CCS_3.gaff.mol2", as_template=True)
+    mol = Xponge.load_pdb(
+        str(data_dir / "8RYK_pdbfixer_H_ed.pdb"),
+        ignore_conect=False,
+        read_cryst1=False,
+        unterminal_residues=["D:1"],
+    )
+    residue = mol.residues[-1]
+    before = {atom.name: (atom.x, atom.y, atom.z) for atom in residue.atoms}
+
+    mol.add_missing_atoms()
+
+    residue = mol.residues[-1]
+    after = {atom.name: (atom.x, atom.y, atom.z) for atom in residue.atoms}
+    assert "OXT" in after
+    for atom_name, coords in before.items():
+        assert after[atom_name] == coords
+    assert residue.name2atom("OXT").bad_coordinate is True
 
 
 def test_load_mol2_declared_bonds_drive_topology_even_when_far(tmp_path):
@@ -396,6 +491,21 @@ def test_save_sponge_input_writes_xponge_special_state_files(tmp_path):
         "0",
     ]
     assert (tmp_path / "special_fake_LJ.txt").read_text().splitlines()[0] == "5 1"
+
+
+def test_set_gb_radius_matches_xponge_mass_based_rules():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    water = Xponge.load_mol2(StringIO(MOL2_TEXT))
+    water.set_gb_radius("modified_bondi_radii")
+    assert water.residues[0].name2atom("O").gb_radius == pytest.approx(1.5, abs=1e-6)
+    assert water.residues[0].name2atom("H1").gb_radius == pytest.approx(0.8, abs=1e-6)
+    assert water.residues[0].name2atom("H2").gb_radius == pytest.approx(0.8, abs=1e-6)
+
+    peptide = Xponge.get_template_molecule("NALA")
+    peptide.set_gb_radius("modified_bondi_radii")
+    assert peptide.residues[0].name2atom("H1").gb_radius == pytest.approx(1.3, abs=1e-6)
 
 
 def test_save_sponge_input_writes_xponge_pairwise_and_softcore_files(tmp_path):

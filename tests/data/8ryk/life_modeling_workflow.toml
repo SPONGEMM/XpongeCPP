@@ -1,0 +1,275 @@
+workflow = "life_modeling"
+version = 1
+current_step = "sponge-output"
+workdir = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK"
+log_path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/life_modeling_workflow.toml"
+updated_at = "2026-05-14T14:51:02+08:00"
+warnings = []
+
+[[structures]]
+id = "pdb-mp52rbuw-gh8ia4"
+kind = "biomolecule"
+originalPath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK.pdb2"
+currentPath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+format = "pdb"
+role = "solute"
+status = "processed"
+
+[[structures.history]]
+stage = "rcsb-download"
+type = "downloaded-structure"
+label = "8RYK biological assembly 2"
+entryId = "8RYK"
+assemblyId = "2"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK.pdb2"
+
+[[structures.history]]
+stage = "pdbfixer"
+type = "fixed-pdb"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer.pdb"
+artifactId = "fixed-pdb-mp53q84g-xv4e9t"
+
+[[structures.history]]
+stage = "pdb2pqr-protein-hydrogen"
+type = "hydrogenated-pdb"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H.pdb"
+artifactId = "hydrogenated-pdb-mp53qce0-rekzvt"
+
+[[structures.history]]
+stage = "structure-edit"
+type = "edited-structure"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+artifactId = "edited-structure-mp54pjn0-zezr7i"
+
+[[artifacts]]
+id = "fixed-pdb-mp53q84g-xv4e9t"
+type = "fixed-pdb"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer.pdb"
+sourceStructureIds = ["pdb-mp52rbuw-gh8ia4"]
+stage = "pdbfixer"
+
+[[artifacts]]
+id = "hydrogenated-pdb-mp53qce0-rekzvt"
+type = "hydrogenated-pdb"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H.pdb"
+sourceStructureIds = ["pdb-mp52rbuw-gh8ia4"]
+stage = "pdb2pqr-protein-hydrogen"
+
+[[artifacts]]
+id = "frcmod-mp53sguw-fcq5ao"
+type = "frcmod"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/frcmod/interactive.frcmod"
+sourceStructureIds = ["pdb-mp52rbuw-gh8ia4"]
+stage = "forcefield"
+
+[[artifacts]]
+id = "interactive-mol2-mp53sguw-lkpmhn"
+type = "interactive-mol2"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/edit_struct/CCS_3.gaff.mol2"
+sourceStructureIds = ["pdb-mp52rbuw-gh8ia4"]
+stage = "forcefield"
+
+[[artifacts]]
+id = "edited-structure-mp54pjn0-zezr7i"
+type = "edited-structure"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+sourceStructureIds = ["pdb-mp52rbuw-gh8ia4"]
+stage = "structure-edit"
+
+[[assembly.residueLinks]]
+[assembly.residueLinks.atom_a]
+residueSeq = 1
+residueName = "PHE"
+atomName = "N"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[assembly.residueLinks.atom_b]
+residueSeq = 14
+residueName = "CCS"
+atomName = "CE"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[[assembly.residueLinks]]
+[assembly.residueLinks.atom_a]
+residueSeq = 13
+residueName = "ASP"
+atomName = "C"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[assembly.residueLinks.atom_b]
+residueSeq = 14
+residueName = "CCS"
+atomName = "N"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[[assembly.residueLinks]]
+[assembly.residueLinks.atom_a]
+residueSeq = 14
+residueName = "CCS"
+atomName = "C"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[assembly.residueLinks.atom_b]
+residueSeq = 15
+residueName = "GLY"
+atomName = "N"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[[assembly.residue_links]]
+[assembly.residue_links.atom_a]
+residueSeq = 1
+residueName = "PHE"
+atomName = "N"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[assembly.residue_links.atom_b]
+residueSeq = 14
+residueName = "CCS"
+atomName = "CE"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[[assembly.residue_links]]
+[assembly.residue_links.atom_a]
+residueSeq = 13
+residueName = "ASP"
+atomName = "C"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[assembly.residue_links.atom_b]
+residueSeq = 14
+residueName = "CCS"
+atomName = "N"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[[assembly.residue_links]]
+[assembly.residue_links.atom_a]
+residueSeq = 14
+residueName = "CCS"
+atomName = "C"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[assembly.residue_links.atom_b]
+residueSeq = 15
+residueName = "GLY"
+atomName = "N"
+chainId = "D"
+sourcePath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb"
+
+[membrane]
+mode = "none"
+substep = "input"
+packmolInputIds = []
+markedInputPath = ""
+manifestPath = ""
+outputDir = ""
+outputs = []
+outputPdbPath = ""
+environmentPdbPath = ""
+outputPdbCandidates = []
+orientStatus = "idle"
+orientLeaflet = ""
+orientInputPath = ""
+orientStale = false
+useOrientResult = false
+runStatus = "idle"
+runMessage = ""
+commandPreview = []
+sourceCount = 0
+atomCount = 0
+packmol_input_ids = []
+
+[membrane.packmolSettings]
+
+[settings]
+solvationMode = "water"
+forcefields = []
+spongePrefix = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input"
+
+[status]
+
+[outputs.spongeInput]
+inputPrefix = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input"
+pdbPath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input.pdb"
+commandPreview = ["/media/yuh/BCDC9249DC91FDB8/Software/Mokda/Mokda/.pixi/envs/default/bin/python", "-c", "import importlib\nimport json\nimport os\nfrom collections import Counter\nimport Xponge\nimport Xponge.forcefield.amber as amber\nforcefields = ['Xponge.forcefield.amber.ff14sb', 'Xponge.forcefield.amber.gaff', 'Xponge.forcefield.amber.tip3p']\nforcefield_modules = []\nfor mod in forcefields:\n  forcefield_modules.append(importlib.import_module(mod))\ndef _find_type(name):\n  try:\n    return Xponge.ResidueType.get_type(name)\n  except Exception:\n    pass\n  if hasattr(Xponge, name):\n    return getattr(Xponge, name)\n  for mod in forcefield_modules:\n    if hasattr(mod, name):\n      return getattr(mod, name)\n  return None\nWAT = _find_type('WAT')\nif WAT is None:\n  raise RuntimeError('未找到 WAT 残基')\nfrcmod_paths = ['/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/frcmod/interactive.frcmod']\nfor frcmod_path in frcmod_paths:\n  amber.load_parameters_from_frcmod(frcmod_path, prefix=False)\nnonstandard_residues = [{'mol2_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/edit_struct/CCS_3.gaff.mol2', 'resname': 'CCS', 'head': None, 'tail': None}]\nfor entry in nonstandard_residues:\n  mol2_path = entry['mol2_path']\n  resname = entry.get('resname')\n  Xponge.load_mol2(mol2_path, as_template=True)\n  if not resname:\n    resname = os.path.splitext(os.path.basename(mol2_path))[0].upper()\n  if resname:\n    res_type = Xponge.ResidueType.get_type(resname)\n    if entry.get('head'):\n      res_type.head = entry['head']\n    if entry.get('tail'):\n      res_type.tail = entry['tail']\nstructures = [('/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'pdb')]\nchain_terminals = {'/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb': [{'chain_id': 'B', 'start_index': 0, 'end_index': 152, 'start_res_seq': '1', 'end_res_seq': '153', 'start_ins_code': None, 'end_ins_code': None, 'n_terminal': True, 'c_terminal': True}, {'chain_id': 'D', 'start_index': 153, 'end_index': 168, 'start_res_seq': '1', 'end_res_seq': '16', 'start_ins_code': None, 'end_ins_code': None, 'n_terminal': False, 'c_terminal': True}]}\nresidue_links = [{'atom_a': {'residue_seq': 1, 'residue_name': 'PHE', 'atom_name': 'N', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 153}, 'atom_b': {'residue_seq': 14, 'residue_name': 'CCS', 'atom_name': 'CE', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 166}}, {'atom_a': {'residue_seq': 13, 'residue_name': 'ASP', 'atom_name': 'C', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 165}, 'atom_b': {'residue_seq': 14, 'residue_name': 'CCS', 'atom_name': 'N', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 166}}, {'atom_a': {'residue_seq': 14, 'residue_name': 'CCS', 'atom_name': 'C', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 166}, 'atom_b': {'residue_seq': 15, 'residue_name': 'GLY', 'atom_name': 'N', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 167}}]\nonly_pdb = False\nkeep_conect = True\nbox_padding = 0.5\nadd_solvent = True\nlist_box = 10.0\ntolerance = 2.5\nn_solvent = None\nadd_ions = False\ndef _unterminal(mol, idx):\n  try:\n    if idx is None:\n      return\n    if idx < 0:\n      idx = len(mol.residues) + idx\n    if idx < 0 or idx >= len(mol.residues):\n      return\n    res = mol.residues[idx]\n  except Exception:\n    return\n  for name in ('unterminal', 'Unterminal', 'UnTerminal'):\n    fn = getattr(res, name, None)\n    if callable(fn):\n      fn()\n      return\nload_pdb = getattr(Xponge, 'load_pdb', None) or getattr(Xponge, 'Load_Pdb', None)\nload_mol2 = getattr(Xponge, 'load_mol2', None) or getattr(Xponge, 'Load_Mol2', None)\nif load_pdb is None or load_mol2 is None:\n  raise RuntimeError('Xponge 读取函数不可用')\nmolecules = []\nfor path, ext in structures:\n  if ext == 'mol2':\n    molecules.append(load_mol2(path))\n    continue\n  chain_settings = chain_terminals.get(path) or []\n  unterminal_residues = []\n  for setting in chain_settings:\n    chain_id = (setting.get('chain_id') or '').strip()[:1]\n    start_res_seq = str(setting.get('start_res_seq') or '').strip()\n    end_res_seq = str(setting.get('end_res_seq') or '').strip()\n    start_ins_code = str(setting.get('start_ins_code') or '').strip()\n    end_ins_code = str(setting.get('end_ins_code') or '').strip()\n    if setting.get('n_terminal') is False and start_res_seq:\n      selector = f\"{chain_id}:{start_res_seq}\" if chain_id else start_res_seq\n      if start_ins_code:\n        selector += start_ins_code[0]\n      unterminal_residues.append(selector)\n    if setting.get('c_terminal') is False and end_res_seq:\n      selector = f\"{chain_id}:{end_res_seq}\" if chain_id else end_res_seq\n      if end_ins_code:\n        selector += end_ins_code[0]\n      unterminal_residues.append(selector)\n  try:\n    if unterminal_residues:\n      mol = load_pdb(path, ignore_conect=(not keep_conect), read_cryst1=False, unterminal_residues=unterminal_residues)\n    else:\n      mol = load_pdb(path, ignore_conect=(not keep_conect), read_cryst1=False)\n  except TypeError as exc:\n    raise RuntimeError('当前 Xponge 版本不支持 unterminal_residues 参数，请升级 Xponge 到最新版本') from exc\n  for setting in chain_settings:\n    if setting.get('n_terminal') is False:\n      _unterminal(mol, setting.get('start_index'))\n    if setting.get('c_terminal') is False:\n      _unterminal(mol, setting.get('end_index'))\n  molecules.append(mol)\nif not molecules:\n  raise RuntimeError('未加载到结构')\nmol_out = molecules[0]\nfor mol in molecules[1:]:\n  mol_out = mol_out + mol\nsource_ranges = []\noffset = 0\nfor (path, ext), mol in zip(structures, molecules):\n  try:\n    count = len(mol.residues)\n  except Exception:\n    count = 0\n  source_ranges.append({'path': path, 'start': offset, 'end': offset + count - 1})\n  offset += count\nif residue_links:\n  residues = getattr(mol_out, 'residues', None)\n  if residues is None:\n    raise RuntimeError('Xponge residues 不可用')\n  add_link = getattr(mol_out, 'add_residue_link', None) or getattr(mol_out, 'Add_Residue_Link', None)\n  if add_link is None:\n    raise RuntimeError('Xponge add_residue_link 不可用')\n  def _get_res_info(res):\n    name = getattr(res, 'name', None)\n    if not name:\n      res_type = getattr(res, 'type', None)\n      name = getattr(res_type, 'name', None) if res_type is not None else None\n    chain_id = getattr(res, 'chain_id', None)\n    if chain_id is None:\n      chain_obj = getattr(res, 'chain', None)\n      if chain_obj is not None:\n        chain_id = getattr(chain_obj, 'id', None) or getattr(chain_obj, 'name', None)\n    if chain_id is not None and str(chain_id).strip() == '':\n      chain_id = None\n    seq = None\n    for key in ('residue_seq', 'resseq', 'seq', 'id', 'index'):\n      if hasattr(res, key):\n        try:\n          seq = int(getattr(res, key))\n          break\n        except Exception:\n          pass\n    return name, chain_id, seq\n  def _match_residue(atom):\n    target_seq = atom.get('residue_seq')\n    target_chain = (atom.get('chain_id') or '').strip()\n    target_name = (atom.get('residue_name') or '').strip().upper()\n    target_path = (atom.get('source_path') or '').strip()\n    target_index = atom.get('residue_index')\n    start = 0\n    end = len(residues) - 1\n    if target_path:\n      for rng in source_ranges:\n        if rng.get('path') == target_path:\n          start = rng.get('start', 0)\n          end = rng.get('end', end)\n          break\n    if target_index is not None and target_path:\n      try:\n        idx = start + int(target_index)\n      except Exception:\n        idx = None\n      if idx is not None and 0 <= idx < len(residues):\n        return idx\n    matches = []\n    for idx in range(start, end + 1):\n      if idx < 0 or idx >= len(residues):\n        continue\n      res = residues[idx]\n      name, chain_id, seq = _get_res_info(res)\n      if target_seq is not None and seq is None:\n        continue\n      if target_seq is not None and seq is not None and int(seq) != int(target_seq):\n        continue\n      if target_chain and chain_id is not None and str(chain_id).strip() != target_chain:\n        continue\n      if target_name and name and str(name).strip().upper() != target_name:\n        continue\n      matches.append(idx)\n    if not matches:\n      raise RuntimeError(f\"未找到匹配残基: {atom}\")\n    if len(matches) > 1:\n      raise RuntimeError(f\"残基匹配不唯一: {atom}\")\n    return matches[0]\n  for link in residue_links:\n    atom_a = link.get('atom_a') or {}\n    atom_b = link.get('atom_b') or {}\n    idx_a = _match_residue(atom_a)\n    idx_b = _match_residue(atom_b)\n    res_a = residues[idx_a]\n    res_b = residues[idx_b]\n    name2atom = getattr(res_a, 'name2atom', None) or getattr(res_a, 'Name2Atom', None)\n    atom_a_obj = name2atom(atom_a.get('atom_name')) if callable(name2atom) else getattr(res_a, atom_a.get('atom_name'))\n    name2atom = getattr(res_b, 'name2atom', None) or getattr(res_b, 'Name2Atom', None)\n    atom_b_obj = name2atom(atom_b.get('atom_name')) if callable(name2atom) else getattr(res_b, atom_b.get('atom_name'))\n    add_link(atom_a_obj, atom_b_obj)\nadd_missing_atoms = getattr(mol_out, 'add_missing_atoms', None) or getattr(mol_out, 'Add_Missing_Atoms', None)\nif add_missing_atoms is None:\n  raise RuntimeError('Xponge add_missing_atoms 不可用')\nadd_missing_atoms()\nif add_solvent:\n  add_solvent_box = getattr(Xponge, 'add_solvent_box', None) or getattr(Xponge, 'Add_Solvent_Box', None)\n  if add_solvent_box is None:\n    raise RuntimeError('Xponge add_solvent_box 不可用')\n  if n_solvent is None:\n    add_solvent_box(mol_out, WAT, list_box, tolerance)\n  else:\n    add_solvent_box(mol_out, WAT, list_box, tolerance, n_solvent)\nif add_ions:\n  cation_type = _find_type(cation_name)\n  anion_type = _find_type(anion_name)\n  if cation_type is None or anion_type is None:\n    raise RuntimeError('未找到离子残基类型')\n  counts = Counter(res.type.name for res in mol_out.residues)\n  num_wat = counts.get('WAT', 0)\n  tot_charge = int(round(mol_out.charge))\n  n_salt = float(salt_concentration) / 1000.0 * num_wat * 0.0180687\n  n_cation = int(round(n_salt))\n  if anion_charge == 0:\n    raise RuntimeError('阴离子电荷不能为 0')\n  n_anion = int(round((tot_charge + n_cation * cation_charge) / abs(anion_charge)))\n  if n_anion < 0:\n    raise RuntimeError('离子浓度不足以配平总电荷')\n  solvent_replace = getattr(Xponge, 'Solvent_Replace', None) or getattr(Xponge, 'solvent_replace', None)\n  if solvent_replace is None:\n    raise RuntimeError('Xponge Solvent_Replace 不可用')\n  solvent_replace(mol_out, WAT, {cation_type: n_cation, anion_type: n_anion})\n  meta = {\n    'total_charge': tot_charge,\n    'num_wat': num_wat,\n    'n_cation': n_cation,\n    'n_anion': n_anion\n  }\n  print('__SPONGE_META__' + json.dumps(meta))\nsave_pdb = getattr(Xponge, 'save_pdb', None) or getattr(Xponge, 'Save_Pdb', None)\nsave_input = getattr(Xponge, 'Save_Sponge_Input', None) or getattr(Xponge, 'save_sponge_input', None)\nif save_pdb is None or (save_input is None and not only_pdb):\n  raise RuntimeError('Xponge 保存函数不可用')\nif box_padding is not None:\n  set_box_padding = getattr(mol_out, 'set_box_padding', None) or getattr(mol_out, 'Set_Box_Padding', None)\n  if set_box_padding is None:\n    raise RuntimeError('Xponge set_box_padding 不可用')\n  set_box_padding(padding=box_padding, center=True)\nsaved_links = None\nif hasattr(mol_out, 'residue_links'):\n  try:\n    saved_links = list(mol_out.residue_links)\n    mol_out.residue_links = []\n  except Exception:\n    saved_links = None\nsave_pdb(mol_out, '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input.pdb')\nif saved_links:\n  try:\n    atom_index = getattr(mol_out, 'atom_index', {})\n    connect_map = {}\n    for link in saved_links:\n      a = getattr(link, 'atom1', None)\n      b = getattr(link, 'atom2', None)\n      if a is None or b is None:\n        continue\n      idx_a = atom_index.get(a)\n      idx_b = atom_index.get(b)\n      if idx_a is None or idx_b is None:\n        continue\n      connect_map.setdefault(idx_a, set()).add(idx_b)\n      connect_map.setdefault(idx_b, set()).add(idx_a)\n    if connect_map:\n      pdb_path = '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input.pdb'\n      with open(pdb_path, 'r', encoding='utf-8', errors='ignore') as handle:\n        lines = handle.read().splitlines()\n      end_line = None\n      if lines and lines[-1].startswith('END'):\n        end_line = lines.pop()\n      conect_lines = []\n      for idx in sorted(connect_map.keys()):\n        targets = sorted(connect_map[idx])\n        for chunk_start in range(0, len(targets), 4):\n          chunk = targets[chunk_start:chunk_start + 4]\n          conect_lines.append('CONECT' + f\"{idx + 1:5d}\" + ''.join([f\"{j + 1:5d}\" for j in chunk]))\n      lines.extend(conect_lines)\n      if end_line:\n        lines.append(end_line)\n      with open(pdb_path, 'w', encoding='utf-8') as handle:\n        handle.write('\\n'.join(lines) + '\\n')\n  except Exception:\n    pass\nif not only_pdb:\n  if saved_links is not None:\n    try:\n      mol_out.residue_links = saved_links\n    except Exception:\n      pass\n  save_input(mol_out, '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input')"]
+commandPreviewText = "import importlib\nimport json\nimport os\nfrom collections import Counter\nimport Xponge\nimport Xponge.forcefield.amber as amber\nforcefields = ['Xponge.forcefield.amber.ff14sb', 'Xponge.forcefield.amber.gaff', 'Xponge.forcefield.amber.tip3p']\nforcefield_modules = []\nfor mod in forcefields:\n  forcefield_modules.append(importlib.import_module(mod))\ndef _find_type(name):\n  try:\n    return Xponge.ResidueType.get_type(name)\n  except Exception:\n    pass\n  if hasattr(Xponge, name):\n    return getattr(Xponge, name)\n  for mod in forcefield_modules:\n    if hasattr(mod, name):\n      return getattr(mod, name)\n  return None\nWAT = _find_type('WAT')\nif WAT is None:\n  raise RuntimeError('未找到 WAT 残基')\nfrcmod_paths = ['/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/frcmod/interactive.frcmod']\nfor frcmod_path in frcmod_paths:\n  amber.load_parameters_from_frcmod(frcmod_path, prefix=False)\nnonstandard_residues = [{'mol2_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/edit_struct/CCS_3.gaff.mol2', 'resname': 'CCS', 'head': None, 'tail': None}]\nfor entry in nonstandard_residues:\n  mol2_path = entry['mol2_path']\n  resname = entry.get('resname')\n  Xponge.load_mol2(mol2_path, as_template=True)\n  if not resname:\n    resname = os.path.splitext(os.path.basename(mol2_path))[0].upper()\n  if resname:\n    res_type = Xponge.ResidueType.get_type(resname)\n    if entry.get('head'):\n      res_type.head = entry['head']\n    if entry.get('tail'):\n      res_type.tail = entry['tail']\nstructures = [('/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'pdb')]\nchain_terminals = {'/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb': [{'chain_id': 'B', 'start_index': 0, 'end_index': 152, 'start_res_seq': '1', 'end_res_seq': '153', 'start_ins_code': None, 'end_ins_code': None, 'n_terminal': True, 'c_terminal': True}, {'chain_id': 'D', 'start_index': 153, 'end_index': 168, 'start_res_seq': '1', 'end_res_seq': '16', 'start_ins_code': None, 'end_ins_code': None, 'n_terminal': False, 'c_terminal': True}]}\nresidue_links = [{'atom_a': {'residue_seq': 1, 'residue_name': 'PHE', 'atom_name': 'N', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 153}, 'atom_b': {'residue_seq': 14, 'residue_name': 'CCS', 'atom_name': 'CE', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 166}}, {'atom_a': {'residue_seq': 13, 'residue_name': 'ASP', 'atom_name': 'C', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 165}, 'atom_b': {'residue_seq': 14, 'residue_name': 'CCS', 'atom_name': 'N', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 166}}, {'atom_a': {'residue_seq': 14, 'residue_name': 'CCS', 'atom_name': 'C', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 166}, 'atom_b': {'residue_seq': 15, 'residue_name': 'GLY', 'atom_name': 'N', 'chain_id': 'D', 'source_path': '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/8RYK_pdbfixer_H_ed.pdb', 'residue_index': 167}}]\nonly_pdb = False\nkeep_conect = True\nbox_padding = 0.5\nadd_solvent = True\nlist_box = 10.0\ntolerance = 2.5\nn_solvent = None\nadd_ions = False\ndef _unterminal(mol, idx):\n  try:\n    if idx is None:\n      return\n    if idx < 0:\n      idx = len(mol.residues) + idx\n    if idx < 0 or idx >= len(mol.residues):\n      return\n    res = mol.residues[idx]\n  except Exception:\n    return\n  for name in ('unterminal', 'Unterminal', 'UnTerminal'):\n    fn = getattr(res, name, None)\n    if callable(fn):\n      fn()\n      return\nload_pdb = getattr(Xponge, 'load_pdb', None) or getattr(Xponge, 'Load_Pdb', None)\nload_mol2 = getattr(Xponge, 'load_mol2', None) or getattr(Xponge, 'Load_Mol2', None)\nif load_pdb is None or load_mol2 is None:\n  raise RuntimeError('Xponge 读取函数不可用')\nmolecules = []\nfor path, ext in structures:\n  if ext == 'mol2':\n    molecules.append(load_mol2(path))\n    continue\n  chain_settings = chain_terminals.get(path) or []\n  unterminal_residues = []\n  for setting in chain_settings:\n    chain_id = (setting.get('chain_id') or '').strip()[:1]\n    start_res_seq = str(setting.get('start_res_seq') or '').strip()\n    end_res_seq = str(setting.get('end_res_seq') or '').strip()\n    start_ins_code = str(setting.get('start_ins_code') or '').strip()\n    end_ins_code = str(setting.get('end_ins_code') or '').strip()\n    if setting.get('n_terminal') is False and start_res_seq:\n      selector = f\"{chain_id}:{start_res_seq}\" if chain_id else start_res_seq\n      if start_ins_code:\n        selector += start_ins_code[0]\n      unterminal_residues.append(selector)\n    if setting.get('c_terminal') is False and end_res_seq:\n      selector = f\"{chain_id}:{end_res_seq}\" if chain_id else end_res_seq\n      if end_ins_code:\n        selector += end_ins_code[0]\n      unterminal_residues.append(selector)\n  try:\n    if unterminal_residues:\n      mol = load_pdb(path, ignore_conect=(not keep_conect), read_cryst1=False, unterminal_residues=unterminal_residues)\n    else:\n      mol = load_pdb(path, ignore_conect=(not keep_conect), read_cryst1=False)\n  except TypeError as exc:\n    raise RuntimeError('当前 Xponge 版本不支持 unterminal_residues 参数，请升级 Xponge 到最新版本') from exc\n  for setting in chain_settings:\n    if setting.get('n_terminal') is False:\n      _unterminal(mol, setting.get('start_index'))\n    if setting.get('c_terminal') is False:\n      _unterminal(mol, setting.get('end_index'))\n  molecules.append(mol)\nif not molecules:\n  raise RuntimeError('未加载到结构')\nmol_out = molecules[0]\nfor mol in molecules[1:]:\n  mol_out = mol_out + mol\nsource_ranges = []\noffset = 0\nfor (path, ext), mol in zip(structures, molecules):\n  try:\n    count = len(mol.residues)\n  except Exception:\n    count = 0\n  source_ranges.append({'path': path, 'start': offset, 'end': offset + count - 1})\n  offset += count\nif residue_links:\n  residues = getattr(mol_out, 'residues', None)\n  if residues is None:\n    raise RuntimeError('Xponge residues 不可用')\n  add_link = getattr(mol_out, 'add_residue_link', None) or getattr(mol_out, 'Add_Residue_Link', None)\n  if add_link is None:\n    raise RuntimeError('Xponge add_residue_link 不可用')\n  def _get_res_info(res):\n    name = getattr(res, 'name', None)\n    if not name:\n      res_type = getattr(res, 'type', None)\n      name = getattr(res_type, 'name', None) if res_type is not None else None\n    chain_id = getattr(res, 'chain_id', None)\n    if chain_id is None:\n      chain_obj = getattr(res, 'chain', None)\n      if chain_obj is not None:\n        chain_id = getattr(chain_obj, 'id', None) or getattr(chain_obj, 'name', None)\n    if chain_id is not None and str(chain_id).strip() == '':\n      chain_id = None\n    seq = None\n    for key in ('residue_seq', 'resseq', 'seq', 'id', 'index'):\n      if hasattr(res, key):\n        try:\n          seq = int(getattr(res, key))\n          break\n        except Exception:\n          pass\n    return name, chain_id, seq\n  def _match_residue(atom):\n    target_seq = atom.get('residue_seq')\n    target_chain = (atom.get('chain_id') or '').strip()\n    target_name = (atom.get('residue_name') or '').strip().upper()\n    target_path = (atom.get('source_path') or '').strip()\n    target_index = atom.get('residue_index')\n    start = 0\n    end = len(residues) - 1\n    if target_path:\n      for rng in source_ranges:\n        if rng.get('path') == target_path:\n          start = rng.get('start', 0)\n          end = rng.get('end', end)\n          break\n    if target_index is not None and target_path:\n      try:\n        idx = start + int(target_index)\n      except Exception:\n        idx = None\n      if idx is not None and 0 <= idx < len(residues):\n        return idx\n    matches = []\n    for idx in range(start, end + 1):\n      if idx < 0 or idx >= len(residues):\n        continue\n      res = residues[idx]\n      name, chain_id, seq = _get_res_info(res)\n      if target_seq is not None and seq is None:\n        continue\n      if target_seq is not None and seq is not None and int(seq) != int(target_seq):\n        continue\n      if target_chain and chain_id is not None and str(chain_id).strip() != target_chain:\n        continue\n      if target_name and name and str(name).strip().upper() != target_name:\n        continue\n      matches.append(idx)\n    if not matches:\n      raise RuntimeError(f\"未找到匹配残基: {atom}\")\n    if len(matches) > 1:\n      raise RuntimeError(f\"残基匹配不唯一: {atom}\")\n    return matches[0]\n  for link in residue_links:\n    atom_a = link.get('atom_a') or {}\n    atom_b = link.get('atom_b') or {}\n    idx_a = _match_residue(atom_a)\n    idx_b = _match_residue(atom_b)\n    res_a = residues[idx_a]\n    res_b = residues[idx_b]\n    name2atom = getattr(res_a, 'name2atom', None) or getattr(res_a, 'Name2Atom', None)\n    atom_a_obj = name2atom(atom_a.get('atom_name')) if callable(name2atom) else getattr(res_a, atom_a.get('atom_name'))\n    name2atom = getattr(res_b, 'name2atom', None) or getattr(res_b, 'Name2Atom', None)\n    atom_b_obj = name2atom(atom_b.get('atom_name')) if callable(name2atom) else getattr(res_b, atom_b.get('atom_name'))\n    add_link(atom_a_obj, atom_b_obj)\nadd_missing_atoms = getattr(mol_out, 'add_missing_atoms', None) or getattr(mol_out, 'Add_Missing_Atoms', None)\nif add_missing_atoms is None:\n  raise RuntimeError('Xponge add_missing_atoms 不可用')\nadd_missing_atoms()\nif add_solvent:\n  add_solvent_box = getattr(Xponge, 'add_solvent_box', None) or getattr(Xponge, 'Add_Solvent_Box', None)\n  if add_solvent_box is None:\n    raise RuntimeError('Xponge add_solvent_box 不可用')\n  if n_solvent is None:\n    add_solvent_box(mol_out, WAT, list_box, tolerance)\n  else:\n    add_solvent_box(mol_out, WAT, list_box, tolerance, n_solvent)\nif add_ions:\n  cation_type = _find_type(cation_name)\n  anion_type = _find_type(anion_name)\n  if cation_type is None or anion_type is None:\n    raise RuntimeError('未找到离子残基类型')\n  counts = Counter(res.type.name for res in mol_out.residues)\n  num_wat = counts.get('WAT', 0)\n  tot_charge = int(round(mol_out.charge))\n  n_salt = float(salt_concentration) / 1000.0 * num_wat * 0.0180687\n  n_cation = int(round(n_salt))\n  if anion_charge == 0:\n    raise RuntimeError('阴离子电荷不能为 0')\n  n_anion = int(round((tot_charge + n_cation * cation_charge) / abs(anion_charge)))\n  if n_anion < 0:\n    raise RuntimeError('离子浓度不足以配平总电荷')\n  solvent_replace = getattr(Xponge, 'Solvent_Replace', None) or getattr(Xponge, 'solvent_replace', None)\n  if solvent_replace is None:\n    raise RuntimeError('Xponge Solvent_Replace 不可用')\n  solvent_replace(mol_out, WAT, {cation_type: n_cation, anion_type: n_anion})\n  meta = {\n    'total_charge': tot_charge,\n    'num_wat': num_wat,\n    'n_cation': n_cation,\n    'n_anion': n_anion\n  }\n  print('__SPONGE_META__' + json.dumps(meta))\nsave_pdb = getattr(Xponge, 'save_pdb', None) or getattr(Xponge, 'Save_Pdb', None)\nsave_input = getattr(Xponge, 'Save_Sponge_Input', None) or getattr(Xponge, 'save_sponge_input', None)\nif save_pdb is None or (save_input is None and not only_pdb):\n  raise RuntimeError('Xponge 保存函数不可用')\nif box_padding is not None:\n  set_box_padding = getattr(mol_out, 'set_box_padding', None) or getattr(mol_out, 'Set_Box_Padding', None)\n  if set_box_padding is None:\n    raise RuntimeError('Xponge set_box_padding 不可用')\n  set_box_padding(padding=box_padding, center=True)\nsaved_links = None\nif hasattr(mol_out, 'residue_links'):\n  try:\n    saved_links = list(mol_out.residue_links)\n    mol_out.residue_links = []\n  except Exception:\n    saved_links = None\nsave_pdb(mol_out, '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input.pdb')\nif saved_links:\n  try:\n    atom_index = getattr(mol_out, 'atom_index', {})\n    connect_map = {}\n    for link in saved_links:\n      a = getattr(link, 'atom1', None)\n      b = getattr(link, 'atom2', None)\n      if a is None or b is None:\n        continue\n      idx_a = atom_index.get(a)\n      idx_b = atom_index.get(b)\n      if idx_a is None or idx_b is None:\n        continue\n      connect_map.setdefault(idx_a, set()).add(idx_b)\n      connect_map.setdefault(idx_b, set()).add(idx_a)\n    if connect_map:\n      pdb_path = '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input.pdb'\n      with open(pdb_path, 'r', encoding='utf-8', errors='ignore') as handle:\n        lines = handle.read().splitlines()\n      end_line = None\n      if lines and lines[-1].startswith('END'):\n        end_line = lines.pop()\n      conect_lines = []\n      for idx in sorted(connect_map.keys()):\n        targets = sorted(connect_map[idx])\n        for chunk_start in range(0, len(targets), 4):\n          chunk = targets[chunk_start:chunk_start + 4]\n          conect_lines.append('CONECT' + f\"{idx + 1:5d}\" + ''.join([f\"{j + 1:5d}\" for j in chunk]))\n      lines.extend(conect_lines)\n      if end_line:\n        lines.append(end_line)\n      with open(pdb_path, 'w', encoding='utf-8') as handle:\n        handle.write('\\n'.join(lines) + '\\n')\n  except Exception:\n    pass\nif not only_pdb:\n  if saved_links is not None:\n    try:\n      mol_out.residue_links = saved_links\n    except Exception:\n      pass\n  save_input(mol_out, '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input')"
+stdout = ""
+stderr = "Reference for ff14SB:\n  James A. Maier, Carmenza Martinez, Koushik Kasavajhala, Lauren Wickstrom, Kevin E. Hauser, and Carlos Simmerling\n    ff14SB: Improving the accuracy of protein side chain and backbone parameters from ff99SB\n    Journal of Chemical Theory and Computation 2015 11 (8), 3696-3713\n    DOI: 10.1021/acs.jctc.5b00255\n\nReference for gaff:\n  Wang, J., Wolf, R.M., Caldwell, J.W., Kollman, P.A. and Case, D.A.\n    Development and testing of a general amber force field.\n    Journal of Computational Chemistry 2004 25, 1157-1174\n    DOI: 10.1002/jcc.20035\n\nReference for tip3p:\n1. Water:\n  William L. Jorgensen, Jayaraman Chandrasekhar, and Jeffry D. Madura\n    Comparison of simple potential functions for simulating liquid water\n    The Journal of Chemical Physics 1983 79, 926-935, \n    DOI: 10.1063/1.445869\n\n2. Li+, Na+, K+, Rb+, Cs+, F-, Cl-, Br-, I-:\n  In Suk Joung and Thomas E. Cheatham\n    Determination of Alkali and Halide Monovalent Ion Parameters for Use in Explicitly Solvated Biomolecular Simulations\n    The Journal of Physical Chemistry B 2008 112 (30), 9020-9041\n    DOI: 10.1021/jp8001614\n\n3. Ag+, Tl+, Cu+:\n  Pengfei Li, Lin Frank Song, and Kenneth M. Merz\n    Systematic Parameterization of Monovalent Ions Employing the Nonbonded Model\n    Journal of Chemical Theory and Computation 2015 11 (4), 1645-1657, \n    DOI: 10.1021/ct500918t\n    \n4. Divalent Ions(Ba2+, Mg2+...)\n  Pengfei Li and Kenneth M. Merz\n    Taking into Account the Ion-Induced Dipole Interaction in the Nonbonded Model of Ions\n    Journal of Chemical Theory and Computation 2014 10 (1), 289-297\n    DOI: 10.1021/ct400751u\n\n5. Trivalent and Tetravalent Cations(Al3+, Fe3+, Hf4+...)\n  Pengfei Li, Lin Frank Song, and Kenneth M. Merz\n    Parameterization of Highly Charged Metal Ions Using the 12-6-4 LJ-Type Nonbonded Model in Explicit Water\n    The Journal of Physical Chemistry B 2015 119 (3), 883-895\n    DOI: 10.1021/jp505875v  \n\n[Xponge | WARNING] CONECT of 2664 to 2665 is not valid because 2665 and 2664 is in one residue\n[Xponge | WARNING] CONECT of 2666 to 2667 is not valid because 2667 and 2666 is in one residue\nReference for Xponge:\n  Xia, Y., Gao, Y. Q.\n    Xponge: A Python package to perform pre- and post-processing of molecular simulations\n    Journal of Open Source Software, 2022 7(77) 4467\n    DOI: 10.21105/joss.04467\n\n"
+mode = "water"
+outputPath = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input"
+generatedAt = "2026-05-14T06:51:01.174Z"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_angle.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_angle.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_atom_name.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_atom_name.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_atom_type_name.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_atom_type_name.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_bond.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_bond.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_charge.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_charge.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_coordinate.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_coordinate.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_dihedral.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_dihedral.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_exclude.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_exclude.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_LJ.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_LJ.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_mass.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_mass.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_nb14.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_nb14.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_residue.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_residue.txt"
+
+[[outputs.spongeInput.files]]
+kind = "sponge-input"
+name = "input_resname.txt"
+path = "/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input_resname.txt"

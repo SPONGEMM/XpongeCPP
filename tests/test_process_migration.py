@@ -137,10 +137,11 @@ USER_CHARGES
     )
 
     atom_c, atom_h = mol.residues[0].atoms
+    initial_carbon_mass = atom_c.mass
     Xponge.h_mass_repartition(mol, repartition_mass=1.1, repartition_rate=3)
 
     assert math.isclose(atom_h.mass, 3.024, rel_tol=0.0, abs_tol=1e-6)
-    assert math.isclose(atom_c.mass, 9.994, rel_tol=0.0, abs_tol=1e-6)
+    assert math.isclose(atom_c.mass, initial_carbon_mass - 2.016, rel_tol=0.0, abs_tol=1e-6)
 
 
 def test_solvent_replace_replaces_selected_residues_and_sorts():

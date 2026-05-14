@@ -221,7 +221,9 @@ Assign get_assignment_from_pdb_text(const std::string& text) {
 Assign get_assignment_from_residuetype(const ResidueType& residue_type) {
     Assign assignment(residue_type.name());
     for (const auto& atom : residue_type.atoms()) {
-        assignment.add_atom(atom.element.empty() ? guess_element(atom.name, atom.type) : atom.element,
+        assignment.add_atom(atom.element.empty() ? (atom.mass > 0.0 ? guess_element_from_mass(atom.mass)
+                                                                    : guess_element(atom.name, ""))
+                                                 : atom.element,
                             atom.x, atom.y, atom.z, atom.name, atom.charge);
     }
     for (const auto& bond : residue_type.bonds()) {

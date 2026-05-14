@@ -136,7 +136,7 @@ void append_atom(Molecule& molecule, std::unordered_map<int, ResidueId>& residue
     Atom atom;
     atom.name = atom_name;
     atom.type = atom_type;
-    atom.element = infer_element(atom_name, atom_type);
+    atom.element = mass > 0.0 ? guess_element_from_mass(mass) : guess_element(atom_name, "");
     atom.residue = residue_it->second;
     atom.charge = charge;
     atom.mass = mass;
@@ -451,6 +451,14 @@ void load_edip_parameter_file(const std::filesystem::path& filename, Molecule& m
                                std::stod(words[13]), std::stod(words[14]), std::stod(words[15]),
                                std::stod(words[16]), std::stod(words[17]));
     }
+}
+
+std::optional<double> find_external_atom_type_mass(const std::string& atom_type) {
+    const auto it = atom_type_registry().find(atom_type);
+    if (it == atom_type_registry().end() || it->second.mass <= 0.0) {
+        return std::nullopt;
+    }
+    return it->second.mass;
 }
 
 }  // namespace xpongecpp
