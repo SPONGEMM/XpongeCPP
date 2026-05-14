@@ -253,6 +253,23 @@ Constraints:
 - preserve `8ryk` `spg_init`
 - do not break current data-path usage
 
+Phase 5 execution notes:
+
+- split legacy type compatibility helpers to `src/XpongeCPP/legacy_types.py`
+- split template registration and residue completion helpers to `src/XpongeCPP/template_ops.py`
+- split molecule processing, region, and lattice helpers to `src/XpongeCPP/process.py`
+- split assignment compatibility readers to `src/XpongeCPP/io_compat.py`
+- reduced `src/XpongeCPP/__init__.py` to a facade that re-exports the public surface and applies legacy monkeypatches
+- preserved the old import-style aliases and assignment compatibility entrypoints
+- fixed validation gate after the split:
+  - `rtk pixi run test -q -rs`: passed, with one expected skipped test:
+    - `tests/test_process_migration.py:392` because local SPONGE executables are not available
+  - `rtk pixi run pytest -q tests/test_8ryk_regression.py -k spg_init`: passed
+  - `rtk pixi run python benchmarks/bench_1kv2.py --padding 8 20 --repeat 5`: passed
+  - `bench_1kv2.py` median wall time snapshot after Phase 5:
+    - `padding=8.0A total=0.088679s`
+    - `padding=20.0A total=0.187614s`
+
 ## Progress Log
 
 - [x] Phase 0 plan file created
@@ -262,4 +279,4 @@ Constraints:
 - [x] Phase 2 complete
 - [x] Phase 3 complete
 - [x] Phase 4 complete
-- [ ] Phase 5 complete
+- [x] Phase 5 complete
