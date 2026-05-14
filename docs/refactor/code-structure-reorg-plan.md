@@ -176,6 +176,24 @@ Constraints:
 - preserve supported file-format coverage
 - preserve CHARMM, OPLS, SW, and EDIP behavior
 
+Phase 3 execution notes:
+
+- split shared non-Amber registry and text helpers to `cpp/forcefield/nonamber_internal.hpp`
+- split GROMACS and ITP parsing to `cpp/forcefield/gromacs_parser.cpp`
+- split CHARMM loaders to `cpp/forcefield/charmm_loader.cpp`
+- split OPLS entrypoint to `cpp/forcefield/opls_loader.cpp`
+- split SW, EDIP, and external pairwise helpers to `cpp/forcefield/special_pairwise.cpp`
+- reduced `cpp/forcefield/nonamber.cpp` to a thin translation unit
+- updated `CMakeLists.txt` to compile the new translation units
+- fixed validation gate after the split:
+  - `rtk pixi run test -q -rs`: passed, with one expected skipped test:
+    - `tests/test_process_migration.py:392` because local SPONGE executables are not available
+  - `rtk pixi run pytest -q tests/test_8ryk_regression.py -k spg_init`: passed
+  - `rtk pixi run python benchmarks/bench_1kv2.py --padding 8 20 --repeat 5`: passed
+  - `bench_1kv2.py` median wall time snapshot after Phase 3:
+    - `padding=8.0A total=0.084408s`
+    - `padding=20.0A total=0.182302s`
+
 ## Phase 4
 
 Split `cpp/io/pdb.cpp` and `cpp/python/bindings.cpp`.
@@ -220,6 +238,6 @@ Constraints:
 - [x] Phase 0 committed
 - [x] Phase 1 complete
 - [x] Phase 2 complete
-- [ ] Phase 3 complete
+- [x] Phase 3 complete
 - [ ] Phase 4 complete
 - [ ] Phase 5 complete

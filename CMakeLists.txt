@@ -24,8 +24,12 @@ pybind11_add_module(_core
     cpp/forcefield/amber_parser.cpp
     cpp/forcefield/amber_registry.cpp
     cpp/forcefield/amber_templates.cpp
+    cpp/forcefield/charmm_loader.cpp
     cpp/forcefield/fep.cpp
+    cpp/forcefield/gromacs_parser.cpp
     cpp/forcefield/nonamber.cpp
+    cpp/forcefield/opls_loader.cpp
+    cpp/forcefield/special_pairwise.cpp
     cpp/forcefield/special/gb.cpp
     cpp/io/coordinate.cpp
     cpp/io/mol2.cpp
