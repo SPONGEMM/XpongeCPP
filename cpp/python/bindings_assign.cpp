@@ -68,6 +68,7 @@ void bind_assign_module(py::module_& m) {
         .def("Add_Atom", &Assign::add_atom, py::arg("element"), py::arg("x"), py::arg("y"), py::arg("z"),
              py::arg("name") = "", py::arg("charge") = 0.0)
         .def("add_bond", &Assign::add_bond, py::arg("atom1"), py::arg("atom2"), py::arg("order") = 1)
+        .def("delete_bond", &Assign::delete_bond, py::arg("atom1"), py::arg("atom2"))
         .def("delete_atom", &Assign::delete_atom, py::arg("atom"))
         .def("set_charge", &Assign::set_charge, py::arg("atom"), py::arg("charge"))
         .def("set_charges", &Assign::set_charges, py::arg("charges"))

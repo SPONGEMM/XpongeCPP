@@ -4,6 +4,7 @@ import weakref
 
 import numpy as np
 
+from ._compat.residuetype import add_template_like, repeat_template_like
 from ._core import (
     Molecule,
     ResidueType,
@@ -71,6 +72,18 @@ class _LegacyResidueTypeHandle:
         kept_names = [atom.name for atom in self.atoms if atom.name not in omit_names]
         _register_template_variant(self._name, self._name, keep_names=kept_names)
         return self
+
+    def __add__(self, other):
+        return add_template_like(self, other)
+
+    def __radd__(self, other):
+        return add_template_like(other, self)
+
+    def __mul__(self, count):
+        return repeat_template_like(self, count)
+
+    def __rmul__(self, count):
+        return repeat_template_like(self, count)
 
     def __repr__(self):
         return f"<LegacyResidueTypeHandle {self._name}>"

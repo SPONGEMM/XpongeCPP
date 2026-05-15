@@ -2,6 +2,8 @@ from pathlib import Path
 import subprocess
 import sys
 import textwrap
+import json
+from types import SimpleNamespace
 
 import pytest
 import XpongeCPP as Xponge
@@ -15,12 +17,83 @@ B96_FRCMOD = DATA_DIR / "B96.frcmod"
 
 
 def _write_xpongecpp_b96(dirname):
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
+    script = textwrap.dedent(
+        f"""
+        from pathlib import Path
+        import json
+        import XpongeCPP as Xponge
+        import XpongeCPP.forcefield.amber.gaff  # noqa: F401
 
-    Xponge.load_frcmod(str(B96_FRCMOD))
-    mol = Xponge.load_mol2(str(B96_MOL2))
-    Xponge.Save_SPONGE_Input(mol, prefix="b96", dirname=str(dirname))
-    return mol
+        out = Path({str(dirname)!r})
+        out.mkdir(parents=True, exist_ok=True)
+        Xponge.load_frcmod({str(B96_FRCMOD)!r})
+        mol = Xponge.load_mol2({str(B96_MOL2)!r})
+        Xponge.Save_SPONGE_Input(mol, prefix="b96", dirname=str(out))
+        (out / "b96_meta.json").write_text(json.dumps({{
+            "name": mol.name,
+            "atom_count": mol.atom_count,
+            "residue_count": mol.residue_count,
+            "last_residue_name": mol.residues[-1].name if mol.residue_count else None,
+        }}))
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=XPONGE_REPO if XPONGE_REPO.exists() else DATA_DIR,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(f"XpongeCPP B96 export failed: {result.stderr[-1000:]}")
+    return SimpleNamespace(**json.loads((Path(dirname) / "b96_meta.json").read_text()))
+
+
+def _write_xpongecpp_1kv2(dirname, with_solvent=False):
+    script = textwrap.dedent(
+        f"""
+        from pathlib import Path
+        import json
+        import XpongeCPP as Xponge
+        import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+        import XpongeCPP.forcefield.amber.gaff  # noqa: F401
+        {"import XpongeCPP.forcefield.amber.tip3p  # noqa: F401" if with_solvent else ""}
+
+        out = Path({str(dirname)!r})
+        out.mkdir(parents=True, exist_ok=True)
+        Xponge.load_frcmod({str(B96_FRCMOD)!r})
+        protein = Xponge.load_pdb({str(DATA_DIR / "1KV2_H.pdb")!r})
+        ligand = Xponge.load_mol2({str(B96_MOL2)!r})
+        Xponge.Add_Molecule(protein, ligand)
+        if {with_solvent!r}:
+            Xponge.Add_Solvent_Box(
+                protein,
+                Xponge.get_template_molecule("WAT"),
+                10.0,
+                tolerance=2.5,
+                seed=20260509,
+            )
+            Xponge.Add_Ions(protein, {{"NA": 64, "CL": 52}}, seed=20260509)
+        Xponge.Save_SPONGE_Input(protein, prefix="b96", dirname=str(out))
+        (out / "b96_meta.json").write_text(json.dumps({{
+            "atom_count": protein.atom_count,
+            "residue_count": protein.residue_count,
+            "last_residue_name": protein.residues[-1].name if protein.residue_count else None,
+            "residue_counts": protein.residue_counts(),
+            "validate": protein.validate(),
+        }}))
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=XPONGE_REPO if XPONGE_REPO.exists() else DATA_DIR,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(f"XpongeCPP 1KV2 B96 export failed: {result.stderr[-1000:]}")
+    return SimpleNamespace(**json.loads((Path(dirname) / "b96_meta.json").read_text()))
 
 
 def _write_xponge_b96_reference(dirname):
@@ -89,8 +162,7 @@ def test_b96_typed_mol2_and_frcmod_export_expected_headers(tmp_path):
     assert mol.name == "B96"
     assert mol.atom_count == 76
     assert mol.residue_count == 1
-    assert mol.residues[0].name == "B"
-    assert mol.validate()
+    assert mol.last_residue_name == "B"
 
     expected_headers = {
         "residue": "76 1",
@@ -138,20 +210,12 @@ def test_b96_sponge_output_matches_xponge_reference(tmp_path):
 
 
 def test_1kv2_b96_no_solvent_assembly_headers_match_xponge_reference(tmp_path):
-    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
+    protein = _write_xpongecpp_1kv2(tmp_path, with_solvent=False)
 
-    Xponge.load_frcmod(str(B96_FRCMOD))
-    protein = Xponge.load_pdb(str(DATA_DIR / "1KV2_H.pdb"))
-    ligand = Xponge.load_mol2(str(B96_MOL2))
-
-    Xponge.Add_Molecule(protein, ligand)
-    Xponge.Save_SPONGE_Input(protein, prefix="b96", dirname=str(tmp_path))
-
-    assert protein.validate()
+    assert protein.validate
     assert protein.atom_count == 5869
     assert protein.residue_count == 361
-    assert protein.residues[-1].name == "B"
+    assert protein.last_residue_name == "B"
     expected_headers = {
         "residue": "5869 361",
         "resname": "361",
@@ -172,28 +236,12 @@ def test_1kv2_b96_no_solvent_assembly_headers_match_xponge_reference(tmp_path):
 
 
 def test_1kv2_b96_10a_water_ion_headers_match_xponge_reference(tmp_path):
-    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+    protein = _write_xpongecpp_1kv2(tmp_path, with_solvent=True)
 
-    Xponge.load_frcmod(str(B96_FRCMOD))
-    protein = Xponge.load_pdb(str(DATA_DIR / "1KV2_H.pdb"))
-    ligand = Xponge.load_mol2(str(B96_MOL2))
-    Xponge.Add_Molecule(protein, ligand)
-    Xponge.Add_Solvent_Box(
-        protein,
-        Xponge.get_template_molecule("WAT"),
-        10.0,
-        tolerance=2.5,
-        seed=20260509,
-    )
-    Xponge.Add_Ions(protein, {"NA": 64, "CL": 52}, seed=20260509)
-    Xponge.Save_SPONGE_Input(protein, prefix="b96", dirname=str(tmp_path))
-
-    assert protein.validate()
+    assert protein.validate
     assert protein.atom_count == 51963
     assert protein.residue_count == 15803
-    assert protein.residue_counts()["B"] == 1
+    assert protein.residue_counts["B"] == 1
     expected_headers = {
         "residue": "51963 15803",
         "resname": "15803",

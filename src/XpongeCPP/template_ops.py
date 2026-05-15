@@ -17,19 +17,31 @@ from ._core import (
     reorder_atoms_by_template,
     replace_residues,
 )
+from ._compat.symbols import sync_template_module_globals
 
 
-def load_mol2(source, as_template=False):
-    if not as_template:
-        return _core_load_mol2(source)
+def load_mol2(source, ignore_atom_type=False, as_template=False):
+    del ignore_atom_type  # First-wave compatibility: current core already tolerates raw MOL2 atom-type strings.
     if isinstance(source, (str, Path)):
-        register_residue_templates_from_mol2_file(str(source))
+        try:
+            register_residue_templates_from_mol2_file(str(source))
+            sync_template_module_globals()
+        except ValueError as exc:
+            if as_template or "duplicate atom name in ResidueType" not in str(exc):
+                raise
         return _core_load_mol2(str(source))
     if hasattr(source, "read"):
         text = source.read()
-        register_residue_templates_from_mol2_text(text)
+        try:
+            register_residue_templates_from_mol2_text(text)
+            sync_template_module_globals()
+        except ValueError as exc:
+            if as_template or "duplicate atom name in ResidueType" not in str(exc):
+                raise
         return _core_load_mol2(StringIO(text))
-    raise TypeError("load_mol2(..., as_template=True) expects a path-like object or a readable text stream")
+    if not as_template:
+        return _core_load_mol2(source)
+    raise TypeError("load_mol2(...) expects a path-like object or a readable text stream when template registration is required")
 
 
 def _kabsch(template_positions, fitted_positions):

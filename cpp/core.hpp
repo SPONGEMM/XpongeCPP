@@ -392,6 +392,7 @@ public:
     void add_atom(const std::string& element, double x, double y, double z,
                   const std::string& name = "", double charge = 0.0);
     void add_bond(std::uint32_t atom1, std::uint32_t atom2, int order);
+    void delete_bond(std::uint32_t atom1, std::uint32_t atom2);
     void delete_atom(std::uint32_t atom);
     void set_charge(std::uint32_t atom, double charge);
     void set_charges(const std::vector<double>& new_charges);

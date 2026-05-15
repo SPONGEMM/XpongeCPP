@@ -1,6 +1,7 @@
 """Xponge-compatible GROMACS topology loaders."""
 
 from io import StringIO
+import logging
 import os
 
 
@@ -9,14 +10,34 @@ class GlobalSetting:
     _gmx_bonded_type_parsers = {}
     PDBProteinResidueNames = set()
     HISMap = {}
+    BondedForces = []
+    BondedForcesMap = {}
+    VirtualAtomTypes = {}
+    UnitMapping = {}
+    farthest_bonded_force = 0
+    purpose = "academic"
+    logger = logging.getLogger("Xponge")
+    if not logger.handlers:
+        _info_handler = logging.StreamHandler()
+        _info_handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(_info_handler)
+    logger.setLevel(logging.INFO)
 
     @classmethod
     def Add_GMX_Include_Path(cls, path):
         cls.GMXIncludePaths.append(path)
 
     @classmethod
+    def add_gmx_include_path(cls, path):
+        cls.Add_GMX_Include_Path(path)
+
+    @classmethod
     def Set_GMX_Bonded_Type_Parser(cls, force_name, func, parser):
         cls._gmx_bonded_type_parsers[(force_name, int(func))] = parser
+
+    @classmethod
+    def set_gmx_bonded_type_parser(cls, force_name, func, parser):
+        cls.Set_GMX_Bonded_Type_Parser(force_name, func, parser)
 
     @classmethod
     def get_gmx_bonded_type_parser(cls, force_name, func):
@@ -29,10 +50,18 @@ class GlobalSetting:
         register_pdb_residue_name_mapping(place, pdb_name, real_name)
 
     @classmethod
+    def add_pdb_residue_name_mapping(cls, place, pdb_name, real_name):
+        cls.Add_PDB_Residue_Name_Mapping(place, pdb_name, real_name)
+
+    @classmethod
     def Add_PDB_Residue_Alias_Mapping(cls, pdb_name, real_name):
         from . import register_pdb_residue_alias_mapping
 
         register_pdb_residue_alias_mapping(pdb_name, real_name)
+
+    @classmethod
+    def add_pdb_residue_alias_mapping(cls, pdb_name, real_name):
+        cls.Add_PDB_Residue_Alias_Mapping(pdb_name, real_name)
 
     @classmethod
     def Add_HIS_Mapping(cls, residue_name, hid, hie, hip):
@@ -40,6 +69,35 @@ class GlobalSetting:
 
         register_his_mapping(residue_name, hid, hie, hip)
         cls.HISMap[residue_name] = {"HID": hid, "HIE": hie, "HIP": hip}
+
+    @classmethod
+    def add_his_mapping(cls, residue_name, hid, hie, hip):
+        cls.Add_HIS_Mapping(residue_name, hid, hie, hip)
+
+    @classmethod
+    def Set_Invisible_Bonded_Forces(cls, types):
+        del types
+        return None
+
+    @classmethod
+    def set_invisible_bonded_forces(cls, types):
+        return cls.Set_Invisible_Bonded_Forces(types)
+
+    @classmethod
+    def Add_Unit_Transfer_Function(cls, sometype):
+        def wrapper(func):
+            return func
+
+        del sometype
+        return wrapper
+
+    @classmethod
+    def add_unit_transfer_function(cls, sometype):
+        return cls.Add_Unit_Transfer_Function(sometype)
+
+    @property
+    def verbose(self):
+        return self.logger.level
 
 
 class GromacsTopologyIterator:

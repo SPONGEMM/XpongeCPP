@@ -13,91 +13,23 @@ from ._core import (
     Molecule,
     Residue,
     ResidueType,
-    add_ions,
-    add_molecule,
-    add_solvent_box as _core_add_solvent_box,
     get_template_molecule,
     has_template,
     load_coordinate,
-    molecule_from_residuetype,
     reorder_atoms_by_template,
     replace_residues,
-    save_gro,
-    save_mol2,
-    save_pdb,
-    save_sponge_input,
-    set_box_padding,
 )
-
-
-def _single_residue_molecule(value, parameter_name):
-    if isinstance(value, Molecule):
-        if value.residue_count != 1:
-            raise TypeError(f"{parameter_name} molecules should contain exactly one residue")
-        return value
-    if isinstance(value, ResidueType):
-        return molecule_from_residuetype(value)
-    if hasattr(value, "name") and has_template(value.name):
-        return get_template_molecule(value.name)
-    raise TypeError(
-        f"{parameter_name} should be a Molecule with one residue, a ResidueType, "
-        "or an object whose name matches a registered template"
-    )
-
-
-def Add_Solvent_Box(molecule, solvent, distance, tolerance=2.5, n_solvent=None, seed=0):
-    solvent_molecule = solvent if isinstance(solvent, Molecule) else _single_residue_molecule(solvent, "solvent")
-    return _core_add_solvent_box(molecule, solvent_molecule, distance, tolerance, n_solvent, seed)
-
-
-def Add_Ions(molecule, counts, seed=0, solvent="WAT"):
-    return add_ions(molecule, counts, seed, solvent)
-
-
-def Add_Molecule(molecule, other):
-    return add_molecule(molecule, other)
-
-
-def Set_Box_Padding(molecule, padding=0.5, center=True):
-    return set_box_padding(molecule, padding, center)
-
-
-def Save_SPONGE_Input(molecule, prefix=None, dirname="."):
-    return save_sponge_input(molecule, "" if prefix is None else str(prefix), str(dirname))
-
-
-def Save_PDB(molecule, filename, write_cryst1=True):
-    target = str(filename)
-    save_pdb(molecule, target, write_cryst1)
-    try:
-        from .legacy_types import _legacy_residue_links_override
-    except Exception:
-        return None
-    override = _legacy_residue_links_override.get(molecule)
-    if override is None:
-        return None
-    with open(target, encoding="utf-8", errors="ignore") as handle:
-        lines = handle.read().splitlines()
-    end_line = None
-    if lines and lines[-1].startswith("END"):
-        end_line = lines.pop()
-    lines = [line for line in lines if not line.startswith("CONECT")]
-    for atom1, atom2 in override:
-        lines.append(f"CONECT{atom1 + 1:5d}{atom2 + 1:5d}")
-        lines.append(f"CONECT{atom2 + 1:5d}{atom1 + 1:5d}")
-    if end_line is not None:
-        lines.append(end_line)
-    with open(target, "w", encoding="utf-8") as handle:
-        handle.write("\n".join(lines) + "\n")
-    return None
-
-
-def Save_Mol2(molecule, filename):
-    return save_mol2(molecule, str(filename))
-
-
-def Save_GRO(molecule, filename):
-    return save_gro(molecule, str(filename))
+from ._compat.process import (
+    Add_Ions,
+    Add_Molecule,
+    Add_Solvent_Box,
+    Save_GRO,
+    Save_Mol2,
+    Save_PDB,
+    Save_SPONGE_Input,
+    Set_Box_Padding,
+    _single_residue_molecule,
+)
 
 
 add_solvent_box = Add_Solvent_Box

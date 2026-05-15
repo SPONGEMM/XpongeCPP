@@ -45,6 +45,21 @@ void Assign::add_bond(std::uint32_t atom1, std::uint32_t atom2, int order) {
     built = false;
 }
 
+void Assign::delete_bond(std::uint32_t atom1, std::uint32_t atom2) {
+    if (atom1 >= elements.size() || atom2 >= elements.size()) {
+        throw std::out_of_range("Assign delete bond atom index out of range");
+    }
+    if (atom1 == atom2) {
+        throw std::invalid_argument("Assign self bond");
+    }
+    bonds[atom1].erase(atom2);
+    bonds[atom2].erase(atom1);
+    bond_markers[atom1].erase(atom2);
+    bond_markers[atom2].erase(atom1);
+    rings.clear();
+    built = false;
+}
+
 void Assign::delete_atom(std::uint32_t atom) {
     if (atom >= elements.size()) {
         throw std::out_of_range("Assign delete atom index out of range");

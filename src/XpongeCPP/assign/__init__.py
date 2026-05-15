@@ -32,11 +32,22 @@ class AssignRule:
 
         return wrapper
 
+    addRule = add_rule
+    Add_Rule = add_rule
+
     def set_pre_action(self, function):
         self.pre_action = function
+        return function
+
+    setPreAction = set_pre_action
+    Set_Pre_Action = set_pre_action
 
     def set_post_action(self, function):
         self.post_action = function
+        return function
+
+    setPostAction = set_post_action
+    Set_Post_Action = set_post_action
 
 
 __all__ = ["AssignRule"]
