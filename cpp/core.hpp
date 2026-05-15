@@ -224,6 +224,11 @@ struct AmberImproperMatch {
     int wildcard_count{0};
 };
 
+enum class LJCombiningRule {
+    LorentzBerthelot,
+    GoodHope,
+};
+
 struct Topology {
     std::vector<Bond> bonds;
     std::vector<Angle> angles;
@@ -483,8 +488,19 @@ void register_amber_frcmod_file(const std::filesystem::path& filename);
 void register_amber_lj_parameter(const std::string& atom_type, const std::string& lj_type, double epsilon, double rmin);
 void register_amber_bond_parameter(const std::string& atom_type1, const std::string& atom_type2, double k,
                                    double length);
+void register_amber_angle_parameter(const std::array<std::string, 3>& atom_types, double k, double theta);
+void register_amber_proper_dihedral_parameter(const std::array<std::string, 4>& atom_types, int periodicity,
+                                              double k, double phase, bool reset = false);
+void register_amber_improper_dihedral_parameter(const std::array<std::string, 4>& atom_types, int periodicity,
+                                                double k, double phase);
+void register_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4, double k_lj,
+                               double k_ee);
 void register_amber_cmap_parameter(const std::string& key, std::uint32_t resolution,
                                    const std::vector<double>& parameters);
+void clear_amber_dihedral_parameters();
+void clear_amber_improper_parameters();
+void set_lj_combining_rule(LJCombiningRule rule);
+LJCombiningRule lj_combining_rule();
 bool has_amber_cmap_parameters();
 void apply_amber_cmaps(Molecule& molecule);
 std::vector<DihedralTerm> find_amber_proper_terms(const std::array<std::string, 4>& atom_types);

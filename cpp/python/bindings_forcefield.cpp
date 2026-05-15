@@ -3,6 +3,23 @@
 namespace xpongecpp {
 namespace {
 
+LJCombiningRule lj_rule_from_name(std::string name) {
+    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    if (name == "lorentz_berthelot" || name == "lorentz-berthelot" || name == "lb") {
+        return LJCombiningRule::LorentzBerthelot;
+    }
+    if (name == "good_hope" || name == "good-hope" || name == "goodhope") {
+        return LJCombiningRule::GoodHope;
+    }
+    throw py::value_error("unsupported LJ combining rule: " + name);
+}
+
+std::string lj_rule_name(LJCombiningRule rule) {
+    return rule == LJCombiningRule::GoodHope ? "good_hope" : "lorentz_berthelot";
+}
+
 std::shared_ptr<Molecule> load_gromacs_topology_object(const std::string& filename) {
     return std::make_shared<Molecule>(load_gromacs_topology_file(filename));
 }
@@ -86,8 +103,23 @@ void bind_forcefield_module(py::module_& m) {
           py::arg("epsilon"), py::arg("rmin"));
     m.def("register_amber_bond_parameter", &register_amber_bond_parameter, py::arg("atom_type1"),
           py::arg("atom_type2"), py::arg("k"), py::arg("length"));
+    m.def("register_amber_angle_parameter", &register_amber_angle_parameter, py::arg("atom_types"),
+          py::arg("k"), py::arg("theta"));
+    m.def("register_amber_proper_dihedral_parameter", &register_amber_proper_dihedral_parameter,
+          py::arg("atom_types"), py::arg("periodicity"), py::arg("k"), py::arg("phase"),
+          py::arg("reset") = false);
+    m.def("register_amber_improper_dihedral_parameter", &register_amber_improper_dihedral_parameter,
+          py::arg("atom_types"), py::arg("periodicity"), py::arg("k"), py::arg("phase"));
+    m.def("register_amber_nb14_scale", &register_amber_nb14_scale, py::arg("atom_type1"), py::arg("atom_type4"),
+          py::arg("k_lj"), py::arg("k_ee"));
     m.def("register_amber_cmap_parameter", &register_amber_cmap_parameter, py::arg("key"),
           py::arg("resolution"), py::arg("parameters"));
+    m.def("clear_amber_dihedral_parameters", &clear_amber_dihedral_parameters);
+    m.def("clear_amber_improper_parameters", &clear_amber_improper_parameters);
+    m.def("set_lj_combining_rule", [](const std::string& rule) {
+        set_lj_combining_rule(lj_rule_from_name(rule));
+    }, py::arg("rule"));
+    m.def("get_lj_combining_rule", []() { return lj_rule_name(lj_combining_rule()); });
     m.def("register_residue_templates_from_mol2_text", &register_residue_templates_from_mol2_text,
           py::arg("text"));
     m.def("register_residue_templates_from_mol2_file",

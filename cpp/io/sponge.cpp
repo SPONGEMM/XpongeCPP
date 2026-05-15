@@ -39,7 +39,14 @@ void write_output_buffer(const std::filesystem::path& dirname, const std::string
                          const OutputBuffer& buffer) {
     const auto path = output_path(dirname, prefix, buffer.key);
     std::ofstream out(path);
-    out << buffer.text;
+    const bool keep_trailing_newline =
+        buffer.key == "atom_name" || buffer.key == "atom_type_name" ||
+        buffer.key == "resname" || buffer.key == "exclude";
+    if (!keep_trailing_newline && !buffer.text.empty() && buffer.text.back() == '\n') {
+        out << buffer.text.substr(0, buffer.text.size() - 1);
+    } else {
+        out << buffer.text;
+    }
     remember(outputs, buffer.key, path);
 }
 
@@ -85,8 +92,13 @@ std::pair<double, double> amber_lj_ab(const std::string& lj_type1, const std::st
         throw std::runtime_error("missing Amber LJ parameter for type: " + lj_type2);
     }
     const auto epsilon = std::sqrt(lj1->first * lj2->first);
-    const auto rmin = lj1->second + lj2->second;
-    const auto r6 = std::pow(rmin, 6.0);
+    if (lj_combining_rule() == LJCombiningRule::GoodHope) {
+        const auto rprod = 4.0 * lj1->second * lj2->second;
+        const auto r3 = std::pow(rprod, 3.0);
+        return {epsilon * r3 * r3, epsilon * 2.0 * r3};
+    }
+    const auto rsum = lj1->second + lj2->second;
+    const auto r6 = std::pow(rsum, 6.0);
     return {epsilon * r6 * r6, epsilon * 2.0 * r6};
 }
 
@@ -293,29 +305,77 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         return OutputBuffer{"LJ", out.str()};
     }));
     futures.emplace_back("bond", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
-        std::ostringstream out;
-        out << topology.bonds.size() << "\n";
-        out << std::fixed << std::setprecision(6);
+        struct BondRow {
+            AtomId atom1{0};
+            AtomId atom2{0};
+            double k{0.0};
+            double length{0.0};
+        };
+        std::vector<BondRow> rows;
+        rows.reserve(topology.bonds.size());
         for (const auto& bond : topology.bonds) {
+            rows.push_back({bond.atom1, bond.atom2, bond.k, bond.length});
+        }
+        std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+            return std::tie(left.atom1, left.atom2) < std::tie(right.atom1, right.atom2);
+        });
+        std::ostringstream out;
+        out << rows.size() << "\n";
+        out << std::fixed << std::setprecision(6);
+        for (const auto& bond : rows) {
             out << bond.atom1 << " " << bond.atom2 << " " << bond.k << " " << bond.length << "\n";
         }
         return OutputBuffer{"bond", out.str()};
     }));
     futures.emplace_back("angle", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
-        std::ostringstream out;
-        out << topology.angles.size() << "\n";
-        out << std::fixed << std::setprecision(6);
+        struct AngleRow {
+            AtomId atom1{0};
+            AtomId atom2{0};
+            AtomId atom3{0};
+            double k{0.0};
+            double theta{0.0};
+        };
+        std::vector<AngleRow> rows;
+        rows.reserve(topology.angles.size());
         for (const auto& angle : topology.angles) {
+            rows.push_back({angle.atom1, angle.atom2, angle.atom3, angle.k, angle.theta});
+        }
+        std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+            return std::tie(left.atom1, left.atom2, left.atom3) < std::tie(right.atom1, right.atom2, right.atom3);
+        });
+        std::ostringstream out;
+        out << rows.size() << "\n";
+        out << std::fixed << std::setprecision(6);
+        for (const auto& angle : rows) {
             out << angle.atom1 << " " << angle.atom2 << " " << angle.atom3 << " " << angle.k << " " << angle.theta
                 << "\n";
         }
         return OutputBuffer{"angle", out.str()};
     }));
     futures.emplace_back("dihedral", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
-        std::ostringstream out;
-        out << topology.dihedrals.size() << "\n";
-        out << std::fixed << std::setprecision(6);
+        struct DihedralRow {
+            AtomId atom1{0};
+            AtomId atom2{0};
+            AtomId atom3{0};
+            AtomId atom4{0};
+            int periodicity{1};
+            double k{0.0};
+            double phase{0.0};
+        };
+        std::vector<DihedralRow> rows;
+        rows.reserve(topology.dihedrals.size());
         for (const auto& dihedral : topology.dihedrals) {
+            rows.push_back({dihedral.atom1, dihedral.atom2, dihedral.atom3, dihedral.atom4,
+                            dihedral.periodicity, dihedral.k, dihedral.phase});
+        }
+        std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+            return std::tie(left.atom1, left.atom2, left.atom3, left.atom4, left.periodicity, left.k, left.phase) <
+                   std::tie(right.atom1, right.atom2, right.atom3, right.atom4, right.periodicity, right.k, right.phase);
+        });
+        std::ostringstream out;
+        out << rows.size() << "\n";
+        out << std::fixed << std::setprecision(6);
+        for (const auto& dihedral : rows) {
             out << dihedral.atom1 << " " << dihedral.atom2 << " " << dihedral.atom3 << " " << dihedral.atom4
                 << " " << dihedral.periodicity << " " << dihedral.k << " " << dihedral.phase << "\n";
         }
@@ -337,9 +397,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         out << topology.exclusions.size() << " " << total_exclusions << "\n";
         for (const auto& exclusions : upper_exclusions) {
             out << exclusions.size();
-            if (!exclusions.empty()) {
-                out << " ";
-            }
+            out << " ";
             for (std::size_t i = 0; i < exclusions.size(); ++i) {
                 if (i != 0) {
                     out << " ";

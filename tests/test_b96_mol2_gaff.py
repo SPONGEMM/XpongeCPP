@@ -236,3 +236,64 @@ def test_b96_h_mol2_gaff_assign_matches_xponge_atom_types(tmp_path):
     assert reloaded.atom_count == 76
     assert reloaded.residue_count == 1
     assert [atom.type for atom in reloaded.residues[0].atoms] == assignment.atom_types
+
+
+def test_save_mol2_preserves_connectivity_with_duplicate_atom_names(tmp_path):
+    mol2_text = """@<TRIPOS>MOLECULE
+DUP
+3 2 1 0 0
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 C 0.0000 0.0000 0.0000 C.3 1 DUP 0.0000
+2 C 1.2000 0.0000 0.0000 C.3 1 DUP 0.0000
+3 C 2.4000 0.0000 0.0000 C.3 1 DUP 0.0000
+@<TRIPOS>BOND
+1 1 2 1
+2 2 3 1
+@<TRIPOS>SUBSTRUCTURE
+1 DUP 1
+"""
+    infile = tmp_path / "duplicate_names_input.mol2"
+    infile.write_text(mol2_text)
+    molecule = Xponge.load_mol2(str(infile))
+
+    outfile = tmp_path / "duplicate_names.mol2"
+    Xponge.Save_Mol2(molecule, str(outfile))
+    reloaded = Xponge.load_mol2(str(outfile))
+
+    bond_lines = []
+    in_bond_section = False
+    for line in outfile.read_text().splitlines():
+        if line.startswith("@<TRIPOS>BOND"):
+            in_bond_section = True
+            continue
+        if line.startswith("@<TRIPOS>") and in_bond_section:
+            break
+        if in_bond_section and line.strip():
+            bond_lines.append(line.split())
+    current_bonds = {tuple(sorted((bond[0], bond[1]))) for bond in reloaded.explicit_bonds}
+
+    assert current_bonds == {(0, 1), (1, 2)}
+    assert [line[1:4] for line in bond_lines[-2:]] == [["1", "2", "1"], ["2", "3", "1"]]
+
+    if XPONGE_REPO.exists():
+        script = textwrap.dedent(
+            f"""
+            import Xponge
+
+            mol = Xponge.load_mol2({str(infile)!r})
+            Xponge.save_mol2(mol, {str(tmp_path / "reference_duplicate_names.mol2")!r})
+            """
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=XPONGE_REPO,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            assert outfile.read_text().splitlines() == (
+                tmp_path / "reference_duplicate_names.mol2"
+            ).read_text().splitlines()

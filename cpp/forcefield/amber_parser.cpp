@@ -24,6 +24,11 @@ std::vector<std::string> split_ws(const std::string& line) {
     return out;
 }
 
+LJCombiningRule& current_lj_combining_rule() {
+    static LJCombiningRule rule = LJCombiningRule::LorentzBerthelot;
+    return rule;
+}
+
 std::string trim_copy(const std::string& input) {
     const auto first = input.find_first_not_of(" \t\r\n");
     if (first == std::string::npos) {
@@ -485,6 +490,29 @@ void register_amber_bond_parameter(const std::string& atom_type1, const std::str
     upsert_bond_parameter(atom_type1, atom_type2, {k, length});
 }
 
+void register_amber_angle_parameter(const std::array<std::string, 3>& atom_types, double k, double theta) {
+    std::unique_lock lock(registry_mutex());
+    upsert_angle_parameter(atom_types, {k, theta});
+}
+
+void register_amber_proper_dihedral_parameter(const std::array<std::string, 4>& atom_types, int periodicity,
+                                              double k, double phase, bool reset) {
+    std::unique_lock lock(registry_mutex());
+    upsert_proper_parameter(atom_types, {periodicity, k, phase}, reset);
+}
+
+void register_amber_improper_dihedral_parameter(const std::array<std::string, 4>& atom_types, int periodicity,
+                                                double k, double phase) {
+    std::unique_lock lock(registry_mutex());
+    add_improper_parameter(atom_types, {periodicity, k, phase});
+}
+
+void register_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4, double k_lj,
+                               double k_ee) {
+    std::unique_lock lock(registry_mutex());
+    upsert_nb14_parameter(atom_type1, atom_type4, {k_lj, k_ee});
+}
+
 void register_amber_cmap_parameter(const std::string& key, std::uint32_t resolution,
                                    const std::vector<double>& parameters) {
     if (resolution == 0 || parameters.size() != static_cast<std::size_t>(resolution) * resolution) {
@@ -492,6 +520,24 @@ void register_amber_cmap_parameter(const std::string& key, std::uint32_t resolut
     }
     std::unique_lock lock(registry_mutex());
     upsert_amber_cmap_key(key, resolution, parameters);
+}
+
+void clear_amber_dihedral_parameters() {
+    std::unique_lock lock(registry_mutex());
+    proper_parameters().clear();
+}
+
+void clear_amber_improper_parameters() {
+    std::unique_lock lock(registry_mutex());
+    improper_parameters().clear();
+}
+
+void set_lj_combining_rule(LJCombiningRule rule) {
+    current_lj_combining_rule() = rule;
+}
+
+LJCombiningRule lj_combining_rule() {
+    return current_lj_combining_rule();
 }
 
 bool has_amber_cmap_parameters() {

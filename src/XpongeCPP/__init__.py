@@ -22,7 +22,7 @@ from ._core import (
     has_template,
     implemented_gaff_assign_types,
     load_coordinate,
-    load_frcmod,
+    load_frcmod as _core_load_frcmod,
     load_gro,
     load_charmm_parameter_file,
     load_charmm_topology_file,
@@ -31,7 +31,7 @@ from ._core import (
     load_molpsf,
     load_opls_itp_file,
     load_parmdat,
-    load_pdb,
+    load_pdb as _core_load_pdb,
     load_rst7,
     load_sw_parameter_file,
     merge_dual_topology,
@@ -39,9 +39,15 @@ from ._core import (
     molecule_from_residuetype,
     reorder_atoms_by_template,
     register_ff14sb,
+    clear_amber_dihedral_parameters,
+    clear_amber_improper_parameters,
     register_amber_frcmod_file,
+    register_amber_angle_parameter,
     register_amber_bond_parameter,
+    register_amber_improper_dihedral_parameter,
     register_amber_lj_parameter,
+    register_amber_nb14_scale,
+    register_amber_proper_dihedral_parameter,
     register_amber_cmap_parameter,
     register_amber_parmdat_file,
     register_residue_templates_from_mol2_text,
@@ -58,6 +64,7 @@ from ._core import (
     save_gro,
     save_mol2,
     save_sponge_input,
+    set_lj_combining_rule,
     set_box_padding,
     configure_residue_template_connect_atom,
     configure_residue_template_head,
@@ -74,7 +81,18 @@ from .io_compat import (
     get_assignment_from_smiles,
     get_assignment_from_xyz,
 )
-from .legacy_types import _AtomIndexProxy, _legacy_add_residue_link, _legacy_get_residuetype
+from .legacy_types import (
+    _AtomIndexProxy,
+    _legacy_add_residue,
+    _legacy_add_residue_link,
+    _legacy_add_residue_links,
+    _legacy_clear_residue_links,
+    _legacy_get_residuetype,
+    _legacy_get_residue_links,
+    _legacy_get_residue_links_copy,
+    _legacy_make_residue_like,
+    _legacy_set_residue_links,
+)
 from .process import (
     BODY_CENTERED_CUBIC_LATTICE,
     DIAMOND_LATTICE,
@@ -117,6 +135,8 @@ from .template_ops import _legacy_add_missing_atoms, load_mol2
 
 __version__ = "0.1.0"
 
+_CoreResidue = Residue
+
 _core_determine_connectivity = Assign.determine_connectivity
 _core_determine_bond_order = Assign.determine_bond_order
 _core_determine_atom_type = Assign.determine_atom_type
@@ -140,6 +160,22 @@ _CONNECTIVITY_RADII = {
 def _tpacm4_tables():
     base = files("XpongeCPP.data.assign.tpacm4")
     return (base.joinpath("ATOMTYPE.dat").read_text(), base.joinpath("CHARGE.dat").read_text())
+
+
+def load_frcmod(filename):
+    set_lj_combining_rule("lorentz_berthelot")
+    register_amber_nb14_scale("X", "X", 0.5, 0.833333)
+    return _core_load_frcmod(filename)
+
+
+def load_pdb(*args, **kwargs):
+    from .forcefield import package_data_path
+
+    set_lj_combining_rule("lorentz_berthelot")
+    register_amber_nb14_scale("X", "X", 0.5, 0.833333)
+    register_amber_parmdat_file(str(package_data_path("amber", "parm10.dat")))
+    register_amber_frcmod_file(str(package_data_path("amber", "ff14SB.frcmod")))
+    return _core_load_pdb(*args, **kwargs)
 
 
 def _assignment_to_rdkit_mol(assignment):
@@ -511,14 +547,35 @@ Assign.Save_As_Mol2 = _assign_save_as_mol2
 
 ResidueType.get_type = staticmethod(_legacy_get_residuetype)
 ResidueType.Get_Type = staticmethod(_legacy_get_residuetype)
+Molecule.add_residue = _legacy_add_residue
+Molecule.Add_Residue = _legacy_add_residue
 Molecule.add_residue_link = _legacy_add_residue_link
 Molecule.Add_Residue_Link = _legacy_add_residue_link
+Molecule.add_residue_links = _legacy_add_residue_links
+Molecule.Add_Residue_Links = _legacy_add_residue_links
+Molecule.clear_residue_links = _legacy_clear_residue_links
+Molecule.Clear_Residue_Links = _legacy_clear_residue_links
+Molecule.set_residue_links = _legacy_set_residue_links
+Molecule.Set_Residue_Links = _legacy_set_residue_links
+Molecule.get_residue_links = _legacy_get_residue_links_copy
+Molecule.Get_Residue_Links = _legacy_get_residue_links_copy
+Molecule.residue_links = property(_legacy_get_residue_links, _legacy_set_residue_links)
 Molecule.atom_index = property(lambda self: _AtomIndexProxy())
 Molecule.add_missing_atoms = _legacy_add_missing_atoms
 Molecule.Add_Missing_Atoms = _legacy_add_missing_atoms
 Residue.unterminal = lambda self: self
 Residue.Unterminal = Residue.unterminal
 Residue.UnTerminal = Residue.unterminal
+
+
+def Residue(template_like, directly_copy=True):
+    return _legacy_make_residue_like(template_like, directly_copy=directly_copy)
+
+
+def load_parameter_from_ffitp(filename, folder, reset=True):
+    from .forcefield.opls import load_parameter_from_ffitp as _load_parameter_from_ffitp
+
+    return _load_parameter_from_ffitp(filename, folder, reset=reset)
 
 Impose_Bond = impose_bond
 Impose_Angle = impose_angle
@@ -550,6 +607,8 @@ Load_Gromacs_Topology_File = load_gromacs_topology_file
 LoadGromacsTopologyFile = load_gromacs_topology_file
 Load_OPLS_ITP_File = load_opls_itp_file
 LoadOPLSITPFile = load_opls_itp_file
+Load_Parameter_From_FFITP = load_parameter_from_ffitp
+LoadParameterFromFFITP = load_parameter_from_ffitp
 Load_CHARMM_Parameter_File = load_charmm_parameter_file
 LoadCHARMMParameterFile = load_charmm_parameter_file
 Load_CHARMM_Topology_File = load_charmm_topology_file
@@ -635,9 +694,17 @@ __all__ = [
     "register_tip3p",
     "register_amber_parmdat_file",
     "register_amber_frcmod_file",
+    "register_amber_angle_parameter",
     "register_amber_lj_parameter",
     "register_amber_cmap_parameter",
     "register_amber_bond_parameter",
+    "register_amber_proper_dihedral_parameter",
+    "register_amber_improper_dihedral_parameter",
+    "register_amber_nb14_scale",
+    "clear_amber_dihedral_parameters",
+    "clear_amber_improper_parameters",
+    "set_lj_combining_rule",
+    "load_parameter_from_ffitp",
     "register_residue_templates_from_mol2_text",
     "register_residue_templates_from_mol2_file",
     "register_residue_template_alias",

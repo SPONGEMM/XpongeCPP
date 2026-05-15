@@ -1,0 +1,62 @@
+;
+;  file:	ps.top
+;  author:	EMC v9.4.4, build Jul 31 2025 20:33:44
+;  date:	Fri May 15 14:35:59 2026
+;  purpose:	GROMACS parameter and topology file
+;
+
+[ defaults ]
+;
+; nbfnc rule  pairs fudgeLJ fudgeQQ
+;
+1       2     yes   1.0     1.0     
+
+;
+; Pair interactions
+;
+
+[ atomtypes ]
+;
+;  type anum       mass     charge ptype           sigma    epsilon 
+;
+c4         6   12.01100    0.00000 A      0.350000000000  0.2761440 ; 135 SP3 carbon
+h1         1    1.00790    0.00000 A      0.250000000000  0.1255200 ; 140 Hydrogen in alkanes
+
+;
+; Bond interactions
+;
+
+[ bondtypes ]
+;
+; type1   type2 func         b0         Kb
+;
+c4      c4         1    0.15290 112131.200
+c4      h1         1    0.10900 142256.000
+
+;
+; Angle interactions
+;
+
+[ angletypes ]
+;
+; type1   type2   type3 func     Theta0     Ktheta         S0        Kub
+;
+c4      c4      c4         1    112.700    244.136
+c4      c4      h1         1    110.700    156.900
+h1      c4      h1         1    107.800    138.072
+
+;
+; Dihedral interactions
+;
+
+[ dihedraltypes ]
+;
+; type1   type2   type3   type4 func      delta       Kchi  n
+;
+c4      c4      c4      c4         9      0.000    5.43920  1
+c4      c4      c4      c4         9      0.000   -0.20920  2
+c4      c4      c4      c4         9      0.000    0.83680  3
+c4      c4      c4      h1         9      0.000    1.25520  3
+h1      c4      c4      h1         9      0.000    1.25520  3
+
+;

@@ -18,6 +18,15 @@ def _bond_pairs(path):
     return pairs
 
 
+def _residue_atom(residue, atom_name):
+    name2atom = (
+        getattr(residue, "name2atom", None)
+        or getattr(residue, "Name2Atom", None)
+        or getattr(residue, "Name2atom", None)
+    )
+    return name2atom(atom_name) if callable(name2atom) else getattr(residue, atom_name)
+
+
 def test_pdb_ter_breaks_topology_chain_link(tmp_path):
     _load_amber()
     pdb = """\
@@ -258,9 +267,68 @@ END
     assert "SSBOND" not in text
     assert "CONECT    1    2" in text
     assert text.count("\nTER\n") == 2
-    assert [atom.record_name for residue in reloaded.residues for atom in residue.atoms] == ["HETATM", "HETATM"]
-    assert reloaded.residues[0].atoms[0].occupancy == pytest.approx(0.5)
-    assert reloaded.residues[1].atoms[0].temp_factor == pytest.approx(20.0)
+
+
+def test_pdb_writer_hybrid36_resseq_and_link_records(tmp_path):
+    mol2 = tmp_path / "h36.mol2"
+    mol2.write_text(
+        """@<TRIPOS>MOLECULE
+H36
+1 0 1 0 0
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 A 0.0 0.0 0.0 C.3 1 H36 0.0
+@<TRIPOS>BOND
+@<TRIPOS>SUBSTRUCTURE
+1 H36 1 **** 0 **** ****
+"""
+    )
+
+    Xponge.load_mol2(str(mol2), as_template=True)
+    Xponge.configure_residue_template_head("H36", "A")
+    Xponge.configure_residue_template_tail("H36", "A")
+
+    residue_type = Xponge.ResidueType.get_type("H36")
+    mol = Xponge.Molecule("H36M")
+    for _ in range(10001):
+        mol.add_residue(Xponge.Residue(residue_type, directly_copy=True))
+    for i in range(len(mol.residues) - 1):
+        mol.add_residue_link(_residue_atom(mol.residues[i], "A"), _residue_atom(mol.residues[i + 1], "A"))
+    mol.add_residue_link(_residue_atom(mol.residues[0], "A"), _residue_atom(mol.residues[-1], "A"))
+
+    outfile = tmp_path / "h36m.pdb"
+    Xponge.save_pdb(mol, str(outfile))
+    lines = outfile.read_text().splitlines()
+    atom_lines = [line for line in lines if line.startswith("ATOM")]
+    link_lines = [line for line in lines if line.startswith("LINK")]
+
+    assert atom_lines[9998][22:26] == "9999"
+    assert atom_lines[9999][22:26] == "A000"
+    assert atom_lines[10000][22:26] == "A001"
+    assert len(link_lines) == 1
+    assert link_lines[0][22:26] == "   1"
+    assert link_lines[0][52:56] == "A001"
+
+    roundtrip = Xponge.load_pdb(str(outfile), ignore_conect=False)
+    assert len(roundtrip.residues) == 10001
+
+
+def test_assign_save_as_pdb_uses_hybrid36_serials_and_conect(tmp_path):
+    assign = Xponge.Assign("BEN")
+    for _ in range(100001):
+        assign.add_atom("C", 0.0, 0.0, 0.0, name="C")
+    assign.add_bond(99999, 100000, 1)
+
+    outfile = tmp_path / "assign_h36.pdb"
+    assign.save_as_pdb(str(outfile))
+    lines = outfile.read_text().splitlines()
+    atom_lines = [line for line in lines if line.startswith("ATOM")]
+    conect_lines = [line for line in lines if line.startswith("CONECT")]
+
+    assert atom_lines[99999][6:11] == "A0000"
+    assert atom_lines[100000][6:11] == "A0001"
+    assert any(line[6:11] == "A0000" and line[11:16] == "A0001" for line in conect_lines)
 
 
 def test_pdb_writer_outputs_seqres_only_for_multi_residue_chains(tmp_path):

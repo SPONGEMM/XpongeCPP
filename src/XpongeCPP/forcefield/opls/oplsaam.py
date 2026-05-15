@@ -4,13 +4,12 @@ from ... import (
     configure_residue_template_connect_atom,
     configure_residue_template_head,
     configure_residue_template_tail,
-    load_opls_itp_file,
     register_his_mapping,
     register_pdb_residue_name_mapping,
     register_residue_template_alias,
     register_residue_templates_from_mol2_text,
 )
-from . import data_path
+from . import data_path, load_parameter_from_ffitp
 
 
 def _configure_protein_terminals():
@@ -38,7 +37,7 @@ def _configure_protein_terminals():
         configure_residue_template_connect_atom(resname, "ssbond", "SG")
 
 
-load_opls_itp_file(str(data_path("oplsaam", "forcefield.itp")))
+load_parameter_from_ffitp("forcefield.itp", str(data_path("oplsaam")))
 protein_text = data_path("oplsaam", "protein.mol2").read_text()
 # The reference OPLS-AA/M mol2 ships one duplicated NPRO hydrogen label.
 # Original Xponge tolerates that input; normalize it for the stricter C++ registry.

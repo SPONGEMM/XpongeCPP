@@ -296,6 +296,73 @@ SOL 2
     assert system.residue_counts() == {"WAT": 2}
 
 
+def test_load_molitp_reuses_generated_residue_variants_matches_original_xponge_reference(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    top = tmp_path / "variant.top"
+    top.write_text(
+        """[ moleculetype ]
+BASE 3
+[ atoms ]
+1 N 1 ALA N 1 -0.3 14.0
+2 CT 1 ALA CA 1 0.1 12.0
+[ bonds ]
+1 2 1
+[ moleculetype ]
+MOD1 3
+[ atoms ]
+1 N 1 ALA N 1 -0.3 14.0
+2 QQ 1 ALA CA 1 0.2 12.0
+[ bonds ]
+1 2 1
+[ moleculetype ]
+MOD2 3
+[ atoms ]
+1 N 1 ALA N 1 -0.3 14.0
+2 QQ 1 ALA CA 1 0.2 12.0
+[ bonds ]
+1 2 1
+[ system ]
+variant-case
+[ molecules ]
+BASE 1
+MOD1 1
+MOD2 1
+"""
+    )
+
+    system, mols = Xponge.load_molitp(str(top), water_replace=False)
+    current_summary = {
+        "system_name": system.name,
+        "residue_names": [res.name for res in system.residues],
+        "mols": {name: [res.name for res in mol.residues] for name, mol in mols.items()},
+    }
+
+    script = textwrap.dedent(
+        f"""
+        import json
+        import sys
+        sys.path.insert(0, {str(XPONGE_REPO)!r})
+        import Xponge
+        import Xponge.forcefield.amber.ff14sb
+
+        system, mols = Xponge.load_molitp({str(top)!r}, water_replace=False)
+        payload = {{
+            "system_name": system.name,
+            "residue_names": [res.name for res in system.residues],
+            "mols": {{name: [res.name for res in mol.residues] for name, mol in mols.items()}},
+        }}
+        print(json.dumps(payload, sort_keys=True))
+        """
+    )
+    reference = json.loads(_run_original_xponge(script))
+
+    assert current_summary == reference
+    assert current_summary["residue_names"] == ["ALA", "ALA_1", "ALA_1"]
+    assert current_summary["mols"]["MOD1"] == ["ALA_1"]
+    assert current_summary["mols"]["MOD2"] == ["ALA_1"]
+
+
 def test_load_molitp_invokes_registered_bonded_type_parsers_and_copies_special_forces(tmp_path):
     top = tmp_path / "system.top"
     top.write_text(

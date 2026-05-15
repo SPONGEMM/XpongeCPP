@@ -63,19 +63,41 @@ def Set_Box_Padding(molecule, padding=0.5, center=True):
 
 
 def Save_SPONGE_Input(molecule, prefix=None, dirname="."):
-    return save_sponge_input(molecule, "" if prefix is None else prefix, dirname)
+    return save_sponge_input(molecule, "" if prefix is None else str(prefix), str(dirname))
 
 
 def Save_PDB(molecule, filename, write_cryst1=True):
-    return save_pdb(molecule, filename, write_cryst1)
+    target = str(filename)
+    save_pdb(molecule, target, write_cryst1)
+    try:
+        from .legacy_types import _legacy_residue_links_override
+    except Exception:
+        return None
+    override = _legacy_residue_links_override.get(molecule)
+    if override is None:
+        return None
+    with open(target, encoding="utf-8", errors="ignore") as handle:
+        lines = handle.read().splitlines()
+    end_line = None
+    if lines and lines[-1].startswith("END"):
+        end_line = lines.pop()
+    lines = [line for line in lines if not line.startswith("CONECT")]
+    for atom1, atom2 in override:
+        lines.append(f"CONECT{atom1 + 1:5d}{atom2 + 1:5d}")
+        lines.append(f"CONECT{atom2 + 1:5d}{atom1 + 1:5d}")
+    if end_line is not None:
+        lines.append(end_line)
+    with open(target, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    return None
 
 
 def Save_Mol2(molecule, filename):
-    return save_mol2(molecule, filename)
+    return save_mol2(molecule, str(filename))
 
 
 def Save_GRO(molecule, filename):
-    return save_gro(molecule, filename)
+    return save_gro(molecule, str(filename))
 
 
 add_solvent_box = Add_Solvent_Box

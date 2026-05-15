@@ -81,9 +81,10 @@ void save_pdb(const Molecule& molecule, const std::filesystem::path& filename) {
 
     std::vector<int> residue_pdb_indices(molecule.residues.size(), 1);
     std::unordered_map<char, int> next_index_by_chain;
+    int next_blank_chain_index = 0;
     for (std::size_t i = 0; i < molecule.residues.size(); ++i) {
         if (chain_ids[i] == ' ') {
-            residue_pdb_indices[i] = 1;
+            residue_pdb_indices[i] = ++next_blank_chain_index;
         } else {
             residue_pdb_indices[i] = ++next_index_by_chain[chain_ids[i]];
         }

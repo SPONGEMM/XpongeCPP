@@ -237,6 +237,48 @@ def test_legacy_add_residue_link_accepts_atom_objects_and_atom_index_proxy():
     assert combined.atom_index[atom_b] == int(atom_b.index)
 
 
+def test_residue_links_explicit_api_and_legacy_assignment_stay_in_sync(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    combined = Xponge.load_pdb(StringIO(PDB_TEXT)) + Xponge.load_pdb(StringIO(PDB_TEXT))
+    atom_a = combined.residues[0].name2atom("C")
+    atom_b = combined.residues[1].name2atom("N")
+    combined.add_residue_link(atom_a, atom_b)
+
+    saved_links = combined.get_residue_links()
+    assert saved_links[-1] == [int(atom_a.index), int(atom_b.index)]
+
+    combined.clear_residue_links()
+    assert combined.residue_links == []
+
+    cleared = tmp_path / "cleared.pdb"
+    Xponge.Save_PDB(combined, cleared)
+    assert "CONECT" not in cleared.read_text()
+
+    combined.residue_links = saved_links
+    assert combined.residue_links == saved_links
+
+    restored = tmp_path / "restored.pdb"
+    Xponge.Save_PDB(combined, restored)
+    restored_text = restored.read_text()
+    assert "CONECT" in restored_text
+    assert f"{int(atom_a.index) + 1:5d}{int(atom_b.index) + 1:5d}" in restored_text
+
+
+def test_set_residue_links_accepts_atom_objects_and_indices():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    combined = Xponge.load_pdb(StringIO(PDB_TEXT)) + Xponge.load_pdb(StringIO(PDB_TEXT))
+    atom_a = combined.residues[0].name2atom("C")
+    atom_b = combined.residues[1].name2atom("N")
+
+    combined.set_residue_links([(atom_a, atom_b)])
+    assert combined.residue_links == [[int(atom_a.index), int(atom_b.index)]]
+
+    combined.residue_links = [(int(atom_a.index), int(atom_b.index))]
+    assert combined.residue_links == [[int(atom_a.index), int(atom_b.index)]]
+
+
 def test_add_missing_atoms_restores_terminal_oxt_without_moving_existing_atoms():
     import XpongeCPP.forcefield.amber as amber
     import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
