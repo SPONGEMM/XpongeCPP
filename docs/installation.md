@@ -38,7 +38,7 @@ python -c "import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special
 - `MDAnalysis`
 - `rdkit`
 - `pyscf`
-- `mokda-xpongelib`
+- `XpongeLib`
 
 其中 `pyscf` 采用平台条件安装：
 

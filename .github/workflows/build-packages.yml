@@ -9,15 +9,37 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build-wheel:
-    name: Build wheel (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build wheel (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.11"]
+        include:
+          - label: linux-x64
+            runner: ubuntu-24.04
+            python-version: "3.11"
+            full-deps: true
+          - label: linux-arm64
+            runner: ubuntu-24.04-arm
+            python-version: "3.11"
+            full-deps: false
+          - label: macos-intel
+            runner: macos-15-intel
+            python-version: "3.11"
+            full-deps: false
+          - label: macos-arm64
+            runner: macos-15
+            python-version: "3.11"
+            full-deps: false
+          - label: windows-x64
+            runner: windows-2025
+            python-version: "3.11"
+            full-deps: false
 
     steps:
       - name: Checkout
@@ -37,7 +59,7 @@ jobs:
       - name: Check wheel metadata
         run: python -m twine check dist/*
 
-      - name: Smoke install built wheel
+      - name: Minimal wheel smoke test
         shell: bash
         run: |
           python -m venv .wheel-smoke
@@ -47,18 +69,28 @@ jobs:
             PY=.wheel-smoke/bin/python
           fi
           "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install numpy
           "$PY" -m pip install --no-deps dist/*.whl
           "$PY" -c "import XpongeCPP, Xponge; print(XpongeCPP.__version__)"
+
+      - name: Full dependency install test (Linux x64 only)
+        if: ${{ matrix.full-deps }}
+        shell: bash
+        run: |
+          python -m venv .wheel-full
+          .wheel-full/bin/python -m pip install --upgrade pip
+          .wheel-full/bin/python -m pip install dist/*.whl
+          .wheel-full/bin/python -c "import XpongeCPP, Xponge; import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special import gb; print(XpongeCPP.__version__)"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.os }}
+          name: wheel-${{ matrix.label }}
           path: dist/*.whl
 
   build-sdist:
-    name: Build sdist (ubuntu)
-    runs-on: ubuntu-latest
+    name: Build sdist (linux-x64)
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout

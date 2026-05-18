@@ -46,15 +46,33 @@ The package now declares a practical default dependency set for pip users:
 - `MDAnalysis`
 - `rdkit`
 - `pyscf` on non-Windows platforms
-- `mokda-xpongelib`
+- `XpongeLib`
 
 Windows automatically skips `pyscf` through environment markers.
 
-`mokda-xpongelib` is included so legacy `gaff.parmchk2_gaff(...)` workflows can
+`XpongeLib` is included so legacy `gaff.parmchk2_gaff(...)` workflows can
 resolve the `XpongeLib` bridge automatically after installation.
 
 See:
 - [docs/installation.md](./docs/installation.md)
+
+### GitHub Actions packaging matrix
+
+The repository CI currently builds packages on:
+
+- Linux x64: `ubuntu-24.04`
+- Linux arm64: `ubuntu-24.04-arm`
+- macOS Intel: `macos-15-intel`
+- macOS arm64: `macos-15`
+- Windows x64: `windows-2025`
+
+Validation is split into two layers:
+
+- all platforms run a minimal wheel smoke test with `numpy` installed
+- Linux x64 additionally runs a full dependency install smoke test
+
+This keeps wheel validation broad across operating systems and CPU architectures
+without making every matrix job depend on the full optional chemistry stack.
 
 ## v1 Scope
 
@@ -93,3 +111,13 @@ PubChem network tests remain opt-in through the test environment; default Pixi t
   - [docs/api-overview.zh-CN.md](./docs/api-overview.zh-CN.md)
 - Architecture / migration status:
   - [docs/xponge-vs-xpongecpp-architecture-status.md](./docs/xponge-vs-xpongecpp-architecture-status.md)
+
+## Packaging roadmap note
+
+The current repository uses a hand-written GitHub Actions workflow plus
+`scripts/build_pypi.py` for packaging validation. We are deliberately keeping
+this simpler workflow for now because it makes the `Xponge`/`XpongeCPP` dual
+package layout and the minimal-vs-full smoke split easy to audit.
+
+`cibuildwheel` is still a good future option once the wheel matrix and release
+policy stabilize further, but it is not the current default.
