@@ -1,4 +1,6 @@
 .venv/
+
+# Local Python build outputs
 build/
 dist/
 *.egg-info/

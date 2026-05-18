@@ -1,0 +1,96 @@
+# XpongeCPP 安装说明
+
+## 推荐安装方式
+
+对于普通用户，目标是：
+
+- `pip install XpongeCPP`
+- 安装后同时支持：
+  - `import XpongeCPP`
+  - `import Xponge`
+
+当前 wheel 会同时打包：
+
+- `src/XpongeCPP`
+- `src/Xponge`
+
+因此旧脚本中的 `import Xponge` 兼容层会随包一起安装。
+
+## PyPI 安装
+
+```bash
+pip install XpongeCPP
+```
+
+安装完成后，建议先做 smoke test：
+
+```bash
+python -c "import XpongeCPP, Xponge; print(XpongeCPP.__version__)"
+python -c "import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special import gb; print('ok')"
+```
+
+## 自动依赖策略
+
+基础安装会自动安装以下高频依赖：
+
+- `numpy`
+- `PubChemPy`
+- `MDAnalysis`
+- `rdkit`
+- `pyscf`
+
+其中 `pyscf` 采用平台条件安装：
+
+- Windows 下自动跳过
+- 非 Windows 平台正常安装
+
+这意味着：
+
+- Linux / macOS 用户默认会得到完整一些的化学后端
+- Windows 用户不会因为 `pyscf` 不可用而导致整包安装失败
+
+## 开发安装
+
+如果你是在仓库里开发，推荐继续使用 `pixi`：
+
+```bash
+pixi run install-dev
+pixi run test
+```
+
+也可以用 editable 模式：
+
+```bash
+pip install -e .
+```
+
+## 安装后建议验证的功能
+
+### 新接口
+
+```python
+import XpongeCPP
+import XpongeCPP.forcefield.amber.ff19sb
+from XpongeCPP.forcefield.special import gb
+```
+
+### 旧脚本兼容接口
+
+```python
+import Xponge
+import Xponge.forcefield.amber.ff19sb
+from Xponge.forcefield.special import gb
+
+mol = Xponge.NALA + Xponge.ALA * 2 + Xponge.CALA
+gb.set_gb_radius(mol)
+```
+
+## 如果安装失败
+
+优先检查：
+
+1. Python 版本是否为 `>=3.10`
+2. 是否具备本地编译 C++ 扩展所需工具链
+3. 是否是某个可选化学依赖在当前平台不可用
+
+如果只是想快速开发验证，也可以先使用仓库提供的 `pixi` 环境。
