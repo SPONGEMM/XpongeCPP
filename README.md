@@ -46,8 +46,12 @@ The package now declares a practical default dependency set for pip users:
 - `MDAnalysis`
 - `rdkit`
 - `pyscf` on non-Windows platforms
+- `mokda-xpongelib`
 
 Windows automatically skips `pyscf` through environment markers.
+
+`mokda-xpongelib` is included so legacy `gaff.parmchk2_gaff(...)` workflows can
+resolve the `XpongeLib` bridge automatically after installation.
 
 See:
 - [docs/installation.md](./docs/installation.md)

@@ -51,6 +51,7 @@ python -c "import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special
 - `MDAnalysis`
 - `rdkit`
 - `pyscf`
+- `mokda-xpongelib`
 
 其中 `pyscf` 采用平台条件安装：
 
@@ -61,6 +62,7 @@ python -c "import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special
 
 - Linux/macOS 用户直接安装后即可使用更多完整功能
 - Windows 用户不会因为 `pyscf` 不可用而让整个包安装失败
+- `gaff.parmchk2_gaff(...)` 这类 legacy workflow 能自动解析 `XpongeLib` bridge
 
 ## 开发安装
 
