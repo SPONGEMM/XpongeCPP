@@ -97,11 +97,10 @@ from ._compat.imports import (
     xopen,
     xprint,
 )
-from ._compat.assign import install_legacy_assign_patches
 from ._compat.aliases import install_top_level_aliases
-from ._compat.runtime import install_legacy_runtime_patches
+from ._compat.bootstrap import install_legacy_bootstrap
 from ._compat.symbols import sync_template_module_globals
-from ._compat.workflows import build_bonded_force, ensure_mindsponge_todo_support, get_mindsponge_system_energy
+from ._compat.workflows import build_bonded_force, get_mindsponge_system_energy
 from .helper import AbstractMolecule, AtomType, Entity, ResidueLink, Type
 from .helper.file import file_filter, import_python_script, pdb_filter
 from .helper.math import (
@@ -186,9 +185,7 @@ def load_pdb(*args, **kwargs):
     return _core_load_pdb(*args, **kwargs)
 
 
-install_legacy_runtime_patches(globals())
-install_legacy_assign_patches()
-ensure_mindsponge_todo_support()
+install_legacy_bootstrap(globals())
 
 
 def load_parameter_from_ffitp(filename, folder, reset=True):

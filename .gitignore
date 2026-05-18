@@ -6,6 +6,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+src/XpongeCPP/BIN_PATH.dat
+src/**/__pycache__/
+tests/**/__pycache__/
 *.so
 *.dylib
 *.dll

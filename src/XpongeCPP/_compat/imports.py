@@ -174,6 +174,28 @@ def set_global_alternative_names(*args, **kwargs):
     return None
 
 
+def get_main_namespace_injection_policy():
+    """Return the current legacy ``__main__`` injection policy.
+
+    The default remains strict legacy compatibility so old scripts keep working
+    unchanged.  A dedicated helper makes the policy explicit and auditable, and
+    also leaves room for future narrowing once script dependence is better
+    understood.
+    """
+
+    raw = os.environ.get("XPONGECPP_LEGACY_MAIN_NAMESPACE", "strict")
+    value = str(raw).strip().lower()
+    if value in {"0", "false", "off", "disabled", "disable", "none"}:
+        return "disabled"
+    return "strict"
+
+
+def should_install_main_namespace_exports():
+    """Whether legacy names should be mirrored into ``__main__``."""
+
+    return get_main_namespace_injection_policy() != "disabled"
+
+
 def set_real_global_variable(name, value, namespace=None):
     """Install a legacy global symbol into a namespace."""
 
@@ -222,6 +244,44 @@ def reexport_module(target: str, namespace: dict, public: Iterable[str] | None =
     namespace.setdefault("__all__", public)
     namespace.setdefault("__legacy_target__", target)
     return module
+
+
+def copy_public_attributes(source, namespace: dict, *, skip: Iterable[str] | None = None):
+    """Copy public attributes from *source* into *namespace*.
+
+    This is used by legacy package-name shims such as ``src/Xponge/__init__.py``
+    so that the shims do not each carry hand-written loops for public attribute
+    forwarding.
+    """
+
+    skip = set(skip or ())
+    for name in dir(source):
+        if name.startswith("_") or name in skip:
+            continue
+        namespace.setdefault(name, getattr(source, name))
+    return namespace
+
+
+def install_main_namespace_exports(source_namespace: dict, target_namespace: dict | None = None):
+    """Mirror public names from a shim namespace into ``__main__``.
+
+    This preserves the existing bare-name legacy script behavior while
+    centralizing the high-intrusion namespace injection logic in one place for
+    later auditing or gating.
+    """
+
+    if not should_install_main_namespace_exports():
+        return None
+    if target_namespace is None:
+        main_module = sys.modules.get("__main__")
+        if main_module is None:  # pragma: no cover - defensive only
+            return None
+        target_namespace = main_module.__dict__
+    for name, value in list(source_namespace.items()):
+        if name.startswith("_"):
+            continue
+        target_namespace.setdefault(name, value)
+    return target_namespace
 
 
 def extend_package_path(namespace: dict, target_package: str):

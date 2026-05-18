@@ -9,11 +9,24 @@ from pathlib import Path
 from ._compat.imports import Xopen, Xprint
 
 _THIS_PATH = Path(__file__).resolve().parent
-_BIN_PATH_FILE = _THIS_PATH / "BIN_PATH.dat"
+
+
+def _runtime_state_dir():
+    root = os.environ.get("XPONGECPP_STATE_DIR")
+    if root:
+        return Path(root)
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg:
+        return Path(xdg) / "XpongeCPP"
+    return Path.home() / ".cache" / "XpongeCPP"
+
+
+_BIN_PATH_FILE = _runtime_state_dir() / "BIN_PATH.dat"
 
 
 def _read_bin_path():
     if not _BIN_PATH_FILE.exists():
+        _BIN_PATH_FILE.parent.mkdir(parents=True, exist_ok=True)
         with Xopen(str(_BIN_PATH_FILE), "w") as handle:
             handle.write("../../bin")
     with Xopen(str(_BIN_PATH_FILE), "r") as handle:
@@ -43,10 +56,12 @@ def run(args):
         sys.exit()
 
     if args[1] == "-set":
+        _BIN_PATH_FILE.parent.mkdir(parents=True, exist_ok=True)
         with Xopen(str(_BIN_PATH_FILE), "w") as handle:
             handle.write(args[2])
         sys.exit()
     elif args[1] == "-reset":
+        _BIN_PATH_FILE.parent.mkdir(parents=True, exist_ok=True)
         with Xopen(str(_BIN_PATH_FILE), "w") as handle:
             handle.write("../../bin")
         sys.exit()
