@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
 import XpongeCPP as Xponge
@@ -11,6 +12,9 @@ from conftest import original_xponge_repo
 
 
 XPONGE_REPO = original_xponge_repo()
+TEST_DATA_DIR = Path(__file__).resolve().parent / "data"
+MOKDA_RESP_PREVIEW_MOL2 = TEST_DATA_DIR / "mokda_resp" / "CRO_1.charge-preview.capped.mol2"
+FORMAMIDE_RESP_MOL2 = TEST_DATA_DIR / "mokda_resp" / "formamide_resp.mol2"
 
 
 def _assignment(name, atoms, bonds, formal_charges=None):
@@ -646,6 +650,99 @@ def test_resp_supports_formamide_under_pyscf():
     assert formamide.charges[0] < 0.0
     assert formamide.charges[1] > 0.0
     assert formamide.charges[2] < 0.0
+
+
+def test_resp_supports_real_mol2_fixture_and_matches_original_xponge():
+    assignment = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    assert assignment.atom_count == 6
+
+    try:
+        assignment.calculate_charge(
+            "resp",
+            basis="sto-3g",
+            charge=0,
+            grid_density=1,
+            grid_cell_layer=1,
+            only_esp=True,
+            two_stage=False,
+        )
+    except ImportError as exc:
+        assert "PySCF" in str(exc)
+        return
+
+    assert len(assignment.charges) == assignment.atom_count
+    assert math.isclose(sum(assignment.charges), 0.0, abs_tol=1e-4)
+    assert min(assignment.charges) < -0.3
+    assert max(assignment.charges) > 0.2
+
+    script = f"""
+import json
+import sys
+sys.path.insert(0, {str(XPONGE_REPO)!r})
+import Xponge
+
+assign = Xponge.get_assignment_from_mol2({str(FORMAMIDE_RESP_MOL2)!r}, total_charge="sum")
+assign.calculate_charge(
+    "resp",
+    basis="sto-3g",
+    charge=0,
+    grid_density=1,
+    grid_cell_layer=1,
+    only_esp=True,
+    two_stage=False,
+)
+print(json.dumps(assign.charge.tolist()))
+"""
+    stdout = _run_original_xponge(script)
+    expected = json.loads(stdout)
+    _assert_charges_close(assignment.charges, expected, tol=5e-5)
+
+
+def test_resp_supports_mokda_preview_mol2_and_matches_original_xponge():
+    assignment = Xponge.get_assignment_from_mol2(str(MOKDA_RESP_PREVIEW_MOL2), total_charge="sum")
+    assert assignment.atom_count == 49
+
+    try:
+        assignment.calculate_charge(
+            "resp",
+            basis="sto-3g",
+            charge=0,
+            grid_density=1,
+            grid_cell_layer=1,
+            only_esp=True,
+            two_stage=False,
+        )
+    except ImportError as exc:
+        assert "PySCF" in str(exc)
+        return
+
+    assert len(assignment.charges) == assignment.atom_count
+    assert math.isclose(sum(assignment.charges), 0.0, abs_tol=1e-4)
+    assert min(assignment.charges) < -0.3
+    assert max(assignment.charges) > 0.2
+
+    script = f"""
+import json
+import sys
+sys.path.insert(0, {str(XPONGE_REPO)!r})
+import Xponge
+
+assign = Xponge.get_assignment_from_mol2({str(MOKDA_RESP_PREVIEW_MOL2)!r}, total_charge="sum")
+assign.calculate_charge(
+    "resp",
+    basis="sto-3g",
+    charge=0,
+    grid_density=1,
+    grid_cell_layer=1,
+    only_esp=True,
+    two_stage=False,
+)
+print(json.dumps(assign.charge.tolist()))
+"""
+    stdout = _run_original_xponge(script)
+    expected = json.loads(stdout)
+    _assert_charges_close(assignment.charges, expected, tol=5e-5)
+
 
 
 def test_assign_rule_custom_registry_supports_xponge_pure_string_semantics():
