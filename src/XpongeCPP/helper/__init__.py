@@ -169,13 +169,17 @@ AbstractMolecule.register(Molecule)
 
 __all__ = [
     "AbstractMolecule",
+    "Atom",
     "AtomType",
     "CVSystem",
     "Entity",
     "Generate_New_Bonded_Force_Type",
     "Generate_New_Pairwise_Force_Type",
     "GlobalSetting",
+    "Molecule",
+    "Residue",
     "ResidueLink",
+    "ResidueType",
     "Type",
     "Xdict",
     "Xopen",
