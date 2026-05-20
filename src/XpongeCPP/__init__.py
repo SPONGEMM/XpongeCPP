@@ -154,6 +154,7 @@ __version__ = "0.1.0"
 pi = np.pi
 kb = 0.00198716
 bar = 1.439506089041446e-5
+save_pdb = Save_PDB
 save_mol2 = Save_Mol2
 save_sponge_input = Save_SPONGE_Input
 
