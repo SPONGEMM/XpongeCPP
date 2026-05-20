@@ -440,6 +440,45 @@ Assign get_assignment_from_residuetype(const ResidueType& residue_type);
 std::string assignment_to_mol2_text(const Assign& assignment, const std::string& residue_name);
 std::string assignment_to_pdb_text(const Assign& assignment, const std::string& residue_name);
 std::vector<std::string> implemented_gaff_assign_types();
+std::vector<std::array<double, 3>> generate_resp_mk_grid(
+    const std::vector<std::string>& atoms,
+    const std::vector<std::array<double, 3>>& atom_coordinates_bohr,
+    double area_density = 1.0,
+    int layer = 4,
+    const std::unordered_map<std::string, double>& radius = {}
+);
+struct RespFitDebugResult {
+    std::vector<double> esp_charges;
+    std::vector<double> stage1_charges;
+    std::vector<double> final_charges;
+    std::unordered_map<std::string, double> timings;
+};
+std::vector<double> fit_resp_from_esp_cpp(
+    const Assign& assign,
+    const std::vector<std::array<double, 3>>& atom_coordinates_bohr,
+    const std::vector<double>& nuclear_charges,
+    const std::vector<std::array<double, 3>>& grid_points_bohr,
+    const std::vector<double>& esp_values_au,
+    int charge,
+    const std::vector<std::vector<int>>& extra_equivalence = {},
+    double a1 = 0.0005,
+    double a2 = 0.001,
+    bool two_stage = true,
+    bool only_esp = false
+);
+RespFitDebugResult fit_resp_from_esp_cpp_debug(
+    const Assign& assign,
+    const std::vector<std::array<double, 3>>& atom_coordinates_bohr,
+    const std::vector<double>& nuclear_charges,
+    const std::vector<std::array<double, 3>>& grid_points_bohr,
+    const std::vector<double>& esp_values_au,
+    int charge,
+    const std::vector<std::vector<int>>& extra_equivalence = {},
+    double a1 = 0.0005,
+    double a2 = 0.001,
+    bool two_stage = true,
+    bool only_esp = false
+);
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distance, double tolerance,
                      std::int64_t n_solvent, std::uint64_t seed = 0);
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::array<double, 6>& distance,

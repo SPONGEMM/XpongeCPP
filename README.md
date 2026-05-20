@@ -105,6 +105,25 @@ pixi run test-resp
 pixi run test
 ```
 
+RESP supports a multi-backend strategy:
+
+- default backend: `PySCF`
+- optional backend: `Psi4`
+
+Example:
+
+```python
+assign.calculate_charge("resp", backend="pyscf")
+assign.calculate_charge("resp", backend="psi4")
+```
+
+For Windows RESP workflows, install `Psi4` separately and select it explicitly:
+
+```bash
+conda install -c conda-forge psi4
+pip install XpongeCPP
+```
+
 PubChem network tests remain opt-in through the test environment; default Pixi tests use local mocks or dependency checks and do not require live network access.
 
 ## Documentation

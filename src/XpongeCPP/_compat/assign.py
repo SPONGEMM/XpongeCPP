@@ -97,6 +97,8 @@ def _assign_calculate_charge(self, method, **parameters):
                 two_stage=parameters.get("two_stage", True),
                 only_esp=parameters.get("only_esp", False),
                 radius=parameters.get("radius", None),
+                backend=parameters.get("backend", None),
+                core=parameters.get("core", None),
             )
         )
         return None

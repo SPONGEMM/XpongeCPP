@@ -13,6 +13,7 @@ pybind11_add_module(_core
     cpp/assign/bond_order.cpp
     cpp/assign/gaff.cpp
     cpp/assign/mol2_assignment.cpp
+    cpp/assign/resp.cpp
     cpp/assign/ring.cpp
     cpp/assign/tpacm4.cpp
     cpp/core/element_mass.cpp

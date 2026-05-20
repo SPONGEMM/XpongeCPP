@@ -107,7 +107,7 @@ XpongeCPP
 | `AssignRule` custom Python registry | Supported | User custom rules run in Python and do not affect built-in C++ hot paths. |
 | TPACM4 | Supported | C++ implementation with regression tests. |
 | Gasteiger | Supported with optional dependency | Uses RDKit when installed. |
-| RESP | Partial | PySCF backend exists; water plus multiple nontrivial small-molecule regressions pass under `pixi`. Large and all-parameter Xponge RESP parity is not complete. |
+| RESP | Partial | `PySCF` remains the default backend; optional `Psi4` routing, Windows-facing install hints, and Python/C++ RESP-core parity tests exist. Real-fixture regressions pass under `PySCF`, while `Psi4` coverage is currently guarded by optional-dependency tests rather than mandatory CI. Full large-case and all-parameter Xponge parity is not complete. |
 | pH model | Partial | Common phenol/carboxyl/alcohol behavior exists, including reference-backed typing checks and protonation/deprotonation coverage in both directions for the current supported chemistry classes. Full original edge coverage is not complete. |
 | PubChem real network behavior | Partial | Signature and dependency behavior are present; live network regression is opt-in. |
 | CIF symmetry/crystal expansion | Partial | Basic cell/fractional coordinate support exists, including reference-backed fractional-coordinate cases plus richer non-orthogonal symmetry-basis coverage. Full original CIF crystallographic behavior is not complete. |

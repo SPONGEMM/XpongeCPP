@@ -64,6 +64,38 @@ python -c "import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special
 - Windows 用户不会因为 `pyscf` 不可用而让整个包安装失败
 - `gaff.parmchk2_gaff(...)` 这类 legacy workflow 能自动解析 `XpongeLib` bridge
 
+## RESP 后端说明
+
+当前 RESP 电荷计算采用多后端策略：
+
+- 默认后端：`PySCF`
+- 可选后端：`Psi4`
+
+推荐用法：
+
+- Linux / macOS：默认直接使用 `PySCF`
+- Windows：安装 `Psi4`，并在 RESP 调用时显式指定 `backend="psi4"`
+
+示例：
+
+```python
+assign.calculate_charge("resp", backend="pyscf")
+assign.calculate_charge("resp", backend="psi4")
+```
+
+如果你是在 Windows 上使用 RESP，推荐安装方式是：
+
+```bash
+conda install -c conda-forge psi4
+pip install XpongeCPP
+```
+
+这样做的好处是：
+
+- `XpongeCPP` 本体仍然可以保持 PyPI 安装
+- `Psi4` 作为可选外部量化后端存在
+- 后续即使 RESP 数值核心迁到 C++，这一层后端接口也仍然稳定
+
 ## 开发安装
 
 如果你是在仓库中开发，推荐继续使用 `pixi`：

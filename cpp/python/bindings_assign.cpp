@@ -128,6 +128,56 @@ void bind_assign_module(py::module_& m) {
               return std::make_shared<Assign>(get_assignment_from_residuetype(residue_type));
           }, py::arg("residue_type"));
     m.def("implemented_gaff_assign_types", &implemented_gaff_assign_types);
+    m.def("generate_resp_mk_grid", &generate_resp_mk_grid,
+          py::arg("atoms"), py::arg("atom_coordinates_bohr"), py::arg("area_density") = 1.0,
+          py::arg("layer") = 4, py::arg("radius") = std::unordered_map<std::string, double>{});
+    m.def("fit_resp_from_esp_cpp", &fit_resp_from_esp_cpp,
+          py::arg("assign"), py::arg("atom_coordinates_bohr"), py::arg("nuclear_charges"),
+          py::arg("grid_points_bohr"), py::arg("esp_values_au"), py::arg("charge"),
+          py::arg("extra_equivalence") = std::vector<std::vector<int>>{},
+          py::arg("a1") = 0.0005, py::arg("a2") = 0.001,
+          py::arg("two_stage") = true, py::arg("only_esp") = false);
+    m.def("fit_resp_from_esp_cpp_debug",
+          [](const Assign& assign,
+             const std::vector<std::array<double, 3>>& atom_coordinates_bohr,
+             const std::vector<double>& nuclear_charges,
+             const std::vector<std::array<double, 3>>& grid_points_bohr,
+             const std::vector<double>& esp_values_au,
+             int charge,
+             const std::vector<std::vector<int>>& extra_equivalence,
+             double a1,
+             double a2,
+             bool two_stage,
+             bool only_esp) {
+              const auto result = fit_resp_from_esp_cpp_debug(
+                  assign,
+                  atom_coordinates_bohr,
+                  nuclear_charges,
+                  grid_points_bohr,
+                  esp_values_au,
+                  charge,
+                  extra_equivalence,
+                  a1,
+                  a2,
+                  two_stage,
+                  only_esp
+              );
+              py::dict timings;
+              for (const auto& item : result.timings) {
+                  timings[py::str(item.first)] = item.second;
+              }
+              py::dict out;
+              out["esp_charges"] = result.esp_charges;
+              out["stage1_charges"] = result.stage1_charges;
+              out["final_charges"] = result.final_charges;
+              out["timings"] = timings;
+              return out;
+          },
+          py::arg("assign"), py::arg("atom_coordinates_bohr"), py::arg("nuclear_charges"),
+          py::arg("grid_points_bohr"), py::arg("esp_values_au"), py::arg("charge"),
+          py::arg("extra_equivalence") = std::vector<std::vector<int>>{},
+          py::arg("a1") = 0.0005, py::arg("a2") = 0.001,
+          py::arg("two_stage") = true, py::arg("only_esp") = false);
 }
 
 }  // namespace xpongecpp

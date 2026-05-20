@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 import XpongeCPP as Xponge
 from conftest import original_xponge_repo
+from XpongeCPP.assign import resp as resp_module
+from XpongeCPP.assign import resp_core
 
 
 XPONGE_REPO = original_xponge_repo()
@@ -152,6 +154,80 @@ def test_calculate_charge_reports_optional_dependencies_clearly(monkeypatch):
         assignment.calculate_charge("gasteiger")
     with pytest.raises(ImportError, match="PySCF"):
         assignment.calculate_charge("resp")
+
+
+def test_resp_defaults_to_pyscf_backend(monkeypatch):
+    assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
+    calls = []
+
+    class FakeBackend:
+        @staticmethod
+        def build_backend_payload(assign, basis, charge, spin, opt):
+            import numpy as np
+
+            calls.append(("build", basis, charge, spin, opt))
+            return {
+                "atom_coordinates_bohr": np.zeros((3, 3)),
+                "nuclear_charges": np.array([8.0, 1.0, 1.0]),
+            }
+
+        @staticmethod
+        def compute_esp_on_grid(payload, grids):
+            import numpy as np
+
+            calls.append(("esp", len(grids)))
+            return np.zeros(len(grids))
+
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FakeBackend)
+    monkeypatch.setattr(resp_module.resp_core, "get_mk_grid", lambda *args, **kwargs: __import__("numpy").zeros((2, 3)))
+    monkeypatch.setattr(resp_module.resp_core, "fit_resp_from_esp", lambda *args, **kwargs: [0.0, 0.0, 0.0])
+
+    charges = resp_module.resp_fit(assignment, basis="sto-3g", charge=0, grid_density=1, grid_cell_layer=1, only_esp=True)
+
+    assert charges == [0.0, 0.0, 0.0]
+    assert calls[0] == ("build", "sto-3g", 0, 0, False)
+    assert calls[1] == ("esp", 2)
+
+
+def test_resp_rejects_unknown_backend():
+    assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
+    with pytest.raises(ValueError, match="RESP backend should be one of"):
+        resp_module.resp_fit(assignment, backend="unknown")
+
+
+def test_resp_rejects_unknown_core():
+    assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
+    with pytest.raises(ValueError, match="RESP core should be one of"):
+        resp_module.resp_fit(assignment, core="unknown")
+
+
+def test_resp_windows_hint_mentions_psi4(monkeypatch):
+    assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
+
+    class FailingBackend:
+        @staticmethod
+        def build_backend_payload(assign, basis, charge, spin, opt):
+            raise ImportError("PySCF is required for RESP charge calculation")
+
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FailingBackend)
+    monkeypatch.setattr(resp_module.sys, "platform", "win32")
+
+    with pytest.raises(ImportError, match="install Psi4"):
+        resp_module.resp_fit(assignment, backend="pyscf")
+
+
+def test_resp_explicit_psi4_backend_reports_missing_dependency(monkeypatch):
+    assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
+
+    class FailingBackend:
+        @staticmethod
+        def build_backend_payload(assign, basis, charge, spin, opt):
+            raise ImportError("Psi4 is required for RESP charge calculation")
+
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, "psi4", FailingBackend)
+
+    with pytest.raises(ImportError, match="conda-forge"):
+        resp_module.resp_fit(assignment, backend="psi4")
 
 
 def test_assign_charge_aliases_and_pubchem_signature_are_xponge_compatible(monkeypatch):
@@ -650,6 +726,293 @@ def test_resp_supports_formamide_under_pyscf():
     assert formamide.charges[0] < 0.0
     assert formamide.charges[1] > 0.0
     assert formamide.charges[2] < 0.0
+
+
+def test_resp_supports_formamide_under_psi4_if_available():
+    pytest.importorskip("psi4")
+    formamide = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    formamide.calculate_charge(
+        "resp",
+        basis="sto-3g",
+        charge=0,
+        grid_density=1,
+        grid_cell_layer=1,
+        only_esp=True,
+        two_stage=False,
+        backend="psi4",
+    )
+
+    assert len(formamide.charges) == formamide.atom_count == 6
+    assert math.isclose(sum(formamide.charges), 0.0, abs_tol=1e-5)
+    assert min(formamide.charges) < -0.3
+    assert max(formamide.charges) > 0.2
+
+
+def test_resp_psi4_matches_pyscf_on_formamide_if_available():
+    pytest.importorskip("psi4")
+    formamide_pyscf = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    formamide_psi4 = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    formamide_pyscf.calculate_charge(
+        "resp",
+        basis="sto-3g",
+        charge=0,
+        grid_density=1,
+        grid_cell_layer=1,
+        only_esp=True,
+        two_stage=False,
+        backend="pyscf",
+    )
+    formamide_psi4.calculate_charge(
+        "resp",
+        basis="sto-3g",
+        charge=0,
+        grid_density=1,
+        grid_cell_layer=1,
+        only_esp=True,
+        two_stage=False,
+        backend="psi4",
+    )
+
+    assert len(formamide_pyscf.charges) == len(formamide_psi4.charges) == 6
+    diffs = [abs(a - b) for a, b in zip(formamide_pyscf.charges, formamide_psi4.charges)]
+    assert math.isclose(sum(formamide_psi4.charges), 0.0, abs_tol=1e-5)
+    assert max(diffs) <= 5e-3
+
+
+def test_resp_supports_mokda_preview_mol2_under_psi4_if_available():
+    pytest.importorskip("psi4")
+    assignment = Xponge.get_assignment_from_mol2(str(MOKDA_RESP_PREVIEW_MOL2), total_charge="sum")
+    assignment.calculate_charge(
+        "resp",
+        basis="sto-3g",
+        charge=0,
+        grid_density=1,
+        grid_cell_layer=1,
+        only_esp=True,
+        two_stage=False,
+        backend="psi4",
+    )
+    assert len(assignment.charges) == assignment.atom_count
+    assert math.isclose(sum(assignment.charges), 0.0, abs_tol=1e-4)
+    assert min(assignment.charges) < -0.3
+    assert max(assignment.charges) > 0.2
+
+
+def test_resp_psi4_matches_pyscf_on_mokda_preview_if_available():
+    pytest.importorskip("psi4")
+    assignment_pyscf = Xponge.get_assignment_from_mol2(str(MOKDA_RESP_PREVIEW_MOL2), total_charge="sum")
+    assignment_psi4 = Xponge.get_assignment_from_mol2(str(MOKDA_RESP_PREVIEW_MOL2), total_charge="sum")
+    assignment_pyscf.calculate_charge(
+        "resp",
+        basis="sto-3g",
+        charge=0,
+        grid_density=1,
+        grid_cell_layer=1,
+        only_esp=True,
+        two_stage=False,
+        backend="pyscf",
+    )
+    assignment_psi4.calculate_charge(
+        "resp",
+        basis="sto-3g",
+        charge=0,
+        grid_density=1,
+        grid_cell_layer=1,
+        only_esp=True,
+        two_stage=False,
+        backend="psi4",
+    )
+    diffs = [abs(a - b) for a, b in zip(assignment_pyscf.charges, assignment_psi4.charges)]
+    assert math.isclose(sum(assignment_psi4.charges), 0.0, abs_tol=1e-4)
+    assert max(diffs) <= 5e-3
+
+
+def test_resp_cpp_core_matches_python_core_on_formamide():
+    formamide = _assignment(
+        "formamide",
+        ["C", "O", "N", "H", "H", "H"],
+        [(0, 1, 2), (0, 2, 1), (0, 3, 1), (2, 4, 1), (2, 5, 1)],
+    )
+    payload = resp_module.pyscf_backend.build_backend_payload(formamide, "sto-3g", 0, 0, False)
+    grids_py = resp_core.get_mk_grid(formamide, payload["atom_coordinates_bohr"], area_density=1, layer=1)
+    grids_cpp = resp_core.get_mk_grid_cpp(formamide, payload["atom_coordinates_bohr"], area_density=1, layer=1)
+    assert len(grids_py) == len(grids_cpp)
+    import numpy as np
+
+    assert np.allclose(grids_cpp, grids_py, atol=1e-10)
+    py_electron_esp = resp_module.pyscf_backend.compute_esp_on_grid(payload, grids_py)
+    py_charges = resp_core.fit_resp_from_esp(
+        formamide,
+        atom_coordinates_bohr=payload["atom_coordinates_bohr"],
+        nuclear_charges=payload["nuclear_charges"],
+        grid_points_bohr=grids_py,
+        esp_values_au=py_electron_esp,
+        charge=0,
+        extra_equivalence=[],
+        a1=0.0005,
+        a2=0.001,
+        two_stage=False,
+        only_esp=True,
+    )
+    cpp_charges = resp_core.fit_resp_from_esp_cpp(
+        formamide,
+        atom_coordinates_bohr=payload["atom_coordinates_bohr"],
+        nuclear_charges=payload["nuclear_charges"],
+        grid_points_bohr=grids_py,
+        esp_values_au=py_electron_esp,
+        charge=0,
+        extra_equivalence=[],
+        a1=0.0005,
+        a2=0.001,
+        two_stage=False,
+        only_esp=True,
+    )
+    _assert_charges_close(cpp_charges, py_charges, tol=1e-8)
+
+
+def test_resp_cpp_core_matches_python_core_on_mokda_preview():
+    assignment = Xponge.get_assignment_from_mol2(str(MOKDA_RESP_PREVIEW_MOL2), total_charge="sum")
+    payload = resp_module.pyscf_backend.build_backend_payload(assignment, "sto-3g", 0, 0, False)
+    grids_py = resp_core.get_mk_grid(assignment, payload["atom_coordinates_bohr"], area_density=1, layer=1)
+    grids_cpp = resp_core.get_mk_grid_cpp(assignment, payload["atom_coordinates_bohr"], area_density=1, layer=1)
+    assert len(grids_py) == len(grids_cpp)
+    import numpy as np
+
+    assert np.allclose(grids_cpp, grids_py, atol=1e-10)
+    py_electron_esp = resp_module.pyscf_backend.compute_esp_on_grid(payload, grids_py)
+    py_charges = resp_core.fit_resp_from_esp(
+        assignment,
+        atom_coordinates_bohr=payload["atom_coordinates_bohr"],
+        nuclear_charges=payload["nuclear_charges"],
+        grid_points_bohr=grids_py,
+        esp_values_au=py_electron_esp,
+        charge=0,
+        extra_equivalence=[],
+        a1=0.0005,
+        a2=0.001,
+        two_stage=False,
+        only_esp=True,
+    )
+    cpp_charges = resp_core.fit_resp_from_esp_cpp(
+        assignment,
+        atom_coordinates_bohr=payload["atom_coordinates_bohr"],
+        nuclear_charges=payload["nuclear_charges"],
+        grid_points_bohr=grids_py,
+        esp_values_au=py_electron_esp,
+        charge=0,
+        extra_equivalence=[],
+        a1=0.0005,
+        a2=0.001,
+        two_stage=False,
+        only_esp=True,
+    )
+    _assert_charges_close(cpp_charges, py_charges, tol=1e-8)
+
+
+def test_resp_orchestration_supports_cpp_core_selection():
+    formamide_python = _assignment(
+        "formamide",
+        ["C", "O", "N", "H", "H", "H"],
+        [(0, 1, 2), (0, 2, 1), (0, 3, 1), (2, 4, 1), (2, 5, 1)],
+    )
+    formamide_cpp = _assignment(
+        "formamide",
+        ["C", "O", "N", "H", "H", "H"],
+        [(0, 1, 2), (0, 2, 1), (0, 3, 1), (2, 4, 1), (2, 5, 1)],
+    )
+    charges_python = resp_module.resp_fit(
+        formamide_python,
+        basis="sto-3g",
+        charge=0,
+        grid_density=1,
+        grid_cell_layer=1,
+        only_esp=True,
+        two_stage=False,
+        backend="pyscf",
+        core="python",
+    )
+    charges_cpp = resp_module.resp_fit(
+        formamide_cpp,
+        basis="sto-3g",
+        charge=0,
+        grid_density=1,
+        grid_cell_layer=1,
+        only_esp=True,
+        two_stage=False,
+        backend="pyscf",
+        core="cpp",
+    )
+    _assert_charges_close(charges_cpp, charges_python, tol=1e-8)
+
+
+def test_resp_python_debug_view_matches_python_core():
+    formamide = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    payload = resp_module.pyscf_backend.build_backend_payload(formamide, "sto-3g", 0, 0, False)
+    grids = resp_core.get_mk_grid(formamide, payload["atom_coordinates_bohr"], area_density=1, layer=1)
+    electron_esp = resp_module.pyscf_backend.compute_esp_on_grid(payload, grids)
+    plain = resp_core.fit_resp_from_esp(
+        formamide,
+        atom_coordinates_bohr=payload["atom_coordinates_bohr"],
+        nuclear_charges=payload["nuclear_charges"],
+        grid_points_bohr=grids,
+        esp_values_au=electron_esp,
+        charge=0,
+        extra_equivalence=[],
+        a1=0.0005,
+        a2=0.001,
+        two_stage=True,
+        only_esp=False,
+    )
+    debug = resp_core.fit_resp_from_esp_debug(
+        formamide,
+        atom_coordinates_bohr=payload["atom_coordinates_bohr"],
+        nuclear_charges=payload["nuclear_charges"],
+        grid_points_bohr=grids,
+        esp_values_au=electron_esp,
+        charge=0,
+        extra_equivalence=[],
+        a1=0.0005,
+        a2=0.001,
+        two_stage=True,
+        only_esp=False,
+    )
+    _assert_charges_close(debug["final_charges"], plain, tol=1e-8)
+    assert set(debug["timings"]) == {"assembly", "stage1", "stage2", "total"}
+
+
+def test_resp_cpp_debug_view_matches_cpp_core():
+    assignment = Xponge.get_assignment_from_mol2(str(MOKDA_RESP_PREVIEW_MOL2), total_charge="sum")
+    payload = resp_module.pyscf_backend.build_backend_payload(assignment, "sto-3g", 0, 0, False)
+    grids = resp_core.get_mk_grid_cpp(assignment, payload["atom_coordinates_bohr"], area_density=1, layer=1)
+    electron_esp = resp_module.pyscf_backend.compute_esp_on_grid(payload, grids)
+    plain = resp_core.fit_resp_from_esp_cpp(
+        assignment,
+        atom_coordinates_bohr=payload["atom_coordinates_bohr"],
+        nuclear_charges=payload["nuclear_charges"],
+        grid_points_bohr=grids,
+        esp_values_au=electron_esp,
+        charge=0,
+        extra_equivalence=[],
+        a1=0.0005,
+        a2=0.001,
+        two_stage=True,
+        only_esp=False,
+    )
+    debug = resp_core.fit_resp_from_esp_cpp_debug(
+        assignment,
+        atom_coordinates_bohr=payload["atom_coordinates_bohr"],
+        nuclear_charges=payload["nuclear_charges"],
+        grid_points_bohr=grids,
+        esp_values_au=electron_esp,
+        charge=0,
+        extra_equivalence=[],
+        a1=0.0005,
+        a2=0.001,
+        two_stage=True,
+        only_esp=False,
+    )
+    _assert_charges_close(debug["final_charges"], plain, tol=1e-8)
+    assert set(debug["timings"]) == {"assembly", "stage1", "stage2", "total"}
 
 
 def test_resp_supports_real_mol2_fixture_and_matches_original_xponge():
