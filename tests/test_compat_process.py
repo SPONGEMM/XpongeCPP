@@ -1,6 +1,47 @@
 import pytest
 
 
+def _build_two_residue_assign_molecule():
+    import Xponge
+
+    assign = Xponge.Assign("TES")
+    assign.add_atom("C", 0.0, 0.0, 0.0, "C1")
+    assign.add_atom("N", 1.0, 0.0, 0.0, "N1")
+    assign.add_bond(0, 1, 1)
+    assign.set_atom_type(0, "C")
+    assign.set_atom_type(1, "N")
+    residue_type = assign.to_residuetype("TES")
+
+    molecule = Xponge.Molecule("PAIR")
+    molecule.add_residue(residue_type)
+    molecule.add_residue(residue_type)
+    return molecule
+
+
+def _mol2_bond_pairs(path):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    count_fields = None
+    bond_pairs = []
+    section = None
+    molecule_fields = []
+    for line in lines:
+        if line.startswith("@<TRIPOS>"):
+            section = line[9:].strip()
+            continue
+        if not line.strip():
+            continue
+        if section == "MOLECULE":
+            molecule_fields.append(line.strip())
+            if len(molecule_fields) == 2:
+                count_fields = line.split()
+            continue
+        if section == "BOND":
+            words = line.split()
+            if len(words) >= 4:
+                bond_pairs.append(tuple(sorted((int(words[1]), int(words[2])))))
+    return count_fields, bond_pairs
+
+
 def test_addsolventbox_camelcase_alias_executes_real_process_workflow(tmp_path, monkeypatch):
     import Xponge
     import Xponge.forcefield.amber.ff14sb  # noqa: F401
@@ -147,3 +188,34 @@ def test_add_ions_alias_accepts_template_like_keys_and_executes():
 
     after_names = [res.name for res in mol.residues]
     assert after_names.count("NA") == before_names.count("NA") + 1
+
+
+def test_save_mol2_exports_core_residue_links_as_bonds(tmp_path):
+    import Xponge
+
+    molecule = _build_two_residue_assign_molecule()
+    molecule.add_residue_link(molecule.residues[0].atoms[1], molecule.residues[1].atoms[0])
+
+    path = tmp_path / "core_links.mol2"
+    Xponge.Save_Mol2(molecule, path)
+
+    count_fields, bond_pairs = _mol2_bond_pairs(path)
+    assert count_fields is not None
+    assert (2, 3) in bond_pairs
+    assert int(count_fields[1]) == len(bond_pairs)
+
+
+def test_save_mol2_exports_legacy_override_residue_links_as_bonds(tmp_path):
+    import Xponge
+
+    molecule = _build_two_residue_assign_molecule()
+    molecule.clear_residue_links()
+    molecule.add_residue_link(molecule.residues[0].atoms[1], molecule.residues[1].atoms[0])
+
+    path = tmp_path / "override_links.mol2"
+    Xponge.Save_Mol2(molecule, path)
+
+    count_fields, bond_pairs = _mol2_bond_pairs(path)
+    assert count_fields is not None
+    assert (2, 3) in bond_pairs
+    assert int(count_fields[1]) == len(bond_pairs)

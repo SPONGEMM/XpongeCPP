@@ -236,14 +236,20 @@ def _assign_to_residuetype_compat(self, name, charge=None):
         charges = list(charge)
 
     counts = {}
+    used_names = set()
     names = []
     for index, element in enumerate(self.atoms):
-        atom_name = self.names[index] or element
-        count = counts.get(atom_name, 0)
-        counts[atom_name] = count + 1
-        if count:
-            atom_name = f"{atom_name}{count}"
-        names.append(atom_name)
+        base_name = self.names[index] or element
+        next_suffix = counts.get(base_name, 0)
+        candidate = str(base_name)
+        if next_suffix:
+            candidate = f"{base_name}{next_suffix}"
+        while candidate in used_names:
+            next_suffix += 1
+            candidate = f"{base_name}{next_suffix}"
+        counts[base_name] = next_suffix + 1
+        used_names.add(candidate)
+        names.append(candidate)
 
     atom_types = list(self.atom_types)
     for index, atom_name in enumerate(names):

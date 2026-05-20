@@ -177,6 +177,22 @@ def test_assign_to_residuetype_handles_duplicate_atom_names_like_legacy_xponge()
     assert [atom.name for atom in residue_type.atoms] == ["O", "O1", "H", "H1"]
 
 
+def test_assign_to_residuetype_avoids_collisions_with_existing_numbered_names():
+    import Xponge
+
+    assign = Xponge.Assign("TES")
+    assign.add_atom("C", 0.0, 0.0, 0.0, name="CA")
+    assign.add_atom("C", 1.0, 0.0, 0.0, name="CA")
+    assign.add_atom("C", 2.0, 0.0, 0.0, name="CA1")
+    assign.add_bond(0, 1, 1)
+    assign.add_bond(1, 2, 1)
+    assign.atom_types = ["c3", "c3", "c3"]
+
+    residue_type = assign.to_residuetype("TES")
+
+    assert [atom.name for atom in residue_type.atoms] == ["CA", "CA1", "CA11"]
+
+
 def test_assign_legacy_atom_numbers_and_residuetype_aliases_match_old_mokda_usage():
     import Xponge
 
