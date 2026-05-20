@@ -7,10 +7,12 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  CIBW_BUILD: "cp311-*"
+  CIBW_SKIP: "*-musllinux_*"
 
 jobs:
-  build-wheel:
-    name: Build release wheel (${{ matrix.label }})
+  build-wheel-linux:
+    name: Build release Linux wheel (${{ matrix.label }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -18,8 +20,55 @@ jobs:
         include:
           - label: linux-x64
             runner: ubuntu-24.04
+            arch: x86_64
           - label: linux-arm64
             runner: ubuntu-24.04-arm
+            arch: aarch64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip twine
+
+      - name: Build Linux wheel with cibuildwheel
+        uses: pypa/cibuildwheel@v3.4.1
+        env:
+          CIBW_ARCHS_LINUX: ${{ matrix.arch }}
+        with:
+          output-dir: dist
+
+      - name: Check wheel metadata
+        run: python -m twine check dist/*
+
+      - name: Minimal wheel smoke test
+        shell: bash
+        run: |
+          python -m venv .wheel-smoke
+          .wheel-smoke/bin/python -m pip install --upgrade pip
+          .wheel-smoke/bin/python -m pip install numpy
+          .wheel-smoke/bin/python -m pip install --no-deps dist/*.whl
+          .wheel-smoke/bin/python -c "import XpongeCPP, Xponge; print(XpongeCPP.__version__)"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.label }}
+          path: dist/*.whl
+
+  build-wheel-native:
+    name: Build release native wheel (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - label: macos-intel
             runner: macos-15-intel
           - label: macos-arm64
@@ -96,7 +145,8 @@ jobs:
   publish:
     name: Publish release to PyPI
     needs:
-      - build-wheel
+      - build-wheel-linux
+      - build-wheel-native
       - build-sdist
     runs-on: ubuntu-24.04
     environment: pypi

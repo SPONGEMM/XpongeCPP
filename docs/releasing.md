@@ -28,6 +28,9 @@ Release wheels are built for:
 
 An sdist is built on Linux x64.
 
+Linux wheels are built through `cibuildwheel`, so the published Linux artifacts
+carry PyPI-compatible manylinux platform tags instead of raw `linux_*` tags.
+
 ## Smoke-test split
 
 Each wheel build runs a minimal smoke test:
@@ -80,12 +83,14 @@ strongly recommended and is what this repository expects.
 
 ## Why not cibuildwheel yet
 
-`cibuildwheel` is a good future option, but the repository currently keeps a
-hand-written workflow because it is easier to audit:
+The repository now uses `cibuildwheel` for Linux wheel publication while
+keeping the native hand-written flow for macOS and Windows. This hybrid setup
+keeps Linux wheels PyPI-compatible while still making the overall workflow easy
+to audit:
 
 - the dual `XpongeCPP` / `Xponge` wheel layout
 - the minimal-smoke versus fuller-validation split
 - the current explicit platform matrix
 
-Once the release matrix and publishing policy stabilize further, migrating to
-`cibuildwheel` can be revisited.
+If the matrix grows further, moving more of the release flow to
+`cibuildwheel` can still be revisited later.

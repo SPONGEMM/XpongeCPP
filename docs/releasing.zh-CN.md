@@ -28,6 +28,10 @@
 
 同时在 Linux x64 上构建 sdist。
 
+Linux wheel 现在通过 `cibuildwheel` 构建，因此发布到 PyPI 的 Linux
+产物会带标准 manylinux 平台标签，而不是之前那种 PyPI 不接受的裸
+`linux_*` tag。
+
 ## Smoke 测试分层
 
 每个 wheel job 都运行一条最小 smoke test：
@@ -79,11 +83,13 @@
 
 ## 为什么暂时不切到 cibuildwheel
 
-`cibuildwheel` 以后仍然值得考虑，但当前仓库先保留手写 workflow，
-原因是它更容易审计和维护：
+当前仓库已经把 `cibuildwheel` 用在 Linux wheel 发布上，而 macOS /
+Windows 仍保留原生手写流程。这样可以一边保证 Linux wheel 满足 PyPI
+规范，一边继续保持整体发布逻辑容易审计：
 
 - `XpongeCPP` / `Xponge` 双包布局
 - 最小 smoke 与完整验证的分层
 - 当前显式的平台/架构矩阵
 
-等发布矩阵和发布策略进一步稳定后，再考虑迁移到 `cibuildwheel` 会更合适。
+如果后续发布矩阵继续扩大，再考虑把更多平台统一迁到 `cibuildwheel`
+也是合理的下一步。
