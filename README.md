@@ -1,5 +1,9 @@
 # XpongeCPP
 
+> Preview beta: XpongeCPP is currently a preview release and is under active beta testing.
+>
+> 预览版说明：XpongeCPP 当前仍处于预览阶段，正在进行 Beta 测试。
+
 ## Docs / 文档入口
 
 - English:

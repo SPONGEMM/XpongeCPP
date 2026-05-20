@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 authors = [{ name = "The XpongeCPP contributors" }]
 license = { text = "Apache License 2.0" }
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: Microsoft :: Windows",
@@ -33,9 +33,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yuhaosimba/XpongeCPP"
-Repository = "https://github.com/yuhaosimba/XpongeCPP"
-Issues = "https://github.com/yuhaosimba/XpongeCPP/issues"
+Homepage = "https://github.com/SPONGEMM/XpongeCPP"
+Repository = "https://github.com/SPONGEMM/XpongeCPP"
+Issues = "https://github.com/SPONGEMM/XpongeCPP/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=9", "build>=1.2", "twine>=5.1"]

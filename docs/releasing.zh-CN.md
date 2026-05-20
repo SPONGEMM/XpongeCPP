@@ -55,7 +55,7 @@ Linux wheel 现在通过 `cibuildwheel` 构建，因此发布到 PyPI 的 Linux
 
 你需要在 PyPI 项目页里配置 Trusted Publisher，参数应为：
 
-- owner: `yuhaosimba`
+- owner: `SPONGEMM`
 - repository: `XpongeCPP`
 - workflow filename: `publish-pypi.yml`
 - environment: `pypi`

@@ -55,7 +55,7 @@ Actions.
 
 Configure the PyPI project to trust this GitHub Actions publisher:
 
-- owner: `yuhaosimba`
+- owner: `SPONGEMM`
 - repository: `XpongeCPP`
 - workflow filename: `publish-pypi.yml`
 - environment: `pypi`
