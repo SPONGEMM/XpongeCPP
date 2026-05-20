@@ -216,6 +216,10 @@ def _assign_set_atom_types_compat(self, atom_types):
     return None
 
 
+def _assign_atom_numbers(self):
+    return self.atom_count
+
+
 def _assign_to_residuetype_compat(self, name, charge=None):
     try:
         return _core_to_residuetype(self, name)
@@ -449,6 +453,8 @@ def install_legacy_assign_patches():
     Assign.Set_PH = _assign_set_ph
     Assign.set_atom_type = _assign_set_atom_type_compat
     Assign.to_residuetype = _assign_to_residuetype_compat
+    Assign.toResidueType = _assign_to_residuetype_compat
+    Assign.To_ResidueType = _assign_to_residuetype_compat
     Assign.determine_connectivity = _assign_determine_connectivity
     Assign.Determine_Connectivity = _assign_determine_connectivity
     Assign.determine_bond_order = _assign_determine_bond_order
@@ -472,6 +478,7 @@ def install_legacy_assign_patches():
     Assign.To_ResidueType = Assign.to_residuetype
     Assign.Add_Bond_Marker = Assign.add_bond_marker
     Assign.Has_Bond_Marker = Assign.has_bond_marker
+    Assign.atom_numbers = property(_assign_atom_numbers)
     Assign.atom_types = property(Assign.atom_types.fget, _assign_set_atom_types_compat)
 
 
