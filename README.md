@@ -5,9 +5,11 @@
 - English:
   - [Installation Guide](./docs/installation.md)
   - [API Overview](./docs/api-overview.md)
+  - [Release Guide](./docs/releasing.md)
 - 中文：
   - [安装说明](./docs/installation.zh-CN.md)
   - [接口概览](./docs/api-overview.zh-CN.md)
+  - [发布说明](./docs/releasing.zh-CN.md)
 
 XpongeCPP is a new C++ implementation of common Xponge workflows with a thin Python compatibility layer.
 
@@ -109,6 +111,9 @@ PubChem network tests remain opt-in through the test environment; default Pixi t
 - API overview:
   - [docs/api-overview.md](./docs/api-overview.md)
   - [docs/api-overview.zh-CN.md](./docs/api-overview.zh-CN.md)
+- Release guide:
+  - [docs/releasing.md](./docs/releasing.md)
+  - [docs/releasing.zh-CN.md](./docs/releasing.zh-CN.md)
 - Architecture / migration status:
   - [docs/xponge-vs-xpongecpp-architecture-status.md](./docs/xponge-vs-xpongecpp-architecture-status.md)
 

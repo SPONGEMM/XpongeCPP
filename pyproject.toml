@@ -4,11 +4,25 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "XpongeCPP"
-version = "0.1.0"
+version = "0.1.1"
 description = "C++ core rewrite of common Xponge workflows with a Python compatibility layer"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "The XpongeCPP contributors" }]
+license = { text = "Apache License 2.0" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
 dependencies = [
     "numpy>=1.26",
     "PubChemPy>=1.0.4",
@@ -17,6 +31,11 @@ dependencies = [
     "pyscf>=2.5; platform_system != 'Windows'",
     "XpongeLib>=1.2.5.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/yuhaosimba/XpongeCPP"
+Repository = "https://github.com/yuhaosimba/XpongeCPP"
+Issues = "https://github.com/yuhaosimba/XpongeCPP/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=9", "build>=1.2", "twine>=5.1"]

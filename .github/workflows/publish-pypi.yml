@@ -1,0 +1,118 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types:
+      - published
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build-wheel:
+    name: Build release wheel (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x64
+            runner: ubuntu-24.04
+          - label: linux-arm64
+            runner: ubuntu-24.04-arm
+          - label: macos-intel
+            runner: macos-15-intel
+          - label: macos-arm64
+            runner: macos-15
+          - label: windows-x64
+            runner: windows-2025
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build wheel
+        run: python -m build --wheel
+
+      - name: Check wheel metadata
+        run: python -m twine check dist/*
+
+      - name: Minimal wheel smoke test
+        shell: bash
+        run: |
+          python -m venv .wheel-smoke
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PY=.wheel-smoke/Scripts/python.exe
+          else
+            PY=.wheel-smoke/bin/python
+          fi
+          "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install numpy
+          "$PY" -m pip install --no-deps dist/*.whl
+          "$PY" -c "import XpongeCPP, Xponge; print(XpongeCPP.__version__)"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.label }}
+          path: dist/*.whl
+
+  build-sdist:
+    name: Build release sdist
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build sdist
+        run: python -m build --sdist
+
+      - name: Check sdist metadata
+        run: python -m twine check dist/*
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish:
+    name: Publish release to PyPI
+    needs:
+      - build-wheel
+      - build-sdist
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download all distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Show collected artifacts
+        shell: bash
+        run: ls -lah dist
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
