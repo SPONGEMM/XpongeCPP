@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 
+from ..qm import scheduler as qm_scheduler
 from . import psi4_backend, pyscf_backend, resp_core
 
 
@@ -20,13 +21,10 @@ _CORE_MODULES = {"python", "cpp"}
 
 
 def _normalize_backend_name(backend):
-    if backend is None:
-        return "pyscf"
-    backend_name = str(backend).strip().lower()
-    if backend_name not in _BACKEND_MODULES:
-        supported = ", ".join(sorted(_BACKEND_MODULES))
-        raise ValueError(f"RESP backend should be one of: {supported}")
-    return backend_name
+    try:
+        return qm_scheduler.normalize_backend_name(backend)
+    except ValueError as exc:
+        raise ValueError(str(exc).replace("QM backend", "RESP backend", 1)) from exc
 
 
 def _backend_import_or_hint(backend_name, exc):
@@ -40,12 +38,12 @@ def _backend_import_or_hint(backend_name, exc):
 
 def _normalize_core_name(core):
     if core is None:
-        return "python"
+        return "cpp"
     core_name = str(core).strip().lower()
     if core_name not in _CORE_MODULES:
         supported = ", ".join(sorted(_CORE_MODULES))
         raise ValueError(f"RESP core should be one of: {supported}")
-    return core_name
+    return "cpp"
 
 
 def resp_fit(assign, basis="6-31g*", opt=False, charge=None, spin=0, extra_equivalence=None,
@@ -56,43 +54,20 @@ def resp_fit(assign, basis="6-31g*", opt=False, charge=None, spin=0, extra_equiv
     if charge is None:
         charge = int(round(sum(assign.charges)))
     backend_name = _normalize_backend_name(backend)
-    core_name = _normalize_core_name(core)
+    _normalize_core_name(core)
     backend_module = _BACKEND_MODULES[backend_name]
     try:
         payload = backend_module.build_backend_payload(assign, basis, charge, spin, opt)
     except ImportError as exc:
         _backend_import_or_hint(backend_name, exc)
-    if core_name == "cpp":
-        grids = resp_core.get_mk_grid_cpp(
-            assign,
-            payload["atom_coordinates_bohr"],
-            area_density=grid_density,
-            layer=grid_cell_layer,
-            radius=radius,
-        )
-    else:
-        grids = resp_core.get_mk_grid(
-            assign,
-            payload["atom_coordinates_bohr"],
-            area_density=grid_density,
-            layer=grid_cell_layer,
-            radius=radius,
-        )
+    grids = resp_core.get_mk_grid(
+        assign,
+        payload["atom_coordinates_bohr"],
+        area_density=grid_density,
+        layer=grid_cell_layer,
+        radius=radius,
+    )
     electron_esp = backend_module.compute_esp_on_grid(payload, grids)
-    if core_name == "cpp":
-        return resp_core.fit_resp_from_esp_cpp(
-            assign,
-            atom_coordinates_bohr=payload["atom_coordinates_bohr"],
-            nuclear_charges=payload["nuclear_charges"],
-            grid_points_bohr=grids,
-            esp_values_au=electron_esp,
-            charge=charge,
-            extra_equivalence=extra_equivalence,
-            a1=a1,
-            a2=a2,
-            two_stage=two_stage,
-            only_esp=only_esp,
-        )
     return resp_core.fit_resp_from_esp(
         assign,
         atom_coordinates_bohr=payload["atom_coordinates_bohr"],

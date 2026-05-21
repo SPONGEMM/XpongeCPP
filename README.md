@@ -109,12 +109,18 @@ RESP supports a multi-backend strategy:
 
 - default backend: `PySCF`
 - optional backend: `Psi4`
+- shared dispatch layer: `XpongeCPP.qm`
 
 Example:
 
 ```python
 assign.calculate_charge("resp", backend="pyscf")
 assign.calculate_charge("resp", backend="psi4")
+
+from XpongeCPP import qm
+
+qm.run_scf(assign, backend="pyscf")
+qm.optimize_geometry(assign, backend="pyscf")
 ```
 
 For Windows RESP workflows, install `Psi4` separately and select it explicitly:

@@ -57,8 +57,9 @@ XpongeCPP
 ├── cpp/python/
 │   pybind11 API surface.
 └── src/XpongeCPP/
-    Python compatibility layer, forcefield import modules, GROMACS iterator,
-    optional RESP/RDKit/PubChemPy helpers, packaged data.
+    Python compatibility layer, shared QM scheduler/backends, forcefield import
+    modules, GROMACS iterator, optional RESP/RDKit/PubChemPy helpers, packaged
+    data.
 ```
 
 ### Core data model
@@ -84,6 +85,8 @@ XpongeCPP
    linear scans.
 5. Python only wraps API compatibility, optional dependencies and low-frequency
    user customization paths.
+6. QM-enabled workflows such as RESP now route through `src/XpongeCPP/qm/`
+   instead of owning backend integrations feature-by-feature.
 
 ## 3. Supported and Missing Features
 
