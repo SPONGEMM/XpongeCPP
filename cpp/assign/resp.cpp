@@ -10,6 +10,7 @@ namespace xpongecpp {
 namespace {
 
 constexpr double kAngstromPerBohr = 0.52918;
+constexpr double kPi = 3.14159265358979323846;
 
 double norm3(const std::array<double, 3>& value) {
     return std::sqrt(value[0] * value[0] + value[1] * value[1] + value[2] * value[2]);
@@ -25,7 +26,7 @@ std::vector<std::array<double, 3>> fibonacci_grid(int npoints, const std::array<
         return out;
     }
     out.reserve(static_cast<std::size_t>(npoints));
-    const double golden_angle = M_PI * (3.0 - std::sqrt(5.0));
+    const double golden_angle = kPi * (3.0 - std::sqrt(5.0));
     for (int i = 0; i < npoints; ++i) {
         const double y = 1.0 - (2.0 * i + 1.0) / static_cast<double>(npoints);
         const double r = std::sqrt(std::max(1.0 - y * y, 0.0));
@@ -327,7 +328,7 @@ std::vector<std::array<double, 3>> generate_resp_mk_grid(
         real_radius[item.first] = item.second;
     }
     std::vector<std::array<double, 3>> grids;
-    const double factor = area_density * kAngstromPerBohr * kAngstromPerBohr * 4.0 * M_PI;
+    const double factor = area_density * kAngstromPerBohr * kAngstromPerBohr * 4.0 * kPi;
     for (std::size_t i = 0; i < atoms.size(); ++i) {
         const auto found = real_radius.find(atoms[i]);
         if (found == real_radius.end()) {
