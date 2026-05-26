@@ -579,12 +579,14 @@ bool Assign::determine_bond_order_custom(
     auto accept_candidate = [&]() {
         if (!extra_criteria) {
             bonds = std::move(candidate_bonds);
+            determine_ring_and_bond_type();
             return true;
         }
         const auto previous_bonds = bonds;
         const auto previous_formal_charges = formal_charges;
         bonds = candidate_bonds;
         if (extra_criteria(*this)) {
+            determine_ring_and_bond_type();
             return true;
         }
         bonds = previous_bonds;

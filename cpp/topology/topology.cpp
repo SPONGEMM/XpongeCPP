@@ -582,6 +582,14 @@ Topology build_topology(const Molecule& molecule) {
         if (has_template(residue.name)) {
             const auto& residue_type = get_residue_template(residue.name);
             const auto atoms_by_name = residue_atom_map(molecule, residue);
+            if (!molecule.ignore_missing_atoms) {
+                for (const auto& template_atom : residue_type.atoms()) {
+                    if (atoms_by_name.find(template_atom.name) == atoms_by_name.end()) {
+                        throw std::runtime_error(
+                            "missing residue atom '" + template_atom.name + "' in residue: " + residue.name);
+                    }
+                }
+            }
             for (const auto& bond : residue_type.bonds()) {
                 const auto& atom_name1 = residue_type.atoms()[bond.atom1].name;
                 const auto& atom_name2 = residue_type.atoms()[bond.atom2].name;

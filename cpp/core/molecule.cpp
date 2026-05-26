@@ -404,6 +404,10 @@ void Molecule::enable_lj_soft_core(bool enabled) noexcept {
     }
 }
 
+void Molecule::set_ignore_missing_atoms(bool enabled) noexcept {
+    ignore_missing_atoms = enabled;
+}
+
 void Molecule::add_sw_type(const std::string& name, double a_big, double b_big, double epsilon, double p, double q,
                            double a, double gamma, double sigma, double lambda, double b) {
     if (name.empty()) {

@@ -191,9 +191,15 @@ Topology merge_topology_for_fep(const Molecule& molecule_a, const Molecule& mole
             force.k_ee = ia->second.k_ee * (1.0 - dihedral_lambda) + ib->second.k_ee * dihedral_lambda;
             out.nb14s.push_back(force);
         } else if (ia != nb14_a.end()) {
-            out.nb14s.push_back(ia->second);
+            auto force = ia->second;
+            force.k_lj *= (1.0 - dihedral_lambda);
+            force.k_ee *= (1.0 - dihedral_lambda);
+            out.nb14s.push_back(force);
         } else if (ib != nb14_b.end()) {
-            out.nb14s.push_back(ib->second);
+            auto force = ib->second;
+            force.k_lj *= dihedral_lambda;
+            force.k_ee *= dihedral_lambda;
+            out.nb14s.push_back(force);
         }
     }
 

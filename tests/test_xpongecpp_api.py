@@ -305,6 +305,41 @@ def test_add_missing_atoms_restores_terminal_oxt_without_moving_existing_atoms()
     assert residue.name2atom("OXT").bad_coordinate is True
 
 
+def test_save_sponge_input_can_disable_missing_atom_tolerance_explicitly(tmp_path):
+    Xponge.load_mol2(StringIO(MOL2_TEXT), as_template=True)
+    mol = Xponge.load_pdb(
+        StringIO(
+            """\
+HETATM    1  O   WAT A   1       0.000   0.000   0.000  1.00  0.00           O
+HETATM    2  H2  WAT A   1      -0.239   0.927   0.000  1.00  0.00           H
+END
+"""
+        )
+    )
+    mol.set_ignore_missing_atoms(False)
+
+    with pytest.raises(RuntimeError, match="H1"):
+        Xponge.Save_SPONGE_Input(mol, prefix="missing", dirname=str(tmp_path))
+
+
+def test_save_sponge_input_keeps_missing_atom_tolerance_when_enabled(tmp_path):
+    Xponge.load_mol2(StringIO(MOL2_TEXT), as_template=True)
+    mol = Xponge.load_pdb(
+        StringIO(
+            """\
+HETATM    1  O   WAT A   1       0.000   0.000   0.000  1.00  0.00           O
+HETATM    2  H2  WAT A   1      -0.239   0.927   0.000  1.00  0.00           H
+END
+"""
+        )
+    )
+    mol.set_ignore_missing_atoms(True)
+
+    Xponge.Save_SPONGE_Input(mol, prefix="missing_ok", dirname=str(tmp_path))
+    assert (tmp_path / "missing_ok_bond.txt").exists()
+    assert (tmp_path / "missing_ok_angle.txt").exists()
+
+
 def test_load_mol2_declared_bonds_drive_topology_even_when_far(tmp_path):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT))

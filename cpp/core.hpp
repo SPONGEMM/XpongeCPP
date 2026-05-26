@@ -333,6 +333,7 @@ public:
     bool write_min_bonded_parameters{false};
     bool write_subsys_division{false};
     bool write_lj_soft_core{false};
+    bool ignore_missing_atoms{true};
 
     std::size_t atom_count() const noexcept;
     std::size_t residue_count() const noexcept;
@@ -363,6 +364,7 @@ public:
     void add_edip_type(const std::string& name, double a_big, double b_big, double a, double c, double alpha,
                        double beta, double eta, double gamma, double lambda, double mu, double rho, double sigma,
                        double q0, double u1, double u2, double u3, double u4);
+    void set_ignore_missing_atoms(bool enabled = true) noexcept;
     void set_box_padding(double padding, bool center);
     void replace_residues(const std::unordered_map<ResidueId, Molecule>& replacements,
                           const std::vector<double>& residue_sort_keys = {}, bool sort = true);

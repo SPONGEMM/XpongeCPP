@@ -190,6 +190,72 @@ USER_CHARGES
     ]
 
 
+def test_merge_force_field_scales_b_only_nb14_terms_with_lambda(tmp_path):
+    import XpongeCPP.forcefield.special.fep as fep
+
+    for atom_type, epsilon, rmin in [
+        ("c3", 0.1094, 1.9080),
+        ("hc", 0.0157, 1.4870),
+        ("oh", 0.2100, 1.7210),
+        ("ZERO_LJ_ATOM", 0.0, 0.0),
+    ]:
+        Xponge.register_amber_lj_parameter(atom_type, atom_type, epsilon, rmin)
+
+    mol_a = Xponge.load_mol2(
+        StringIO(
+            """@<TRIPOS>MOLECULE
+A
+3 2 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 C1 0.0 0.0 0.0 c3 1 ETH 0.0
+2 C2 1.5 0.0 0.0 c3 1 ETH 0.0
+3 H1 3.0 0.0 0.0 hc 1 ETH 0.0
+@<TRIPOS>BOND
+1 1 2 1
+2 2 3 1
+"""
+        )
+    )
+    mol_b = Xponge.load_mol2(
+        StringIO(
+            """@<TRIPOS>MOLECULE
+B
+4 3 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 C1 0.0 0.0 0.0 c3 1 EOH 0.0
+2 C2 1.5 0.0 0.0 c3 1 EOH 0.0
+3 H1 3.0 0.0 0.0 hc 1 EOH 0.0
+4 O1 4.5 0.0 0.0 oh 1 EOH 0.0
+@<TRIPOS>BOND
+1 1 2 1
+2 2 3 1
+3 3 4 1
+"""
+        )
+    )
+
+    merged_from, merged_to, _ = fep.merge_dual_topology(mol_a, 0, mol_b, {0: 0, 1: 1, 2: 2})
+    merged_1 = fep.merge_force_field(merged_from, merged_to, 1.0, {"charge": 1.0})
+    merged_02 = fep.merge_force_field(merged_from, merged_to, 0.2, {"charge": 0.2})
+
+    Xponge.Save_SPONGE_Input(merged_1, prefix="nb14_1", dirname=str(tmp_path))
+    Xponge.Save_SPONGE_Input(merged_02, prefix="nb14_02", dirname=str(tmp_path))
+
+    lines1 = (tmp_path / "nb14_1_nb14.txt").read_text().splitlines()
+    lines02 = (tmp_path / "nb14_02_nb14.txt").read_text().splitlines()
+    assert lines1[0] == "1"
+    assert lines02[0] == "1"
+
+    _, _, k_lj_1, k_ee_1 = lines1[1].split()
+    _, _, k_lj_02, k_ee_02 = lines02[1].split()
+    assert float(k_lj_02) == pytest.approx(float(k_lj_1) * 0.2)
+    assert float(k_ee_02) == pytest.approx(float(k_ee_1) * 0.2, abs=1e-6)
+
+
 def test_fep_compatibility_helpers_free_selected_residue_and_expose_xponge_names(tmp_path):
     import XpongeCPP.forcefield.special.fep as fep
 

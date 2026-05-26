@@ -223,6 +223,8 @@ void bind_core_module(py::module_& m) {
         .def("Enable_Subsys_Division", &Molecule::enable_subsys_division, py::arg("enabled") = true)
         .def("enable_lj_soft_core", &Molecule::enable_lj_soft_core, py::arg("enabled") = true)
         .def("Enable_LJ_Soft_Core", &Molecule::enable_lj_soft_core, py::arg("enabled") = true)
+        .def("set_ignore_missing_atoms", &Molecule::set_ignore_missing_atoms, py::arg("enabled") = true)
+        .def("Set_Ignore_Missing_Atoms", &Molecule::set_ignore_missing_atoms, py::arg("enabled") = true)
         .def("add_sw_type", &Molecule::add_sw_type, py::arg("name"), py::arg("A"), py::arg("B"),
              py::arg("epsilon"), py::arg("p"), py::arg("q"), py::arg("a"), py::arg("gamma"),
              py::arg("sigma"), py::arg("lambda_"), py::arg("b"))
