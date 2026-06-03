@@ -160,13 +160,13 @@ def Save_SPONGE_Input(molecule, prefix=None, dirname="."):
     except Exception:
         previous_min_flag = None
     try:
-        save_sponge_input(target, "" if prefix is None else str(prefix), str(dirname))
+        outputs = save_sponge_input(target, "" if prefix is None else str(prefix), str(dirname))
     finally:
         if previous_min_flag is not None:
             target.enable_min_bonded_parameters(False)
     if prefix is not None:
         _patch_saved_pdb_residue_links(target, f"{prefix}.pdb", residue_links=saved_links)
-    return target
+    return outputs
 
 
 def Save_PDB(molecule, filename, write_cryst1=True):

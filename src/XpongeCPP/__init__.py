@@ -78,6 +78,17 @@ from .io_compat import (
     get_assignment_from_smiles,
     get_assignment_from_xyz,
 )
+from .mcpb import (
+    MCPB,
+    MCPBIonInfo,
+    MCPBLocalModel,
+    MCPBRequest,
+    MCPBResult,
+    MCPBSelection,
+    audit_sponge_ready as MCPB_Audit_Sponge_Ready,
+    save_pdb_with_connect as MCPB_Save_PDB,
+    write_mcpb_artifacts as MCPB_Write_Artifacts,
+)
 
 _CoreMolecule = Molecule
 _CoreResidue = Residue
@@ -299,6 +310,15 @@ __all__ = [
     "implemented_gaff_assign_types",
     "merge_dual_topology",
     "merge_force_field",
+    "MCPB",
+    "MCPB_Audit_Sponge_Ready",
+    "MCPB_Save_PDB",
+    "MCPB_Write_Artifacts",
+    "MCPBIonInfo",
+    "MCPBLocalModel",
+    "MCPBRequest",
+    "MCPBResult",
+    "MCPBSelection",
     "Add_Ions",
     "Add_Molecule",
     "Add_Solvent_Box",

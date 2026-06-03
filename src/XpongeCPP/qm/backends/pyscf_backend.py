@@ -29,7 +29,7 @@ def capabilities():
         supports_scf=True,
         supports_esp=True,
         supports_geometry_optimization=True,
-        supports_hessian=False,
+        supports_hessian=True,
         supports_open_shell=True,
     )
 
@@ -53,6 +53,13 @@ def _build_molecule(molecule: QMMolecule, options: QMRunOptions, gto):
 
 def _build_wavefunction(mol, molecule: QMMolecule, scf):
     return scf.RHF(mol) if molecule.spin == 0 else scf.UHF(mol)
+
+
+def _collapse_density_matrix(dm, np):
+    dm = np.asarray(dm)
+    if dm.ndim == 3:
+        return dm.sum(axis=0)
+    return dm
 
 
 def run_scf(molecule: QMMolecule, options: QMRunOptions, assign=None, return_timings: bool = False) -> SCFResult:
@@ -107,9 +114,10 @@ def compute_esp(scf_result: SCFResult, request: ESPGridRequest) -> ESPResult:
         from pyscf import df
 
         fakemol = gto.fakemol_for_charges(grid_points_bohr)
-        electronic = np.einsum("ijp,ij->p", df.incore.aux_e2(mol, fakemol), wavefunction.make_rdm1())
+        dm = _collapse_density_matrix(wavefunction.make_rdm1(), np)
+        electronic = np.einsum("ijp,ij->p", df.incore.aux_e2(mol, fakemol), dm)
     except MemoryError:
-        dm = wavefunction.make_rdm1()
+        dm = _collapse_density_matrix(wavefunction.make_rdm1(), np)
         vele = []
         for point in grid_points_bohr:
             mol.set_rinv_orig_(point)
@@ -149,4 +157,24 @@ def optimize_geometry(molecule: QMMolecule, options: QMRunOptions, assign=None, 
 
 
 def compute_hessian(molecule: QMMolecule, options: QMRunOptions, assign=None, return_timings: bool = False) -> HessianResult:
-    raise QMCapabilityError(f"{name} does not support Hessian")
+    np, gto, scf = require_numpy_pyscf()
+    timings = {}
+    total_start = time.perf_counter()
+    start = time.perf_counter()
+    mol = _build_molecule(molecule, options, gto)
+    timings["build"] = time.perf_counter() - start
+    start = time.perf_counter()
+    wavefunction = _build_wavefunction(mol, molecule, scf)
+    wavefunction.run()
+    timings["scf"] = time.perf_counter() - start
+    start = time.perf_counter()
+    hessian = np.asarray(wavefunction.Hessian().kernel(), dtype=float)
+    timings["hessian"] = time.perf_counter() - start
+    if return_timings:
+        timings["total"] = time.perf_counter() - total_start
+    return HessianResult(
+        cartesian_hessian_au=hessian,
+        coordinates_angstrom=[tuple(float(x) for x in row) for row in mol.atom_coords() * 0.52918],
+        atom_symbols=list(molecule.atom_symbols),
+        timings=timings,
+    )

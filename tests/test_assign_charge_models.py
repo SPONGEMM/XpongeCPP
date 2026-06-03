@@ -272,7 +272,7 @@ def test_qm_scheduler_reports_capabilities_for_known_backends():
     psi4_caps = qm_get_capabilities("psi4")
     assert pyscf_caps.supports_scf and pyscf_caps.supports_esp
     assert pyscf_caps.supports_geometry_optimization
-    assert not pyscf_caps.supports_hessian
+    assert pyscf_caps.supports_hessian
     assert psi4_caps.supports_scf and psi4_caps.supports_esp
     assert psi4_caps.supports_geometry_optimization
     assert not psi4_caps.supports_hessian
@@ -319,10 +319,18 @@ def test_qm_scheduler_supports_non_resp_geometry_optimization_flow(monkeypatch):
     assert assignment.coordinates[0] == pytest.approx([1.0, 2.0, 3.0])
 
 
+def test_qm_scheduler_runs_pyscf_hessian_smoke():
+    assignment = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    result = qm_compute_hessian(assignment, backend="pyscf", basis="sto-3g", charge=0, spin=0, return_timings=True)
+    assert len(result.atom_symbols) == assignment.atom_count
+    assert result.cartesian_hessian_au.shape == (assignment.atom_count, assignment.atom_count, 3, 3)
+    assert set(result.timings) == {"build", "scf", "hessian", "total"}
+
+
 def test_qm_scheduler_rejects_unsupported_hessian_cleanly():
     assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
     with pytest.raises(QMCapabilityError, match="does not support Hessian"):
-        qm_compute_hessian(assignment, backend="pyscf", basis="sto-3g", charge=0, spin=0)
+        qm_compute_hessian(assignment, backend="psi4", basis="sto-3g", charge=0, spin=0)
 
 
 def test_assign_charge_aliases_and_pubchem_signature_are_xponge_compatible(monkeypatch):

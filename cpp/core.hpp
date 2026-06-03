@@ -487,7 +487,7 @@ void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::arr
                      double tolerance, std::int64_t n_solvent, std::uint64_t seed = 0);
 void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts,
               std::uint64_t seed = 0, const std::string& solvent_residue = "WAT");
-std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& molecule,
+std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecule& molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname);
 void save_pdb(const Molecule& molecule, const std::filesystem::path& filename);

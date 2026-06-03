@@ -19,6 +19,39 @@
 namespace xpongecpp {
 namespace {
 
+class IndexDisjointSet {
+public:
+    explicit IndexDisjointSet(std::size_t count) : parent_(count), size_(count, 1) {
+        for (std::size_t index = 0; index < count; ++index) {
+            parent_[index] = index;
+        }
+    }
+
+    std::size_t find(std::size_t index) {
+        if (parent_[index] != index) {
+            parent_[index] = find(parent_[index]);
+        }
+        return parent_[index];
+    }
+
+    void unite(std::size_t lhs, std::size_t rhs) {
+        lhs = find(lhs);
+        rhs = find(rhs);
+        if (lhs == rhs) {
+            return;
+        }
+        if (size_[lhs] < size_[rhs]) {
+            std::swap(lhs, rhs);
+        }
+        parent_[rhs] = lhs;
+        size_[lhs] += size_[rhs];
+    }
+
+private:
+    std::vector<std::size_t> parent_;
+    std::vector<std::size_t> size_;
+};
+
 std::filesystem::path output_path(const std::filesystem::path& dirname, const std::string& prefix,
                                   const std::string& key) {
     return dirname / (prefix + "_" + key + ".txt");
@@ -173,11 +206,88 @@ std::vector<std::string> real_lj_types(const std::vector<std::string>& lj_types,
     return real;
 }
 
+bool reorder_residues_by_linked_components(Molecule& molecule) {
+    if (molecule.residues.size() < 2 || molecule.residue_links.empty()) {
+        return false;
+    }
+
+    IndexDisjointSet components(molecule.residues.size());
+    for (const auto& link : molecule.residue_links) {
+        if (link.atom1 >= molecule.atoms.size() || link.atom2 >= molecule.atoms.size()) {
+            throw std::invalid_argument("residue link atom index out of range");
+        }
+        components.unite(molecule.atoms[link.atom1].residue, molecule.atoms[link.atom2].residue);
+    }
+
+    std::unordered_map<std::size_t, double> root_to_sort_key;
+    root_to_sort_key.reserve(molecule.residues.size());
+    std::vector<double> residue_sort_keys(molecule.residues.size(), 0.0);
+    double next_sort_key = 0.0;
+    bool already_contiguous = true;
+    double previous_key = -1.0;
+    for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
+        const auto root = components.find(residue_id);
+        const auto [it, inserted] = root_to_sort_key.emplace(root, next_sort_key);
+        if (inserted) {
+            next_sort_key += 1.0;
+        }
+        const double key = it->second;
+        residue_sort_keys[residue_id] = key;
+        if (key < previous_key) {
+            already_contiguous = false;
+        }
+        previous_key = key;
+    }
+    if (already_contiguous) {
+        return false;
+    }
+
+    molecule.replace_residues({}, residue_sort_keys, true);
+    return true;
+}
+
+void check_sponge_atom_components_are_contiguous(const Molecule& molecule, const Topology& topology) {
+    if (molecule.atoms.empty()) {
+        return;
+    }
+
+    IndexDisjointSet components(molecule.atoms.size());
+    for (const auto& bond : topology.bonds) {
+        if (bond.k != 0.0) {
+            components.unite(bond.atom1, bond.atom2);
+        }
+    }
+
+    struct ComponentRange {
+        AtomId min_atom{std::numeric_limits<AtomId>::max()};
+        AtomId max_atom{0};
+        std::size_t count{0};
+    };
+    std::unordered_map<std::size_t, ComponentRange> ranges;
+    ranges.reserve(molecule.atoms.size());
+    for (AtomId atom_id = 0; atom_id < molecule.atoms.size(); ++atom_id) {
+        auto& range = ranges[components.find(atom_id)];
+        range.min_atom = std::min(range.min_atom, atom_id);
+        range.max_atom = std::max(range.max_atom, atom_id);
+        range.count += 1;
+    }
+
+    for (const auto& [root, range] : ranges) {
+        (void)root;
+        if (static_cast<std::size_t>(range.max_atom - range.min_atom + 1) != range.count) {
+            throw std::runtime_error(
+                "Atoms in the same molecule must be continuous for SPONGE input; "
+                "please reorder residues or atoms before export.");
+        }
+    }
+}
+
 }  // namespace
 
-std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& input_molecule,
+std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecule& input_molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname) {
+    reorder_residues_by_linked_components(input_molecule);
     std::optional<Molecule> molecule_with_generated_cmaps;
     if (input_molecule.cmaps.empty() && has_amber_cmap_parameters()) {
         molecule_with_generated_cmaps = input_molecule;
@@ -188,6 +298,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         throw std::invalid_argument("cannot export invalid molecule");
     }
     const auto topology = build_topology(molecule);
+    check_sponge_atom_components_are_contiguous(molecule, topology);
     const std::string actual_prefix = prefix.empty() ? molecule.name : prefix;
     std::filesystem::create_directories(dirname);
     std::unordered_map<std::string, std::filesystem::path> outputs;

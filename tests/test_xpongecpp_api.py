@@ -73,6 +73,23 @@ USER_CHARGES
 """
 
 
+SPLIT_COMPONENT_MOL2_TEXT = """\
+@<TRIPOS>MOLECULE
+SPLIT_COMPONENT
+4 2 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 O1 0.0000 0.0000 0.0000 OW 1 SPL -0.500
+2 O2 4.0000 0.0000 0.0000 OW 1 SPL -0.500
+3 H1 0.9572 0.0000 0.0000 HW 1 SPL 0.500
+4 H2 4.9572 0.0000 0.0000 HW 1 SPL 0.500
+@<TRIPOS>BOND
+1 1 3 1
+2 2 4 1
+"""
+
+
 def _snapshot_export_dir(path: Path) -> dict[str, str]:
     return {item.name: item.read_text() for item in sorted(path.iterdir()) if item.is_file()}
 
@@ -704,6 +721,28 @@ def test_add_molecule_preserves_source_explicit_bonds(tmp_path):
     assert target.residue_count == 3
     assert [res.name for res in target.residues] == ["NALA", "FAR", "LIG"]
     assert (tmp_path / "merged_bond.txt").read_text().splitlines()[0] == "6"
+
+
+def test_save_sponge_input_reorders_linked_residue_components_for_export(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
+
+    assert [res.name for res in mol.residues] == ["FAR", "LIG", "WAT"]
+
+    mol.add_residue_link(mol.residues[0].name2atom("O1"), mol.residues[2].name2atom("O"))
+    Xponge.Save_SPONGE_Input(mol, prefix="linked", dirname=str(tmp_path))
+
+    assert [res.name for res in mol.residues] == ["FAR", "WAT", "LIG"]
+    assert mol.residue_links == [[0, 3]]
+    assert (tmp_path / "linked_resname.txt").read_text().splitlines() == ["3", "FAR", "WAT", "LIG"]
+
+
+def test_save_sponge_input_rejects_noncontiguous_atom_components(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(SPLIT_COMPONENT_MOL2_TEXT))
+
+    with pytest.raises(RuntimeError, match="must be continuous for SPONGE input"):
+        Xponge.Save_SPONGE_Input(mol, prefix="split", dirname=str(tmp_path))
 
 
 def test_assign_builds_graph_markers_and_residue_type():
