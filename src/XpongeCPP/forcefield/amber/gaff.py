@@ -5,10 +5,12 @@ from importlib import import_module
 from tempfile import TemporaryDirectory
 
 from ... import (
+    AtomType,
     Molecule,
     Save_Mol2,
     get_template_molecule,
     has_template,
+    implemented_gaff_assign_types,
     molecule_from_residuetype,
     register_amber_parmdat_file,
 )
@@ -16,6 +18,7 @@ from . import data_path
 from . import load_parameters_from_frcmod
 
 register_amber_parmdat_file(str(data_path("gaff.dat")))
+AtomType.New_From_String("\n".join(implemented_gaff_assign_types()))
 
 
 def _import_xpongelib():

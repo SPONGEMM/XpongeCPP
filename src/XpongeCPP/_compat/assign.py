@@ -7,6 +7,7 @@ from importlib.resources import files
 
 from .._core import Assign, ResidueType
 from ..assign import AssignRule
+from ..helper import AtomType
 
 _core_determine_connectivity = Assign.determine_connectivity
 _core_determine_bond_order = Assign.determine_bond_order
@@ -14,6 +15,13 @@ _core_determine_atom_type = Assign.determine_atom_type
 _core_save_as_mol2 = Assign.save_as_mol2
 _core_set_atom_type = Assign.set_atom_type
 _core_to_residuetype = Assign.to_residuetype
+_core_atom_types_getter = Assign.atom_types.fget
+_core_bonds_getter = Assign.bonds.fget
+_core_coordinates_getter = Assign.coordinates.fget
+_core_charges_getter = Assign.charges.fget
+_core_formal_charges_getter = Assign.formal_charges.fget
+_core_atom_markers_getter = Assign.atom_markers.fget
+_core_bond_markers_getter = Assign.bond_markers.fget
 
 _CONNECTIVITY_RADII = {
     "H": 0.35,
@@ -27,6 +35,192 @@ _CONNECTIVITY_RADII = {
     "Br": 1.14,
     "I": 1.33,
 }
+
+
+class _AssignIndexedView:
+    def __init__(self, assignment, getter):
+        self._assignment = assignment
+        self._getter = getter
+
+    def _data(self):
+        return self._getter(self._assignment)
+
+    def __len__(self):
+        return len(self._data())
+
+    def __iter__(self):
+        return iter(self._data())
+
+    def __getitem__(self, index):
+        return self._data()[index]
+
+    def items(self):
+        return enumerate(self._data())
+
+    def get(self, index, default=None):
+        data = self._data()
+        if 0 <= int(index) < len(data):
+            return data[int(index)]
+        return default
+
+
+class _AssignAtomTypesView(_AssignIndexedView):
+    def __init__(self, assignment):
+        super().__init__(assignment, _core_atom_types_getter)
+
+    @staticmethod
+    def _wrap(value):
+        if hasattr(value, "name"):
+            return value
+        text = str(value)
+        if not text:
+            return _AtomTypeNameProxy("")
+        try:
+            return AtomType.get_type(text)
+        except KeyError:
+            return _AtomTypeNameProxy(text)
+
+    def __iter__(self):
+        for value in self._data():
+            yield self._wrap(value)
+
+    def __getitem__(self, index):
+        value = self._data()[index]
+        if isinstance(index, slice):
+            return [self._wrap(item) for item in value]
+        return self._wrap(value)
+
+    def __setitem__(self, index, value):
+        _assign_set_atom_type_compat(self._assignment, index, value)
+
+    def items(self):
+        for index, value in enumerate(self._data()):
+            yield index, self._wrap(value)
+
+
+def _atom_type_name(value):
+    return value.name if hasattr(value, "name") else str(value)
+
+
+class _AtomTypeNameProxy(str):
+    @property
+    def name(self):
+        return str(self)
+
+
+def _assign_atom_types_view(self):
+    return _AssignAtomTypesView(self)
+
+
+def _assign_bonds_view(self):
+    return _AssignIndexedView(self, _core_bonds_getter)
+
+
+def _assign_coordinates_view(self):
+    return _AssignIndexedView(self, _core_coordinates_getter)
+
+
+def _assign_charges_view(self):
+    return _AssignIndexedView(self, _core_charges_getter)
+
+
+def _assign_formal_charges_view(self):
+    return _AssignIndexedView(self, _core_formal_charges_getter)
+
+
+def _assign_atom_markers_view(self):
+    return _AssignIndexedView(self, _core_atom_markers_getter)
+
+
+def _assign_bond_markers_view(self):
+    return _AssignIndexedView(self, _core_bond_markers_getter)
+
+
+def _assign_bond_sequence_view(self):
+    return list(self.bond_sequence)
+
+
+def _assign_atom_judge(self, atom, atom_type):
+    if hasattr(atom_type, "name"):
+        atom_type = atom_type.name
+    if isinstance(atom_type, (list, tuple, set)):
+        atom_type = [item.name if hasattr(item, "name") else str(item) for item in atom_type]
+    else:
+        atom_type = str(atom_type)
+    return self.atom_judge(atom, atom_type)
+
+
+class _UpstreamAssignAdapter:
+    """Expose origin-style Assign views without changing public Assign semantics."""
+
+    def __init__(self, assignment):
+        self._assignment = assignment
+
+    def __getattr__(self, name):
+        return getattr(self._assignment, name)
+
+    @property
+    def atom_numbers(self):
+        return self._assignment.atom_count
+
+    @property
+    def atom_types(self):
+        return _AssignAtomTypesView(self._assignment)
+
+    @property
+    def bonds(self):
+        return _AssignIndexedView(self._assignment, _core_bonds_getter)
+
+    @property
+    def coordinate(self):
+        return _AssignIndexedView(self._assignment, _core_coordinates_getter)
+
+    @property
+    def charge(self):
+        return _AssignIndexedView(self._assignment, _core_charges_getter)
+
+    @property
+    def formal_charge(self):
+        return _AssignIndexedView(self._assignment, _core_formal_charges_getter)
+
+    @property
+    def atom_marker(self):
+        return _AssignIndexedView(self._assignment, _core_atom_markers_getter)
+
+    @property
+    def bond_marker(self):
+        return _AssignIndexedView(self._assignment, _core_bond_markers_getter)
+
+    @property
+    def _bond_sequence(self):
+        return list(self._assignment.bond_sequence)
+
+    def Atom_Judge(self, atom, atom_type):
+        return _assign_atom_judge(self._assignment, atom, atom_type)
+
+    @property
+    def XX(self):
+        return Assign.XX
+
+    @property
+    def XA(self):
+        return Assign.XA
+
+    @property
+    def XB(self):
+        return Assign.XB
+
+    @property
+    def XC(self):
+        return Assign.XC
+
+    @property
+    def XD(self):
+        return Assign.XD
+
+    @property
+    def XE(self):
+        return Assign.XE
 
 
 def _tpacm4_tables():
@@ -256,7 +450,7 @@ def _assign_to_residuetype_compat(self, name, charge=None):
         used_names.add(candidate)
         names.append(candidate)
 
-    atom_types = list(self.atom_types)
+    atom_types = [_atom_type_name(value) for value in self.atom_types]
     for index, atom_name in enumerate(names):
         residue_type.add_atom(
             atom_name,
@@ -367,20 +561,21 @@ def _assign_determine_atom_type_from_rule(assign, rule):
     if not rule.built:
         rule.rules = OrderedDict(sorted(rule.rules.items(), key=lambda item: rule.priority[item[0]]))
         rule.built = True
-    backup = list(assign.atom_types)
+    compat_assign = _UpstreamAssignAdapter(assign)
+    backup = [_atom_type_name(value) for value in assign.atom_types]
     if rule.pre_action:
-        rule.pre_action(assign)
+        rule.pre_action(compat_assign)
     assigned_types = []
     for atom in range(assign.atom_count):
         for atom_type, judge in rule.rules.items():
-            if judge(atom, assign):
+            if judge(atom, compat_assign):
                 assigned_types.append(atom_type)
                 assign.set_atom_type(atom, atom_type)
                 break
         else:
             raise KeyError(f"No atom type found for assignment {assign.name} of atom #{atom}")
     if rule.post_action:
-        rule.post_action(assign)
+        rule.post_action(compat_assign)
     if rule.pure_string:
         for atom, atom_type in enumerate(backup):
             assign.set_atom_type(atom, atom_type)
@@ -392,10 +587,16 @@ def _assign_determine_atom_type(self, rule):
     if str(rule).lower() == "phmodel":
         self.kekulize()
         return [_phmodel_type(self, atom) for atom in range(self.atom_count)]
+    rule_name = str(rule)
+    rule_name_lower = rule_name.lower()
+    if rule_name_lower in {"gaff", "gaff2"}:
+        return _core_determine_atom_type(self, rule_name_lower)
     if isinstance(rule, AssignRule):
         return _assign_determine_atom_type_from_rule(self, rule)
-    if str(rule).lower() not in {"gaff", "gaff2", "sybyl"} and str(rule) in AssignRule.all:
-        return _assign_determine_atom_type_from_rule(self, AssignRule.all[str(rule)])
+    if rule_name in AssignRule.all:
+        return _assign_determine_atom_type_from_rule(self, AssignRule.all[rule_name])
+    if rule_name_lower in AssignRule.all:
+        return _assign_determine_atom_type_from_rule(self, AssignRule.all[rule_name_lower])
     return _core_determine_atom_type(self, rule)
 
 
@@ -487,10 +688,26 @@ def install_legacy_assign_patches():
     Assign.Set_Formal_Charge = Assign.set_formal_charge
     Assign.Set_Atom_Type = Assign.set_atom_type
     Assign.To_ResidueType = Assign.to_residuetype
+    Assign.add_atom_marker = Assign.add_atom_marker
+    Assign.Add_Atom_Marker = Assign.add_atom_marker
+    Assign.atom_judge = Assign.atom_judge
+    Assign.Atom_Judge = _assign_atom_judge
     Assign.Add_Bond_Marker = Assign.add_bond_marker
     Assign.Has_Bond_Marker = Assign.has_bond_marker
     Assign.atom_numbers = property(_assign_atom_numbers)
-    Assign.atom_types = property(Assign.atom_types.fget, _assign_set_atom_types_compat)
+    Assign.coordinate = property(_assign_coordinates_view)
+    Assign.charge = property(_assign_charges_view)
+    Assign.formal_charge = property(_assign_formal_charges_view)
+    Assign.atom_marker = property(_assign_atom_markers_view)
+    Assign.bond_marker = property(_assign_bond_markers_view)
+    Assign._bond_sequence = property(_assign_bond_sequence_view)
+    Assign.XX = set("CNOPS")
+    Assign.XA = set("OS")
+    Assign.XB = set("NP")
+    Assign.XC = {"F", "Cl", "Br", "I"}
+    Assign.XD = set("SP")
+    Assign.XE = {"N", "O", "F", "Cl", "Br", "S", "I"}
+    Assign.CONNECTIVITY_RADII = dict(_CONNECTIVITY_RADII)
 
 
 __all__ = ["install_legacy_assign_patches"]

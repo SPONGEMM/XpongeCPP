@@ -56,12 +56,16 @@ void bind_assign_module(py::module_& m) {
         .def_property_readonly("atom_count", &Assign::atom_count)
         .def_property_readonly("bond_count", &Assign::bond_count)
         .def_property_readonly("atoms", [](const Assign& self) { return self.elements; })
+        .def_readwrite("built", &Assign::built)
         .def_readonly("element_details", &Assign::element_details)
         .def_readonly("names", &Assign::names)
         .def_readonly("coordinates", &Assign::coordinates)
         .def_readonly("charges", &Assign::charges)
         .def_readonly("formal_charges", &Assign::formal_charges)
         .def_readonly("bonds", &Assign::bonds)
+        .def_readonly("bond_sequence", &Assign::bond_sequence)
+        .def_readonly("bond_markers", &Assign::bond_markers)
+        .def_readonly("atom_markers", &Assign::atom_markers)
         .def_readonly("atom_types", &Assign::atom_types)
         .def("add_atom", &Assign::add_atom, py::arg("element"), py::arg("x"), py::arg("y"), py::arg("z"),
              py::arg("name") = "", py::arg("charge") = 0.0)
@@ -75,7 +79,14 @@ void bind_assign_module(py::module_& m) {
         .def("set_formal_charge", &Assign::set_formal_charge, py::arg("atom"), py::arg("charge"))
         .def("set_coordinate", &Assign::set_coordinate, py::arg("atom"), py::arg("x"), py::arg("y"), py::arg("z"))
         .def("set_atom_type", &Assign::set_atom_type, py::arg("atom"), py::arg("atom_type"))
+        .def("atom_judge", py::overload_cast<std::uint32_t, const std::string&>(&Assign::atom_judge, py::const_),
+             py::arg("atom"), py::arg("mask"))
+        .def("atom_judge",
+             py::overload_cast<std::uint32_t, const std::vector<std::string>&>(&Assign::atom_judge, py::const_),
+             py::arg("atom"), py::arg("masks"))
+        .def("add_atom_marker", &Assign::add_atom_marker, py::arg("atom"), py::arg("marker"))
         .def("has_atom_marker", &Assign::has_atom_marker, py::arg("atom"), py::arg("marker"))
+        .def("atom_marker_count", &Assign::atom_marker_count, py::arg("atom"), py::arg("marker"))
         .def("has_bond_marker", &Assign::has_bond_marker, py::arg("atom1"), py::arg("atom2"), py::arg("marker"))
         .def("add_bond_marker", &Assign::add_bond_marker, py::arg("atom1"), py::arg("atom2"),
              py::arg("marker"), py::arg("only1") = false)
@@ -128,6 +139,7 @@ void bind_assign_module(py::module_& m) {
               return std::make_shared<Assign>(get_assignment_from_residuetype(residue_type));
           }, py::arg("residue_type"));
     m.def("implemented_gaff_assign_types", &implemented_gaff_assign_types);
+    m.def("implemented_gaff2_assign_types", &implemented_gaff2_assign_types);
     m.def("generate_resp_mk_grid", &generate_resp_mk_grid,
           py::arg("atoms"), py::arg("atom_coordinates_bohr"), py::arg("area_density") = 1.0,
           py::arg("layer") = 4, py::arg("radius") = std::unordered_map<std::string, double>{});

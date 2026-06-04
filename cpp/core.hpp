@@ -394,6 +394,7 @@ public:
     std::vector<double> charges;
     std::vector<int> formal_charges;
     std::vector<std::unordered_map<std::uint32_t, int>> bonds;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> bond_sequence;
     std::vector<std::unordered_map<std::uint32_t, std::set<std::string>>> bond_markers;
     std::vector<std::unordered_map<std::string, int>> atom_markers;
     std::vector<std::string> atom_types;
@@ -451,6 +452,7 @@ Assign get_assignment_from_residuetype(const ResidueType& residue_type);
 std::string assignment_to_mol2_text(const Assign& assignment, const std::string& residue_name);
 std::string assignment_to_pdb_text(const Assign& assignment, const std::string& residue_name);
 std::vector<std::string> implemented_gaff_assign_types();
+std::vector<std::string> implemented_gaff2_assign_types();
 std::vector<std::array<double, 3>> generate_resp_mk_grid(
     const std::vector<std::string>& atoms,
     const std::vector<std::array<double, 3>>& atom_coordinates_bohr,
