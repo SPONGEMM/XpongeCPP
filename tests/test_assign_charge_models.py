@@ -19,7 +19,7 @@ from XpongeCPP.assign import resp as resp_module
 from XpongeCPP.assign import resp_core
 from XpongeCPP.qm.capabilities import QMCapabilitySet
 from XpongeCPP.qm.errors import QMCapabilityError
-from XpongeCPP.qm.models import OptimizationResult
+from XpongeCPP.qm.models import ESPResult, OptimizationResult, SCFResult
 from XpongeCPP.qm import scheduler as qm_scheduler
 
 
@@ -182,10 +182,10 @@ def test_resp_defaults_to_pyscf_backend(monkeypatch):
             }
 
         @staticmethod
-        def compute_esp_on_grid(payload, grids):
+        def compute_esp_on_grid(payload, grids, *, memory_limit=None, chunk_policy="auto", safety_factor=0.8):
             import numpy as np
 
-            calls.append(("esp", len(grids)))
+            calls.append(("esp", len(grids), memory_limit, chunk_policy, safety_factor))
             return np.zeros(len(grids))
 
     monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FakeBackend)
@@ -196,7 +196,43 @@ def test_resp_defaults_to_pyscf_backend(monkeypatch):
 
     assert charges == [0.0, 0.0, 0.0]
     assert calls[0] == ("build", "sto-3g", 0, 0, False)
-    assert calls[1] == ("esp", 2)
+    assert calls[1] == ("esp", 2, None, "auto", 0.8)
+
+
+def test_resp_forwards_esp_chunking_options(monkeypatch):
+    assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
+    calls = []
+
+    class FakeBackend:
+        @staticmethod
+        def build_backend_payload(assign, basis, charge, spin, opt):
+            import numpy as np
+
+            return {
+                "atom_coordinates_bohr": np.zeros((3, 3)),
+                "nuclear_charges": np.array([8.0, 1.0, 1.0]),
+            }
+
+        @staticmethod
+        def compute_esp_on_grid(payload, grids, *, memory_limit=None, chunk_policy="auto", safety_factor=0.8):
+            import numpy as np
+
+            calls.append((memory_limit, chunk_policy, safety_factor))
+            return np.zeros(len(grids))
+
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FakeBackend)
+    monkeypatch.setattr(resp_module.resp_core, "get_mk_grid", lambda *args, **kwargs: __import__("numpy").zeros((2, 3)))
+    monkeypatch.setattr(resp_module.resp_core, "fit_resp_from_esp", lambda *args, **kwargs: [0.0, 0.0, 0.0])
+
+    resp_module.resp_fit(
+        assignment,
+        esp_memory_limit="256MB",
+        esp_chunk_policy="grid",
+        esp_safety_factor=0.5,
+        only_esp=True,
+    )
+
+    assert calls == [("256MB", "grid", 0.5)]
 
 
 def test_resp_rejects_unknown_backend():
@@ -265,6 +301,101 @@ def test_qm_scheduler_runs_pyscf_scf_and_esp_smoke():
     esp_result = qm_compute_esp_on_grid(scf_result, scf_result.coordinates_bohr[:2])
     assert len(esp_result.electronic_esp_au) == 2
     assert set(esp_result.timings) == {"esp"}
+    assert esp_result.diagnostics["mode"] in {"full", "grid_chunk", "shell_grid_chunk"}
+
+
+def test_qm_scheduler_normalizes_esp_request_options(monkeypatch):
+    import numpy as np
+
+    requests = []
+
+    class FakeESPBackend:
+        name = "fakeesp"
+
+        @staticmethod
+        def capabilities():
+            return QMCapabilitySet(supports_scf=False, supports_esp=True)
+
+        @staticmethod
+        def compute_esp(scf_result, request):
+            requests.append(request)
+            return ESPResult(
+                grid_points_bohr=np.asarray(request.grid_points_bohr, dtype=float),
+                electronic_esp_au=np.zeros(len(request.grid_points_bohr), dtype=float),
+            )
+
+    monkeypatch.setitem(qm_scheduler._BACKENDS, "fakeesp", FakeESPBackend)
+    scf_result = SCFResult(
+        backend_name="fakeesp",
+        total_energy=None,
+        converged=True,
+        coordinates_bohr=np.zeros((0, 3), dtype=float),
+        nuclear_charges=np.zeros(0, dtype=float),
+        charge=0,
+        spin=0,
+        atom_symbols=[],
+    )
+
+    result = qm_compute_esp_on_grid(
+        scf_result,
+        np.zeros((3, 3), dtype=float),
+        memory_limit="512MB",
+        chunk_policy="grid",
+        safety_factor=0.5,
+    )
+
+    assert len(result.electronic_esp_au) == 3
+    assert requests[0].memory_limit_bytes == 512 * 1024 * 1024
+    assert requests[0].chunk_policy == "grid"
+    assert requests[0].safety_factor == pytest.approx(0.5)
+
+
+def test_qm_scheduler_runs_pyscf_esp_grid_chunk_mode_smoke():
+    assignment = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    scf_result = qm_run_scf(
+        assignment,
+        backend="pyscf",
+        basis="sto-3g",
+        charge=0,
+        spin=0,
+        optimize_geometry=False,
+    )
+    per_grid_bytes = scf_result.backend_handle["mol"].nao_nr() ** 2 * 8
+    esp_result = qm_compute_esp_on_grid(
+        scf_result,
+        scf_result.coordinates_bohr[:2],
+        memory_limit=per_grid_bytes + 1,
+        chunk_policy="grid",
+        safety_factor=1.0,
+    )
+
+    assert len(esp_result.electronic_esp_au) == 2
+    assert esp_result.diagnostics["mode"] == "grid_chunk"
+    assert esp_result.diagnostics["grid_chunk_size"] == 1
+
+
+def test_qm_scheduler_runs_pyscf_esp_dual_chunk_mode_smoke():
+    assignment = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    scf_result = qm_run_scf(
+        assignment,
+        backend="pyscf",
+        basis="sto-3g",
+        charge=0,
+        spin=0,
+        optimize_geometry=False,
+    )
+    per_grid_bytes = scf_result.backend_handle["mol"].nao_nr() ** 2 * 8
+    esp_result = qm_compute_esp_on_grid(
+        scf_result,
+        scf_result.coordinates_bohr[:2],
+        memory_limit=max(1, per_grid_bytes - 1),
+        chunk_policy="auto",
+        safety_factor=1.0,
+    )
+
+    assert len(esp_result.electronic_esp_au) == 2
+    assert esp_result.diagnostics["mode"] == "shell_grid_chunk"
+    assert esp_result.diagnostics["shell_block_count"] >= 1
 
 
 def test_qm_scheduler_reports_capabilities_for_known_backends():

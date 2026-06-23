@@ -48,7 +48,8 @@ def _normalize_core_name(core):
 
 def resp_fit(assign, basis="6-31g*", opt=False, charge=None, spin=0, extra_equivalence=None,
              grid_density=6, grid_cell_layer=4, radius=None, a1=0.0005, a2=0.001,
-             two_stage=True, only_esp=False, backend=None, core=None):
+             two_stage=True, only_esp=False, backend=None, core=None,
+             esp_memory_limit=None, esp_chunk_policy="auto", esp_safety_factor=0.8):
     if extra_equivalence is None:
         extra_equivalence = []
     if charge is None:
@@ -67,7 +68,13 @@ def resp_fit(assign, basis="6-31g*", opt=False, charge=None, spin=0, extra_equiv
         layer=grid_cell_layer,
         radius=radius,
     )
-    electron_esp = backend_module.compute_esp_on_grid(payload, grids)
+    electron_esp = backend_module.compute_esp_on_grid(
+        payload,
+        grids,
+        memory_limit=esp_memory_limit,
+        chunk_policy=esp_chunk_policy,
+        safety_factor=esp_safety_factor,
+    )
     return resp_core.fit_resp_from_esp(
         assign,
         atom_coordinates_bohr=payload["atom_coordinates_bohr"],

@@ -99,6 +99,9 @@ def _assign_calculate_charge(self, method, **parameters):
                 radius=parameters.get("radius", None),
                 backend=parameters.get("backend", None),
                 core=parameters.get("core", None),
+                esp_memory_limit=parameters.get("esp_memory_limit", None),
+                esp_chunk_policy=parameters.get("esp_chunk_policy", "auto"),
+                esp_safety_factor=parameters.get("esp_safety_factor", 0.8),
             )
         )
         return None

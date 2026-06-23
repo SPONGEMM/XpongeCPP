@@ -30,6 +30,12 @@ def build_backend_payload(assign, basis, charge, spin, opt, return_timings=False
     return payload
 
 
-def compute_esp_on_grid(payload, grid_points_bohr):
-    esp_result = _compute_esp_on_grid(payload["scf_result"], grid_points_bohr)
+def compute_esp_on_grid(payload, grid_points_bohr, *, memory_limit=None, chunk_policy="auto", safety_factor=0.8):
+    esp_result = _compute_esp_on_grid(
+        payload["scf_result"],
+        grid_points_bohr,
+        memory_limit=memory_limit,
+        chunk_policy=chunk_policy,
+        safety_factor=safety_factor,
+    )
     return esp_result.electronic_esp_au
