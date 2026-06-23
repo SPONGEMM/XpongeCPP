@@ -153,22 +153,25 @@ def test_calculate_charge_reports_optional_dependencies_clearly(monkeypatch):
 
     assignment = _assignment("methane", ["C", "H", "H", "H", "H"], [(0, 1, 1), (0, 2, 1), (0, 3, 1), (0, 4, 1)])
     original_import = builtins.__import__
+    default_qm = qm_scheduler.normalize_backend_name(None)
 
     def fake_import(name, *args, **kwargs):
-        if name.startswith("rdkit") or name.startswith("pyscf"):
+        if name.startswith("rdkit") or name.startswith("pyscf") or name.startswith("psi4"):
             raise ImportError(name)
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
     with pytest.raises(ImportError, match="RDKit"):
         assignment.calculate_charge("gasteiger")
-    with pytest.raises(ImportError, match="PySCF"):
+    expected = "PySCF" if default_qm == "pyscf" else "Psi4"
+    with pytest.raises(ImportError, match=expected):
         assignment.calculate_charge("resp")
 
 
-def test_resp_defaults_to_pyscf_backend(monkeypatch):
+def test_resp_defaults_to_platform_backend(monkeypatch):
     assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
     calls = []
+    default_backend = qm_scheduler.normalize_backend_name(None)
 
     class FakeBackend:
         @staticmethod
@@ -188,7 +191,7 @@ def test_resp_defaults_to_pyscf_backend(monkeypatch):
             calls.append(("esp", len(grids), memory_limit, chunk_policy, safety_factor))
             return np.zeros(len(grids))
 
-    monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FakeBackend)
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, default_backend, FakeBackend)
     monkeypatch.setattr(resp_module.resp_core, "get_mk_grid", lambda *args, **kwargs: __import__("numpy").zeros((2, 3)))
     monkeypatch.setattr(resp_module.resp_core, "fit_resp_from_esp", lambda *args, **kwargs: [0.0, 0.0, 0.0])
 
@@ -281,6 +284,16 @@ def test_qm_scheduler_exposes_known_backends():
     assert qm_get_backend("psi4").name == "psi4"
     with pytest.raises(ValueError, match="QM backend should be one of"):
         qm_get_backend("unknown")
+
+
+def test_qm_scheduler_default_backend_matches_platform(monkeypatch):
+    monkeypatch.setattr(qm_scheduler.sys, "platform", "linux")
+    assert qm_scheduler.normalize_backend_name(None) == "pyscf"
+    assert qm_get_backend(None).name == "pyscf"
+
+    monkeypatch.setattr(qm_scheduler.sys, "platform", "win32")
+    assert qm_scheduler.normalize_backend_name(None) == "psi4"
+    assert qm_get_backend(None).name == "psi4"
 
 
 def test_qm_scheduler_runs_pyscf_scf_and_esp_smoke():

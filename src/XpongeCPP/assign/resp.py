@@ -32,7 +32,7 @@ def _backend_import_or_hint(backend_name, exc):
     if backend_name == "pyscf" and sys.platform.startswith("win"):
         message += " On Windows, install Psi4 and call calculate_charge('resp', backend='psi4', ...)."
     elif backend_name == "psi4":
-        message += " Install Psi4 separately (for example via conda-forge) and retry."
+        message += " Psi4 is the default QM backend on Windows; ensure the package installation completed successfully or install Psi4 manually and retry."
     raise ImportError(message) from exc
 
 
