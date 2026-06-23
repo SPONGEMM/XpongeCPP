@@ -6,9 +6,10 @@ from ... import (
     register_ff14sb,
     register_residue_templates_from_mol2_file,
 )
-from . import data_path
+from . import configure_proline_like_terminal_mapping, data_path
 
 register_ff14sb()
 register_amber_parmdat_file(str(data_path("parm10.dat")))
 register_amber_frcmod_file(str(data_path("ff14SB.frcmod")))
 register_residue_templates_from_mol2_file(str(data_path("ff14SB.mol2")))
+configure_proline_like_terminal_mapping("HYP", "CHYP")
