@@ -29,7 +29,6 @@ dependencies = [
     "MDAnalysis>=2.7",
     "rdkit>=2023.9",
     "pyscf>=2.5; platform_system != 'Windows'",
-    "psi4; platform_system == 'Windows'",
     "XpongeLib>=1.2.5.0",
 ]
 

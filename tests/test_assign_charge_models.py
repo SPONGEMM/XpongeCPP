@@ -279,6 +279,13 @@ def test_resp_explicit_psi4_backend_reports_missing_dependency(monkeypatch):
         resp_module.resp_fit(assignment, backend="psi4")
 
 
+def test_qm_scheduler_windows_psi4_hint_mentions_external_install(monkeypatch):
+    monkeypatch.setattr(qm_scheduler.sys, "platform", "win32")
+
+    with pytest.raises(ImportError, match="official Psi4 installer"):
+        qm_scheduler.backend_import_or_hint("psi4", ImportError("Psi4 is required"))
+
+
 def test_qm_scheduler_exposes_known_backends():
     assert qm_get_backend("pyscf").name == "pyscf"
     assert qm_get_backend("psi4").name == "psi4"
