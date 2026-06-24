@@ -11,6 +11,7 @@ from .. import data_path
 register_amber_parmdat_file(str(data_path("glycam_06j/GLYCAM_06j.dat")))
 register_residue_templates_from_mol2_file(str(data_path("glycam_06j/terminal.mol2")))
 register_residue_templates_from_mol2_file(str(data_path("glycam_06j/functional_groups.mol2")))
+register_residue_templates_from_mol2_file(str(data_path("glycam_06j/modified_monosaccharides.mol2")))
 
 configure_residue_template_head("ROH", "O1", 1.3, "HO1")
 configure_residue_template_head("OME", "O", 1.3, "CH3")

@@ -83,6 +83,13 @@ def test_glycam_functional_group_templates_and_linkability():
     assert len(so3_chain.residue_links) == 2
 
 
+def test_glycam_modified_monosaccharide_templates_load():
+    import XpongeCPP.forcefield.amber.glycam_06j  # noqa: F401
+
+    for resname in ["0TV", "0AE", "0AF", "0GL", "AGL", "5AD", "ACX", "ZOLS", "ZOLT"]:
+        assert Xponge.has_template(resname)
+
+
 def test_glycam_coverage_audit_classifies_extension_layers():
     from XpongeCPP.forcefield.amber.glycam_06j.audit import audit_glycam_coverage
 
@@ -90,5 +97,8 @@ def test_glycam_coverage_audit_classifies_extension_layers():
     for resname in ["MEX", "SO3", "TBT"]:
         assert resname in report["covered"]
     assert "CA2" in report["covered_elsewhere"]
-    for resname in ["0AE", "0AF", "0GL", "0TV"]:
-        assert resname in report["missing_modified_monosaccharides"]
+    assert report["covered_elsewhere"]["HYP"] == "covered by Amber protein force-field templates"
+    assert report["covered_elsewhere"]["NHYP"] == "covered by Amber protein force-field templates"
+    assert report["covered_elsewhere"]["CHYP"] == "covered by Amber protein force-field templates"
+    assert report["missing_functional_groups"] == []
+    assert report["missing_modified_monosaccharides"] == []
