@@ -86,6 +86,45 @@ END
     assert [res.name for res in by_tuple.residues] == ["NALA", "GLY"]
 
 
+def test_pdb_explicit_terminal_residues_disable_inference():
+    _load_amber()
+    pdb = """\
+ATOM      1  N   VAL A   2       0.000   0.000   0.000  1.00  0.00           N
+ATOM      2  CA  VAL A   2       1.000   0.000   0.000  1.00  0.00           C
+ATOM      3  C   VAL A   2       2.000   0.000   0.000  1.00  0.00           C
+ATOM      4  O   VAL A   2       3.000   0.000   0.000  1.00  0.00           O
+ATOM      5  N   TRP A   3       4.000   0.000   0.000  1.00  0.00           N
+ATOM      6  CA  TRP A   3       5.000   0.000   0.000  1.00  0.00           C
+ATOM      7  C   TRP A   3       6.000   0.000   0.000  1.00  0.00           C
+ATOM      8  O   TRP A   3       7.000   0.000   0.000  1.00  0.00           O
+TER
+"""
+    mol = Xponge.load_pdb(
+        StringIO(pdb),
+        ignore_hydrogen=True,
+        terminal_residues=[{"chain_id": "A", "res_seq": 2, "n_terminal": True}],
+        infer_terminals=False,
+    )
+
+    assert [res.name for res in mol.residues] == ["NVAL", "TRP"]
+
+    blank_chain_pdb = """\
+ATOM      1  N   VAL     2       0.000   0.000   0.000  1.00  0.00           N
+ATOM      2  CA  VAL     2       1.000   0.000   0.000  1.00  0.00           C
+ATOM      3  C   VAL     2       2.000   0.000   0.000  1.00  0.00           C
+ATOM      4  O   VAL     2       3.000   0.000   0.000  1.00  0.00           O
+TER
+"""
+    blank_chain = Xponge.load_pdb(
+        StringIO(blank_chain_pdb),
+        ignore_hydrogen=True,
+        terminal_residues=[{"chain_id": "", "res_seq": 2, "n_terminal": True}],
+        infer_terminals=False,
+    )
+
+    assert [res.name for res in blank_chain.residues] == ["NVAL"]
+
+
 def test_pdb_ssbond_and_link_records_create_residue_links(tmp_path):
     _load_amber()
     pdb = """\

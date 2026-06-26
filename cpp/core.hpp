@@ -303,6 +303,15 @@ struct PdbLoadOptions {
     bool ignore_conect{true};
     bool read_cryst1{true};
     std::vector<std::string> unterminal_residues;
+    struct TerminalResidue {
+        char chain_id{' '};
+        int resseq{0};
+        char insertion_code{' '};
+        bool n_terminal{false};
+        bool c_terminal{false};
+    };
+    std::vector<TerminalResidue> terminal_residues;
+    bool infer_terminals{true};
 };
 
 class Molecule {

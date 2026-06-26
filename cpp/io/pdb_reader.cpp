@@ -30,13 +30,14 @@ Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options) {
     std::unordered_map<int, AtomId> serial_to_atom;
     std::map<std::tuple<char, int, char>, ResidueId> chain_residue_to_id;
     std::vector<bool> residue_unterminal;
+    std::vector<std::pair<bool, bool>> residue_terminal;
     std::unordered_set<ResidueId> oxt_residues;
     const auto unterminal = parse_unterminal_residues(options.unterminal_residues);
 
     const auto finish_segment = [&]() {
         if (!molecule.residues.empty()) {
             auto& last = molecule.residues.back();
-            if (!residue_unterminal.back()) {
+            if (options.infer_terminals && !residue_unterminal.back()) {
                 const auto it = pdb_tail_map().find(last.name);
                 if (it != pdb_tail_map().end()) {
                     last.name = it->second;
@@ -112,6 +113,8 @@ Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options) {
             continue;
         }
         const bool skip_terminal = is_unterminal(unterminal, chain_in_file, *resseq_opt, insertion);
+        const auto explicit_terminal =
+            terminal_residue_flags(options.terminal_residues, chain_in_file, *resseq_opt, insertion);
         const auto key = residue_key(current_segment, chain, resseq, insertion, residue_name);
         if (molecule.residues.empty() || key != current_residue_key) {
             if (!current_residue_key.empty() && insertion != ' ') {
@@ -123,7 +126,9 @@ Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options) {
             Residue residue;
             residue.name = residue_name.empty() ? "UNK" : residue_name;
             residue.original_name = residue.name;
-            if (!segment_has_residue && !skip_terminal && pdb_head_map().count(residue.name) != 0) {
+            const bool should_map_head =
+                explicit_terminal.first || (options.infer_terminals && !segment_has_residue && !skip_terminal);
+            if (should_map_head && pdb_head_map().count(residue.name) != 0) {
                 residue.name = pdb_head_map().at(residue.name);
             }
             residue.type_name = residue.name;
@@ -137,6 +142,7 @@ Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options) {
             molecule.residues.push_back(residue);
             segment_has_residue = true;
             residue_unterminal.push_back(skip_terminal);
+            residue_terminal.push_back(explicit_terminal);
             chain_residue_to_id[{chain_in_file, *resseq_opt, insertion}] = current_residue_id;
         }
 
@@ -180,17 +186,13 @@ Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options) {
                 residue.type_name = residue.name;
             }
         }
-        if (oxt_residues.count(residue_id) != 0 && !residue_unterminal[residue_id]) {
-            const auto proteins = protein_residue_names();
-            if (proteins.count(residue.name) != 0 && pdb_tail_map().count(residue.name) != 0) {
-                residue.name = pdb_tail_map().at(residue.name);
-                residue.type_name = residue.name;
-            } else if (residue.name.size() > 1 && residue.name[0] == 'N' &&
-                       proteins.count(residue.name.substr(1)) != 0 &&
-                       pdb_tail_map().count(residue.name.substr(1)) != 0) {
-                residue.name = "C" + residue.name.substr(1);
-                residue.type_name = residue.name;
-            }
+        if (options.infer_terminals && oxt_residues.count(residue_id) != 0 && !residue_unterminal[residue_id]) {
+            residue.name = tail_mapped_residue_name(residue.name);
+            residue.type_name = residue.name;
+        }
+        if (residue_terminal[residue_id].second) {
+            residue.name = tail_mapped_residue_name(residue.name);
+            residue.type_name = residue.name;
         }
     }
 
