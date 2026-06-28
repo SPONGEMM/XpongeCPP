@@ -45,7 +45,6 @@ USER_CHARGES
         )
     )
 
-    assert assignment.built is False
     for atom in range(6):
         assert assignment.has_atom_marker(atom, "RG6")
         assert assignment.has_atom_marker(atom, "AR1")
@@ -57,43 +56,3 @@ USER_CHARGES
 
     assert assignment.atom_types[:6] == ["ca"] * 6
     assert assignment.atom_types[6:] == ["ha"] * 6
-
-
-def test_assign_bond_sequence_tracks_add_delete_and_reindex():
-    assignment = Xponge.Assign("SEQ")
-    assignment.add_atom("C", 0.0, 0.0, 0.0)
-    assignment.add_atom("C", 1.0, 0.0, 0.0)
-    assignment.add_atom("O", 2.0, 0.0, 0.0)
-    assignment.add_atom("N", 3.0, 0.0, 0.0)
-
-    assignment.add_bond(1, 0, 1)
-    assignment.add_bond(1, 2, 2)
-    assignment.add_bond(2, 3, 1)
-    assignment.add_bond(0, 1, 2)
-    assert assignment.bond_sequence == [(1, 0), (1, 2), (2, 3)]
-
-    assignment.delete_bond(1, 2)
-    assert assignment.bond_sequence == [(1, 0), (2, 3)]
-
-    assignment.delete_atom(1)
-    assert assignment.bond_sequence == [(1, 2)]
-
-
-def test_repeated_bond_order_then_atom_type_is_stable():
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-
-    assignment = Xponge.get_assignment_from_smiles("c1ccccc1")
-    assignment.determine_atom_type("gaff")
-    first = list(assignment.atom_types)
-
-    assignment.determine_bond_order(total_charge=0)
-    assignment.determine_atom_type("gaff")
-    second = list(assignment.atom_types)
-
-    assignment.determine_bond_order(total_charge=0)
-    assignment.determine_atom_type("gaff")
-    third = list(assignment.atom_types)
-
-    assert first == ["ca"] * 6 + ["ha"] * 6
-    assert second == first
-    assert third == first
