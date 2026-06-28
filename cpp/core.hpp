@@ -462,6 +462,7 @@ struct RespFitDebugResult {
     std::vector<double> esp_charges;
     std::vector<double> stage1_charges;
     std::vector<double> final_charges;
+    std::vector<int> stage2_restrained_groups;
     std::unordered_map<std::string, double> timings;
 };
 std::vector<double> fit_resp_from_esp_cpp(

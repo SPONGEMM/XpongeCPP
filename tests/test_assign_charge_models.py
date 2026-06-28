@@ -1152,6 +1152,73 @@ def test_resp_debug_view_matches_plain_core():
     assert set(debug["timings"]) == {"assembly", "stage1", "stage2", "total"}
 
 
+def test_resp_second_stage_restrains_grouped_heavy_atoms_only():
+    cyclohexane = _assignment(
+        "cyclohexane",
+        ["C", "C", "C", "C", "C", "C", "H", "H", "H", "H", "H", "H", "H", "H", "H", "H", "H", "H"],
+        [
+            (0, 1, 1),
+            (1, 2, 1),
+            (2, 3, 1),
+            (3, 4, 1),
+            (4, 5, 1),
+            (5, 0, 1),
+            (0, 6, 1),
+            (0, 7, 1),
+            (1, 8, 1),
+            (1, 9, 1),
+            (2, 10, 1),
+            (2, 11, 1),
+            (3, 12, 1),
+            (3, 13, 1),
+            (4, 14, 1),
+            (4, 15, 1),
+            (5, 16, 1),
+            (5, 17, 1),
+        ],
+    )
+    coordinates_angstrom = [
+        (1.214, 0.701, 0.0),
+        (0.0, 1.402, 0.0),
+        (-1.214, 0.701, 0.0),
+        (-1.214, -0.701, 0.0),
+        (0.0, -1.402, 0.0),
+        (1.214, -0.701, 0.0),
+        (2.157, 1.245, 0.0),
+        (1.214, 0.701, 1.09),
+        (0.0, 2.49, 0.0),
+        (0.0, 1.402, 1.09),
+        (-2.157, 1.245, 0.0),
+        (-1.214, 0.701, 1.09),
+        (-2.157, -1.245, 0.0),
+        (-1.214, -0.701, 1.09),
+        (0.0, -2.49, 0.0),
+        (0.0, -1.402, 1.09),
+        (2.157, -1.245, 0.0),
+        (1.214, -0.701, 1.09),
+    ]
+    bohr_per_angstrom = 1.0 / 0.529177210903
+    atom_coordinates_bohr = [
+        tuple(component * bohr_per_angstrom for component in coordinate) for coordinate in coordinates_angstrom
+    ]
+    grids = resp_core.get_mk_grid(cyclohexane, atom_coordinates_bohr, area_density=0.25, layer=1)
+    debug = resp_core.fit_resp_from_esp_debug(
+        cyclohexane,
+        atom_coordinates_bohr=atom_coordinates_bohr,
+        nuclear_charges=[6.0] * 6 + [1.0] * 12,
+        grid_points_bohr=grids,
+        esp_values_au=[0.0] * len(grids),
+        charge=0,
+        a1=0.0005,
+        a2=0.001,
+        two_stage=True,
+        only_esp=False,
+    )
+
+    assert debug["stage2_restrained_groups"] == [0, 2, 4, 6, 8, 10]
+    assert math.isclose(sum(debug["final_charges"]), 0.0, abs_tol=1e-8)
+
+
 def test_resp_supports_real_mol2_fixture_and_matches_original_xponge():
     assignment = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
     assert assignment.atom_count == 6

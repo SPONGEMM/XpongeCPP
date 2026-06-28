@@ -235,6 +235,23 @@ void correct_extra_equivalence(
     }
 }
 
+std::vector<int> restrained_second_stage_groups(
+    const Assign& assign,
+    const std::vector<std::vector<int>>& tofit_second
+) {
+    std::vector<int> restrained;
+    for (std::size_t group_index = 0; group_index < tofit_second.size(); ++group_index) {
+        const auto& group = tofit_second[group_index];
+        const bool has_heavy_atom = std::any_of(group.begin(), group.end(), [&assign](int atom) {
+            return assign.elements.at(static_cast<std::size_t>(atom)) != "H";
+        });
+        if (has_heavy_atom) {
+            restrained.push_back(static_cast<int>(group_index));
+        }
+    }
+    return restrained;
+}
+
 std::vector<double> resp_scf_kernel(
     const Assign& assign,
     int atom_count,
@@ -451,6 +468,7 @@ RespFitDebugResult fit_resp_from_esp_cpp_debug(
         std::vector<std::vector<double>> a20;
         std::vector<double> b20;
         get_a20_and_b20(total_length, tofit_second, fit_group, sublength, atom_count, matrix_a0, matrix_b, charge, q, a20, b20);
+        result.stage2_restrained_groups = restrained_second_stage_groups(assign, tofit_second);
         auto matrix_stage2 = a20;
         auto q_temp_solution = solve_linear_system(matrix_stage2, b20);
         std::vector<double> q_temp(q_temp_solution.begin(), q_temp_solution.end() - 1);
@@ -460,12 +478,10 @@ RespFitDebugResult fit_resp_from_esp_cpp_debug(
         do {
             ++step;
             q_last_step = q_temp;
-            for (int i = 0; i < atom_count - sublength; ++i) {
-                if (assign.elements[static_cast<std::size_t>(i)] != "H") {
-                    matrix_stage2[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)] =
-                        a20[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)] +
-                        a2 / std::sqrt(q_last_step[static_cast<std::size_t>(i)] * q_last_step[static_cast<std::size_t>(i)] + 0.1 * 0.1);
-                }
+            for (int i : result.stage2_restrained_groups) {
+                matrix_stage2[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)] =
+                    a20[static_cast<std::size_t>(i)][static_cast<std::size_t>(i)] +
+                    a2 / std::sqrt(q_last_step[static_cast<std::size_t>(i)] * q_last_step[static_cast<std::size_t>(i)] + 0.1 * 0.1);
             }
             auto solved = solve_linear_system(matrix_stage2, b20);
             q_temp.assign(solved.begin(), solved.end() - 1);

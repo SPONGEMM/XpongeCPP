@@ -170,6 +170,7 @@ void bind_assign_module(py::module_& m) {
               out["esp_charges"] = result.esp_charges;
               out["stage1_charges"] = result.stage1_charges;
               out["final_charges"] = result.final_charges;
+              out["stage2_restrained_groups"] = result.stage2_restrained_groups;
               out["timings"] = timings;
               return out;
           },
