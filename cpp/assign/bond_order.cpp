@@ -580,6 +580,7 @@ bool Assign::determine_bond_order_custom(
         if (!extra_criteria) {
             bonds = std::move(candidate_bonds);
             determine_ring_and_bond_type();
+            built = false;
             return true;
         }
         const auto previous_bonds = bonds;
@@ -587,6 +588,7 @@ bool Assign::determine_bond_order_custom(
         bonds = candidate_bonds;
         if (extra_criteria(*this)) {
             determine_ring_and_bond_type();
+            built = false;
             return true;
         }
         bonds = previous_bonds;
