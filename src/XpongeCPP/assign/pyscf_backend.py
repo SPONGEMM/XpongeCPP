@@ -7,11 +7,13 @@ from ..qm.scheduler import compute_esp_on_grid as _compute_esp_on_grid
 from ..qm.scheduler import run_scf as _run_scf
 
 
-def build_backend_payload(assign, basis, charge, spin, opt, return_timings=False):
+def build_backend_payload(assign, basis, charge, spin, opt, return_timings=False, ecp=None, cart=None):
     scf_result = _run_scf(
         assign,
         backend="pyscf",
         basis=basis,
+        ecp=ecp,
+        cart=cart,
         charge=charge,
         spin=spin,
         optimize_geometry=opt,

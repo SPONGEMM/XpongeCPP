@@ -85,7 +85,7 @@ def _assign_calculate_charge(self, method, **parameters):
         self.set_charges(
             resp.resp_fit(
                 self,
-                basis=parameters.get("basis", "6-31g*"),
+                basis=parameters.get("basis", None),
                 opt=parameters.get("opt", False),
                 charge=parameters.get("charge", int(round(sum(self.formal_charges)))),
                 spin=parameters.get("spin", 0),
