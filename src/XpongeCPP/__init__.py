@@ -29,6 +29,7 @@ from ._core import (
     load_molpsf,
     load_opls_itp_file,
     load_parmdat,
+    load_mmcif as _core_load_mmcif,
     load_pdb as _core_load_pdb,
     load_rst7,
     load_sw_parameter_file,
@@ -198,6 +199,16 @@ def load_pdb(*args, **kwargs):
     return _core_load_pdb(*args, **kwargs)
 
 
+def load_mmcif(*args, **kwargs):
+    from .forcefield import package_data_path
+
+    set_lj_combining_rule("lorentz_berthelot")
+    register_amber_nb14_scale("X", "X", 0.5, 0.833333)
+    register_amber_parmdat_file(str(package_data_path("amber", "parm10.dat")))
+    register_amber_frcmod_file(str(package_data_path("amber", "ff14SB.frcmod")))
+    return _core_load_mmcif(*args, **kwargs)
+
+
 install_legacy_bootstrap(globals())
 
 
@@ -247,6 +258,7 @@ __all__ = [
     "source",
     "add_ions",
     "load_pdb",
+    "load_mmcif",
     "load_mol2",
     "load_molpsf",
     "load_ffitp",

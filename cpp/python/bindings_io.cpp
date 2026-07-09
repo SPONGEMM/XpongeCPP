@@ -23,7 +23,8 @@ bool dict_get_bool(const py::dict& dict, std::initializer_list<const char*> keys
     return !value.is_none() && py::cast<bool>(value);
 }
 
-void add_terminal_selector(PdbLoadOptions& options, py::object chain, py::object resseq, py::object insertion,
+template <typename Options>
+void add_terminal_selector(Options& options, py::object chain, py::object resseq, py::object insertion,
                            bool n_terminal, bool c_terminal) {
     if (resseq.is_none()) {
         throw std::invalid_argument("terminal residue selector requires a residue sequence number");
@@ -37,7 +38,8 @@ void add_terminal_selector(PdbLoadOptions& options, py::object chain, py::object
     options.terminal_residues.push_back(selector);
 }
 
-void add_terminal_kind_selector(PdbLoadOptions& options, py::object chain, py::object resseq, py::object insertion,
+template <typename Options>
+void add_terminal_kind_selector(Options& options, py::object chain, py::object resseq, py::object insertion,
                                 py::object terminal_kind) {
     auto kind = pdb_upper_copy(pdb_trimmed_copy(py::cast<std::string>(py::str(terminal_kind))));
     if (kind == "N" || kind == "HEAD" || kind == "N_TERMINAL" || kind == "N-TERMINAL") {
@@ -49,7 +51,8 @@ void add_terminal_kind_selector(PdbLoadOptions& options, py::object chain, py::o
     }
 }
 
-void parse_terminal_residues(PdbLoadOptions& options, py::object terminal_residues) {
+template <typename Options>
+void parse_terminal_residues(Options& options, py::object terminal_residues) {
     if (terminal_residues.is_none()) {
         return;
     }
@@ -94,6 +97,49 @@ void parse_terminal_residues(PdbLoadOptions& options, py::object terminal_residu
     }
 }
 
+MmcifResidueLinkAtom parse_mmcif_residue_link_atom(py::object item) {
+    if (!py::isinstance<py::dict>(item)) {
+        throw std::invalid_argument("mmCIF residue link atom selector must be a dict");
+    }
+    py::dict dict = py::cast<py::dict>(item);
+    py::object chain = dict_get_first(dict, {"chain_id", "chainId"});
+    py::object resseq = dict_get_first(dict, {"residue_seq", "residueSeq", "res_seq", "resSeq"});
+    py::object insertion = dict_get_first(dict, {"insertion_code", "insertionCode", "icode"});
+    py::object residue_name = dict_get_first(dict, {"residue_name", "residueName", "resname"});
+    py::object atom_name = dict_get_first(dict, {"atom_name", "atomName", "name"});
+    if (chain.is_none()) chain = py::str("");
+    if (insertion.is_none()) insertion = py::str("");
+    if (resseq.is_none() || atom_name.is_none()) {
+        throw std::invalid_argument("mmCIF residue link atom selector requires residue_seq and atom_name");
+    }
+    MmcifResidueLinkAtom atom;
+    atom.chain_id = selector_char(chain, ' ');
+    atom.resseq = py::cast<int>(resseq);
+    atom.insertion_code = selector_char(insertion, ' ');
+    atom.residue_name = residue_name.is_none() ? std::string{} : py::cast<std::string>(py::str(residue_name));
+    atom.atom_name = py::cast<std::string>(py::str(atom_name));
+    return atom;
+}
+
+void parse_mmcif_residue_links(MmcifLoadOptions& options, py::object residue_links) {
+    if (residue_links.is_none()) {
+        return;
+    }
+    for (py::handle item_handle : residue_links) {
+        py::object item = py::reinterpret_borrow<py::object>(item_handle);
+        if (!py::isinstance<py::dict>(item)) {
+            throw std::invalid_argument("mmCIF residue link selector must be a dict");
+        }
+        py::dict dict = py::cast<py::dict>(item);
+        py::object atom1 = dict_get_first(dict, {"atom_a", "atomA", "atom1"});
+        py::object atom2 = dict_get_first(dict, {"atom_b", "atomB", "atom2"});
+        if (atom1.is_none() || atom2.is_none()) {
+            throw std::invalid_argument("mmCIF residue link selector requires atom_a and atom_b");
+        }
+        options.residue_links.push_back({parse_mmcif_residue_link_atom(atom1), parse_mmcif_residue_link_atom(atom2)});
+    }
+}
+
 std::shared_ptr<Molecule> load_pdb_object(py::object source, bool judge_histone, const std::string& position_need,
                                           bool ignore_hydrogen, bool ignore_unknown_name, bool ignore_seqres,
                                           bool ignore_conect, bool read_cryst1, py::object unterminal_residues,
@@ -114,6 +160,32 @@ std::shared_ptr<Molecule> load_pdb_object(py::object source, bool judge_histone,
     parse_terminal_residues(options, terminal_residues);
     options.infer_terminals = infer_terminals;
     return std::make_shared<Molecule>(load_pdb_text(read_python_input(source), options));
+}
+
+std::shared_ptr<Molecule> load_mmcif_object(py::object source, bool judge_histone, const std::string& position_need,
+                                            bool ignore_hydrogen, bool ignore_unknown_name, bool ignore_seqres,
+                                            bool read_cell, py::object unterminal_residues,
+                                            py::object terminal_residues, bool infer_terminals, py::object model_id,
+                                            py::object residue_links) {
+    MmcifLoadOptions options;
+    options.judge_histone = judge_histone;
+    options.position_need = position_need.empty() ? 'A' : position_need[0];
+    options.ignore_hydrogen = ignore_hydrogen;
+    options.ignore_unknown_name = ignore_unknown_name;
+    options.ignore_seqres = ignore_seqres;
+    options.read_cell = read_cell;
+    if (!unterminal_residues.is_none()) {
+        for (const auto item : unterminal_residues) {
+            options.unterminal_residues.push_back(py::str(item));
+        }
+    }
+    parse_terminal_residues(options, terminal_residues);
+    options.infer_terminals = infer_terminals;
+    if (!model_id.is_none()) {
+        options.model_id = py::cast<std::string>(py::str(model_id));
+    }
+    parse_mmcif_residue_links(options, residue_links);
+    return std::make_shared<Molecule>(load_mmcif_text(read_python_input(source), options));
 }
 
 std::shared_ptr<Molecule> load_mol2_object(py::object source) {
@@ -209,6 +281,12 @@ void bind_io_module(py::module_& m) {
           py::arg("ignore_conect") = true, py::arg("read_cryst1") = true,
           py::arg("unterminal_residues") = py::none(), py::arg("terminal_residues") = py::none(),
           py::arg("infer_terminals") = true);
+    m.def("load_mmcif", &load_mmcif_object, py::arg("source"), py::arg("judge_histone") = true,
+          py::arg("position_need") = "A", py::arg("ignore_hydrogen") = false,
+          py::arg("ignore_unknown_name") = false, py::arg("ignore_seqres") = true,
+          py::arg("read_cell") = true, py::arg("unterminal_residues") = py::none(),
+          py::arg("terminal_residues") = py::none(), py::arg("infer_terminals") = true,
+          py::arg("model_id") = py::none(), py::arg("residue_links") = py::none());
     m.def("load_mol2", &load_mol2_object);
     m.def("load_molpsf", &load_molpsf_object, py::arg("source"), py::arg("split_by") = "connectivity");
     m.def("save_pdb", &save_pdb_object, py::arg("molecule"), py::arg("filename"), py::arg("write_cryst1") = true);

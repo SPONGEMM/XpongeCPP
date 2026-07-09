@@ -14,6 +14,107 @@ END
 """
 
 
+MMCIF_TERMINAL_TEXT = """\
+data_test
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.auth_atom_id
+_atom_site.label_comp_id
+_atom_site.auth_comp_id
+_atom_site.label_asym_id
+_atom_site.auth_asym_id
+_atom_site.label_seq_id
+_atom_site.auth_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.label_alt_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+ATOM 1 N N N VAL VAL A A 1 1 ? . 0.000 0.000 0.000 1.00 0.00 1
+ATOM 2 C CA CA VAL VAL A A 1 1 ? . 1.450 0.000 0.000 1.00 0.00 1
+ATOM 3 C C C VAL VAL A A 1 1 ? . 2.000 1.420 0.000 1.00 0.00 1
+ATOM 4 O O O VAL VAL A A 1 1 ? . 1.300 2.360 0.000 1.00 0.00 1
+ATOM 5 N N N TRP TRP A A 2 2 ? . 3.250 1.550 0.000 1.00 0.00 1
+ATOM 6 C CA CA TRP TRP A A 2 2 ? . 3.900 2.850 0.000 1.00 0.00 1
+ATOM 7 C C C TRP TRP A A 2 2 ? . 5.300 2.720 0.000 1.00 0.00 1
+ATOM 8 O O O TRP TRP A A 2 2 ? . 6.000 3.650 0.000 1.00 0.00 1
+"""
+
+
+MMCIF_LINK_TEXT = """\
+data_link
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.auth_atom_id
+_atom_site.label_comp_id
+_atom_site.auth_comp_id
+_atom_site.label_asym_id
+_atom_site.auth_asym_id
+_atom_site.label_seq_id
+_atom_site.auth_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.label_alt_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+HETATM 1 C C1 C1 MMA MMA A A 1 1 ? . 0.000 0.000 0.000 1.00 0.00 1
+HETATM 2 N N1 N1 MMB MMB A A 2 2 ? . 1.400 0.000 0.000 1.00 0.00 1
+loop_
+_struct_conn.id
+_struct_conn.conn_type_id
+_struct_conn.ptnr1_label_asym_id
+_struct_conn.ptnr1_label_seq_id
+_struct_conn.ptnr1_label_comp_id
+_struct_conn.ptnr1_label_atom_id
+_struct_conn.ptnr2_label_asym_id
+_struct_conn.ptnr2_label_seq_id
+_struct_conn.ptnr2_label_comp_id
+_struct_conn.ptnr2_label_atom_id
+_struct_conn.pdbx_ptnr1_PDB_ins_code
+_struct_conn.pdbx_ptnr2_PDB_ins_code
+conn1 covale A 1 MMA C1 A 2 MMB N1 ? ?
+"""
+
+
+MMCIF_MULTI_MODEL_TEXT = """\
+data_models
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.auth_atom_id
+_atom_site.label_comp_id
+_atom_site.auth_comp_id
+_atom_site.label_asym_id
+_atom_site.auth_asym_id
+_atom_site.label_seq_id
+_atom_site.auth_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.label_alt_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+ATOM 1 N N N GLY GLY A A 1 1 ? . 0.000 0.000 0.000 1.00 0.00 1
+ATOM 2 N N N GLY GLY A A 1 1 ? . 5.000 0.000 0.000 1.00 0.00 2
+"""
+
+
 MOL2_TEXT = """\
 @<TRIPOS>MOLECULE
 WAT
@@ -123,6 +224,50 @@ def test_load_pdb_preserves_molecule_residue_atom_layers():
     assert mol.residues[0].name == "NALA"
     assert mol.residues[0].atom_count == 4
     assert mol.residues[0].name2atom("CA").name == "CA"
+
+
+def test_load_mmcif_accepts_explicit_terminal_residue_selectors():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    mol = Xponge.load_mmcif(
+        StringIO(MMCIF_TERMINAL_TEXT),
+        terminal_residues=[
+            {"chain_id": "A", "residue_seq": 1, "n_terminal": True},
+            {"chain_id": "A", "residue_seq": 2, "c_terminal": True},
+        ],
+        infer_terminals=False,
+    )
+
+    assert mol.name == "mmCIF"
+    assert [res.name for res in mol.residues] == ["NVAL", "CTRP"]
+    assert mol.residue_links == [[2, 4]]
+
+
+def test_load_mmcif_reads_internal_links_and_deduplicates_external_links():
+    external_link = {
+        "atom_a": {"chain_id": "A", "residue_seq": 1, "residue_name": "MMA", "atom_name": "C1"},
+        "atom_b": {"chain_id": "A", "residue_seq": 2, "residue_name": "MMB", "atom_name": "N1"},
+    }
+
+    mol = Xponge.load_mmcif(
+        StringIO(MMCIF_LINK_TEXT),
+        ignore_unknown_name=True,
+        infer_terminals=False,
+        residue_links=[external_link],
+    )
+
+    assert [res.name for res in mol.residues] == ["MMA", "MMB"]
+    assert mol.residue_links == [[0, 1]]
+
+
+def test_load_mmcif_rejects_multi_model_without_explicit_model_id():
+    with pytest.raises(ValueError, match="multiple models"):
+        Xponge.load_mmcif(StringIO(MMCIF_MULTI_MODEL_TEXT))
+
+    mol = Xponge.load_mmcif(StringIO(MMCIF_MULTI_MODEL_TEXT), model_id="2")
+
+    assert mol.atom_count == 1
+    assert mol.atoms[0].x == pytest.approx(5.0)
 
 
 def test_residue_type_is_writable_and_versioned():

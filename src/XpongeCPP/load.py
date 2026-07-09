@@ -14,6 +14,7 @@ reexport_module(
         "load_mol2",
         "load_molitp",
         "load_molpsf",
+        "load_mmcif",
         "load_pdb",
         "load_rst7",
     ],

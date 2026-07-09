@@ -314,6 +314,33 @@ struct PdbLoadOptions {
     bool infer_terminals{true};
 };
 
+struct MmcifResidueLinkAtom {
+    char chain_id{' '};
+    int resseq{0};
+    char insertion_code{' '};
+    std::string residue_name;
+    std::string atom_name;
+};
+
+struct MmcifResidueLink {
+    MmcifResidueLinkAtom atom1;
+    MmcifResidueLinkAtom atom2;
+};
+
+struct MmcifLoadOptions {
+    bool judge_histone{true};
+    char position_need{'A'};
+    bool ignore_hydrogen{false};
+    bool ignore_unknown_name{false};
+    bool ignore_seqres{true};
+    bool read_cell{true};
+    std::vector<std::string> unterminal_residues;
+    std::vector<PdbLoadOptions::TerminalResidue> terminal_residues;
+    bool infer_terminals{true};
+    std::optional<std::string> model_id;
+    std::vector<MmcifResidueLink> residue_links;
+};
+
 class Molecule {
 public:
     explicit Molecule(std::string name = "MOL");
@@ -442,6 +469,8 @@ public:
 
 Molecule load_pdb_text(const std::string& text);
 Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options);
+Molecule load_mmcif_text(const std::string& text);
+Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& options);
 Molecule load_mol2_text(const std::string& text);
 Assign get_assignment_from_mol2_text(const std::string& text,
                                      std::optional<int> total_charge = std::nullopt,
