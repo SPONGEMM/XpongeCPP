@@ -730,36 +730,58 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
     }
 
     std::unordered_map<std::string, ResidueId> label_residue_to_id;
+    std::unordered_map<std::string, ResidueId> auth_residue_to_id;
     for (ResidueId i = 0; i < residues.size(); ++i) {
         label_residue_to_id[mmcif_atom_key(residues[i].label_asym, residues[i].label_seq,
                                            residues[i].label_comp, "", residues[i].insertion_code)] = i;
+        auth_residue_to_id[mmcif_atom_key(std::string(1, residues[i].chain_id), std::to_string(residues[i].resseq),
+                                          residues[i].base_name, "", residues[i].insertion_code)] = i;
     }
     for (const auto& row : mmcif_rows(data, "struct_conn")) {
-        const auto atom1 = pdb_upper_copy(mmcif_first(row, {"_struct_conn.ptnr1_label_atom_id"}));
-        const auto atom2 = pdb_upper_copy(mmcif_first(row, {"_struct_conn.ptnr2_label_atom_id"}));
-        const auto comp1 = pdb_upper_copy(mmcif_first(row, {"_struct_conn.ptnr1_label_comp_id"}));
-        const auto comp2 = pdb_upper_copy(mmcif_first(row, {"_struct_conn.ptnr2_label_comp_id"}));
+        const auto atom1 = pdb_upper_copy(
+            mmcif_first(row, {"_struct_conn.ptnr1_auth_atom_id", "_struct_conn.ptnr1_label_atom_id"}));
+        const auto atom2 = pdb_upper_copy(
+            mmcif_first(row, {"_struct_conn.ptnr2_auth_atom_id", "_struct_conn.ptnr2_label_atom_id"}));
+        const auto comp1 = pdb_upper_copy(
+            mmcif_first(row, {"_struct_conn.ptnr1_auth_comp_id", "_struct_conn.ptnr1_label_comp_id"}));
+        const auto comp2 = pdb_upper_copy(
+            mmcif_first(row, {"_struct_conn.ptnr2_auth_comp_id", "_struct_conn.ptnr2_label_comp_id"}));
         if (atom1 != "SG" || atom2 != "SG" || comp1 != "CYS" || comp2 != "CYS") {
             continue;
         }
-        const auto key1 = mmcif_atom_key(
+        const auto label_key1 = mmcif_atom_key(
             mmcif_first(row, {"_struct_conn.ptnr1_label_asym_id"}),
             mmcif_first(row, {"_struct_conn.ptnr1_label_seq_id"}),
-            comp1,
+            mmcif_first(row, {"_struct_conn.ptnr1_label_comp_id"}),
             "",
             mmcif_char(mmcif_first(row, {"_struct_conn.pdbx_ptnr1_pdb_ins_code"})));
-        const auto key2 = mmcif_atom_key(
+        const auto label_key2 = mmcif_atom_key(
             mmcif_first(row, {"_struct_conn.ptnr2_label_asym_id"}),
             mmcif_first(row, {"_struct_conn.ptnr2_label_seq_id"}),
-            comp2,
+            mmcif_first(row, {"_struct_conn.ptnr2_label_comp_id"}),
             "",
             mmcif_char(mmcif_first(row, {"_struct_conn.pdbx_ptnr2_pdb_ins_code"})));
-        if (const auto it = label_residue_to_id.find(key1); it != label_residue_to_id.end()) {
-            residues[it->second].disulfide = true;
-        }
-        if (const auto it = label_residue_to_id.find(key2); it != label_residue_to_id.end()) {
-            residues[it->second].disulfide = true;
-        }
+        const auto auth_key1 = mmcif_atom_key(
+            mmcif_first(row, {"_struct_conn.ptnr1_auth_asym_id", "_struct_conn.ptnr1_label_asym_id"}),
+            mmcif_first(row, {"_struct_conn.ptnr1_auth_seq_id", "_struct_conn.ptnr1_label_seq_id"}),
+            mmcif_first(row, {"_struct_conn.ptnr1_auth_comp_id", "_struct_conn.ptnr1_label_comp_id"}),
+            "",
+            mmcif_char(mmcif_first(row, {"_struct_conn.pdbx_ptnr1_pdb_ins_code"})));
+        const auto auth_key2 = mmcif_atom_key(
+            mmcif_first(row, {"_struct_conn.ptnr2_auth_asym_id", "_struct_conn.ptnr2_label_asym_id"}),
+            mmcif_first(row, {"_struct_conn.ptnr2_auth_seq_id", "_struct_conn.ptnr2_label_seq_id"}),
+            mmcif_first(row, {"_struct_conn.ptnr2_auth_comp_id", "_struct_conn.ptnr2_label_comp_id"}),
+            "",
+            mmcif_char(mmcif_first(row, {"_struct_conn.pdbx_ptnr2_pdb_ins_code"})));
+        const auto mark_disulfide = [&](const std::string& auth_key, const std::string& label_key) {
+            if (const auto it = auth_residue_to_id.find(auth_key); it != auth_residue_to_id.end()) {
+                residues[it->second].disulfide = true;
+            } else if (const auto fallback = label_residue_to_id.find(label_key); fallback != label_residue_to_id.end()) {
+                residues[fallback->second].disulfide = true;
+            }
+        };
+        mark_disulfide(auth_key1, label_key1);
+        mark_disulfide(auth_key2, label_key2);
     }
 
     std::unordered_map<char, ResidueId> chain_first;
@@ -905,12 +927,12 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
         if (auth_comp.empty()) auth_comp = mmcif_value(row, "_struct_conn." + partner + "_label_comp_id");
         if (auth_atom.empty()) auth_atom = mmcif_value(row, "_struct_conn." + partner + "_label_atom_id");
         const auto auth_key = mmcif_atom_key(auth_asym, auth_seq, auth_comp, auth_atom, insertion);
-        const auto label_it = atom_by_label.find(label_key);
-        if (label_it != atom_by_label.end()) {
-            return label_it->second;
-        }
         const auto auth_it = atom_by_auth.find(auth_key);
-        return auth_it == atom_by_auth.end() ? static_cast<AtomId>(molecule.atoms.size()) : auth_it->second;
+        if (auth_it != atom_by_auth.end()) {
+            return auth_it->second;
+        }
+        const auto label_it = atom_by_label.find(label_key);
+        return label_it == atom_by_label.end() ? static_cast<AtomId>(molecule.atoms.size()) : label_it->second;
     };
     for (const auto& row : mmcif_rows(data, "struct_conn")) {
         mmcif_add_connection(molecule, resolve_struct_conn_atom(row, "ptnr1"), resolve_struct_conn_atom(row, "ptnr2"));

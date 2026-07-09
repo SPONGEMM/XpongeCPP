@@ -88,6 +88,61 @@ conn1 covale A 1 MMA C1 A 2 MMB N1 ? ?
 """
 
 
+MMCIF_AUTH_LABEL_COLLISION_TEXT = """\
+data_auth_label_collision
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.auth_atom_id
+_atom_site.label_comp_id
+_atom_site.auth_comp_id
+_atom_site.label_asym_id
+_atom_site.auth_asym_id
+_atom_site.label_seq_id
+_atom_site.auth_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.label_alt_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+ATOM 1 N N N ALA ALA A A 1 -1 ? . 0.000 0.000 0.000 1.00 0.00 1
+ATOM 2 C CA CA ALA ALA A A 1 -1 ? . 1.000 0.000 0.000 1.00 0.00 1
+ATOM 3 C C C ALA ALA A A 1 -1 ? . 2.000 0.000 0.000 1.00 0.00 1
+ATOM 4 O O O ALA ALA A A 1 -1 ? . 3.000 0.000 0.000 1.00 0.00 1
+ATOM 5 N N N GLY GLY A A 2 0 ? . 4.000 0.000 0.000 1.00 0.00 1
+ATOM 6 C CA CA GLY GLY A A 2 0 ? . 5.000 0.000 0.000 1.00 0.00 1
+ATOM 7 C C C GLY GLY A A 2 0 ? . 6.000 0.000 0.000 1.00 0.00 1
+ATOM 8 O O O GLY GLY A A 2 0 ? . 7.000 0.000 0.000 1.00 0.00 1
+ATOM 9 N N N LYS LYS A A 3 1 ? . 8.000 0.000 0.000 1.00 0.00 1
+ATOM 10 C CA CA LYS LYS A A 3 1 ? . 9.000 0.000 0.000 1.00 0.00 1
+ATOM 11 C C C LYS LYS A A 3 1 ? . 10.000 0.000 0.000 1.00 0.00 1
+ATOM 12 O O O LYS LYS A A 3 1 ? . 11.000 0.000 0.000 1.00 0.00 1
+ATOM 13 N N N GLY GLY A A 4 2 ? . 12.000 0.000 0.000 1.00 0.00 1
+ATOM 14 C CA CA GLY GLY A A 4 2 ? . 13.000 0.000 0.000 1.00 0.00 1
+ATOM 15 C C C GLY GLY A A 4 2 ? . 14.000 0.000 0.000 1.00 0.00 1
+ATOM 16 O O O GLY GLY A A 4 2 ? . 15.000 0.000 0.000 1.00 0.00 1
+loop_
+_struct_conn.id
+_struct_conn.conn_type_id
+_struct_conn.ptnr1_label_asym_id
+_struct_conn.ptnr1_label_seq_id
+_struct_conn.ptnr1_label_comp_id
+_struct_conn.ptnr1_label_atom_id
+_struct_conn.ptnr2_label_asym_id
+_struct_conn.ptnr2_label_seq_id
+_struct_conn.ptnr2_label_comp_id
+_struct_conn.ptnr2_label_atom_id
+_struct_conn.pdbx_ptnr1_PDB_ins_code
+_struct_conn.pdbx_ptnr2_PDB_ins_code
+conn1 covale A 1 LYS C A 2 GLY N ? ?
+"""
+
+
 MMCIF_MULTI_MODEL_TEXT = """\
 data_models
 loop_
@@ -258,6 +313,14 @@ def test_load_mmcif_reads_internal_links_and_deduplicates_external_links():
 
     assert [res.name for res in mol.residues] == ["MMA", "MMB"]
     assert mol.residue_links == [[0, 1]]
+
+
+def test_load_mmcif_prefers_auth_identity_for_struct_conn():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    mol = Xponge.load_mmcif(StringIO(MMCIF_AUTH_LABEL_COLLISION_TEXT), infer_terminals=False)
+
+    assert mol.residue_links == [[2, 4], [6, 8], [10, 12]]
 
 
 def test_load_mmcif_rejects_multi_model_without_explicit_model_id():
