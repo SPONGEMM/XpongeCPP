@@ -52,14 +52,16 @@ std::pair<std::array<std::string, 4>, std::vector<std::string>> amber_atoms_word
     const std::string& line, std::size_t atom_width, const std::array<std::string, 4>* last_atoms = nullptr) {
     std::array<std::string, 4> atoms{"", "", "", ""};
     std::vector<std::string> words;
-    if (!line.empty() && line[0] == ' ') {
-        if (last_atoms != nullptr) {
-            atoms = *last_atoms;
+    const auto atom_field = line.substr(0, std::min(atom_width, line.size()));
+    if (trim_copy(atom_field).empty()) {
+        if (last_atoms == nullptr) {
+            throw std::runtime_error("Amber parameter continuation line has no preceding atom types");
         }
+        atoms = *last_atoms;
         words = split_ws(line.size() > atom_width ? line.substr(atom_width) : "");
         return {atoms, words};
     }
-    const auto atom_words = split_dash_atoms(line.substr(0, std::min(atom_width, line.size())));
+    const auto atom_words = split_dash_atoms(atom_field);
     for (std::size_t i = 0; i < std::min<std::size_t>(4, atom_words.size()); ++i) {
         atoms[i] = atom_words[i];
     }
@@ -386,6 +388,7 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
     std::uint32_t cmap_resolution = 24;
     std::vector<double> cmap_parameters;
     bool reset = true;
+    std::optional<std::array<std::string, 4>> last_dihedral_atoms;
     std::getline(input, line);
     while (std::getline(input, line)) {
         const auto trimmed = trim_copy(line);
@@ -395,6 +398,10 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
         const auto words0 = split_ws(line);
         if (flag.rfind("CMAP", 0) != 0 && words0.size() == 1) {
             flag = trimmed;
+            if (flag.rfind("DIHE", 0) == 0) {
+                last_dihedral_atoms.reset();
+                reset = true;
+            }
             continue;
         }
         if (flag.rfind("MASS", 0) == 0) {
@@ -417,7 +424,9 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
                                                                 3.14159265358979323846});
             }
         } else if (flag.rfind("DIHE", 0) == 0) {
-            auto [atoms, words] = amber_atoms_words(line, 11);
+            auto [atoms, words] = amber_atoms_words(
+                line, 11, last_dihedral_atoms ? &*last_dihedral_atoms : nullptr);
+            last_dihedral_atoms = atoms;
             if (words.size() < 4) {
                 continue;
             }

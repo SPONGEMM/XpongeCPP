@@ -3,6 +3,8 @@ from importlib import resources
 from io import StringIO
 from pathlib import Path
 
+import pytest
+
 import XpongeCPP as Xponge
 
 
@@ -234,6 +236,68 @@ USER_CHARGES
         "",
         "0 1 2 3 4 0",
     ]
+
+
+def test_amber_frcmod_dihedral_continuation_and_nb14(tmp_path):
+    frcmod = tmp_path / "continuation.frcmod"
+    frcmod.write_text(
+        """continuation test
+DIHE
+qA-qB-qC-qD    1  0.6  0.0  -3.0  SCEE=1.0 SCNB=1.0
+              1  0.2  180.0  1.0  SCEE=1.0 SCNB=1.0
+
+NONB
+qA  1.5  0.1
+qB  1.5  0.1
+qC  1.5  0.1
+qD  1.5  0.1
+"""
+    )
+    Xponge.register_amber_frcmod_file(str(frcmod))
+    for left, right in [("qA", "qB"), ("qB", "qC"), ("qC", "qD")]:
+        Xponge.register_amber_bond_parameter(left, right, 100.0, 1.5)
+    Xponge.register_amber_angle_parameter(["qA", "qB", "qC"], 50.0, 2.0)
+    Xponge.register_amber_angle_parameter(["qB", "qC", "qD"], 50.0, 2.0)
+
+    mol = Xponge.load_mol2(
+        StringIO(
+            """@<TRIPOS>MOLECULE
+CONTINUATION
+4 3 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 A 0.0 0.0 0.0 qA 1 MOL 0.1
+2 B 1.5 0.0 0.0 qB 1 MOL -0.1
+3 C 3.0 0.0 0.0 qC 1 MOL 0.1
+4 D 4.5 0.0 0.0 qD 1 MOL -0.1
+@<TRIPOS>BOND
+1 1 2 1
+2 2 3 1
+3 3 4 1
+"""
+        )
+    )
+    Xponge.Save_SPONGE_Input(mol, prefix="continuation", dirname=str(tmp_path))
+
+    dihedrals = (tmp_path / "continuation_dihedral.txt").read_text().splitlines()
+    nb14 = (tmp_path / "continuation_nb14.txt").read_text().splitlines()
+    assert dihedrals[0] == "2"
+    assert {int(line.split()[4]) for line in dihedrals[1:]} == {1, 3}
+    assert nb14[1].split()[2:] == ["1.000000", "1.000000"]
+
+
+def test_amber_frcmod_rejects_orphan_dihedral_continuation(tmp_path):
+    frcmod = tmp_path / "orphan.frcmod"
+    frcmod.write_text(
+        """orphan continuation test
+DIHE
+              1  0.2  180.0  1.0
+"""
+    )
+
+    with pytest.raises(RuntimeError, match="no preceding atom types"):
+        Xponge.register_amber_frcmod_file(str(frcmod))
 
 
 def test_full_amber_ecosystem_import_modules_register_packaged_templates_and_parameters():
