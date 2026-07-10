@@ -1,4 +1,7 @@
 import importlib
+import os
+import subprocess
+import sys
 from importlib import resources
 from io import StringIO
 from pathlib import Path
@@ -6,6 +9,18 @@ from pathlib import Path
 import pytest
 
 import XpongeCPP as Xponge
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _run_isolated(code, *args):
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-c", code, *map(str, args)], cwd=ROOT, env=env,
+        text=True, capture_output=True, check=True,
+    )
 
 
 def test_full_amber_forcefield_data_is_packaged():
@@ -65,14 +80,8 @@ def test_ff14sb_and_tip3p_imports_register_templates_from_real_amber_mol2():
 
 
 def test_ff19sb_import_registers_real_templates_and_cmap_parameters(tmp_path):
-    import XpongeCPP.forcefield.amber.ff19sb  # noqa: F401
-
-    assert Xponge.template_atom_count("ALA") >= 10
-    assert Xponge.template_atom_count("GLY") >= 7
-
-    mol = Xponge.load_mol2(
-        StringIO(
-            """@<TRIPOS>MOLECULE
+    mol2 = tmp_path / "ff19_cmap.mol2"
+    mol2.write_text("""@<TRIPOS>MOLECULE
 FF19_CMAP_TEST
 5 4 3
 SMALL
@@ -88,24 +97,22 @@ USER_CHARGES
 2 2 3 1
 3 3 4 1
 4 4 5 1
-"""
-        )
+""")
+    _run_isolated(
+        "import sys\n"
+        "import XpongeCPP as X\n"
+        "import XpongeCPP.forcefield.amber.ff19sb\n"
+        "assert X.template_atom_count('ALA') >= 10 and X.template_atom_count('GLY') >= 7\n"
+        "m = X.load_mol2(sys.argv[1])\n"
+        "assert 'cmap' in X.Save_SPONGE_Input(m, prefix='ff19', dirname=sys.argv[2])\n",
+        mol2, tmp_path,
     )
-
-    out = Xponge.Save_SPONGE_Input(mol, prefix="ff19", dirname=str(tmp_path))
-
-    assert "cmap" in out
     assert (tmp_path / "ff19_cmap.txt").read_text().splitlines()[0] == "1 1"
 
 
 def test_gaff_and_gaff2_imports_register_packaged_parameters(tmp_path):
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
-
-    # A missing parameter would raise during export; this exercises the Python import entry points.
-    mol = Xponge.load_mol2(
-        StringIO(
-        """@<TRIPOS>MOLECULE
+    mol2 = tmp_path / "eth.mol2"
+    mol2.write_text("""@<TRIPOS>MOLECULE
 ETH
 2 1 1
 SMALL
@@ -115,13 +122,18 @@ USER_CHARGES
 2 C2 1.5 0.0 0.0 c3 1 ETH 0.0
 @<TRIPOS>BOND
 1 1 2 1
-"""
+""")
+    for module, prefix in (("gaff", "eth_gaff"), ("gaff2", "eth_gaff2")):
+        _run_isolated(
+            "import importlib, sys\n"
+            "import XpongeCPP as X\n"
+            "importlib.import_module('XpongeCPP.forcefield.amber.' + sys.argv[1])\n"
+            "m = X.load_mol2(sys.argv[2])\n"
+            "assert m.atom_count == 2 and m.validate()\n"
+            "X.Save_SPONGE_Input(m, prefix=sys.argv[3], dirname=sys.argv[4])\n",
+            module, mol2, prefix, tmp_path,
         )
-    )
-    assert mol.atom_count == 2
-    assert mol.validate()
-    Xponge.Save_SPONGE_Input(mol, prefix="eth", dirname=str(tmp_path))
-    assert (tmp_path / "eth_bond.txt").read_text().splitlines()[0] == "1"
+        assert (tmp_path / f"{prefix}_bond.txt").read_text().splitlines()[0] == "1"
 
 
 def test_amber_multi_site_water_imports_register_complete_templates(tmp_path):
@@ -473,9 +485,7 @@ def test_amber_nucleic_lipid_and_glycam_modules_support_broader_assembled_export
         assert (tmp_path / f"{prefix}_resname.txt").read_text().splitlines() == [str(len(expected_resnames)), *expected_resnames]
 
 
-def test_pdb_terminal_mapping_is_chain_local_and_keeps_ace_nme_caps():
-    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
-
+def test_pdb_terminal_mapping_is_chain_local_and_keeps_ace_nme_caps(tmp_path):
     pdb = """\
 ATOM      1  N   MET A   1       0.000   0.000   0.000  1.00  0.00           N
 ATOM      2  CA  MET A   1       1.000   0.000   0.000  1.00  0.00           C
@@ -508,14 +518,14 @@ TER
 END
 """
 
-    mol = Xponge.load_pdb(StringIO(pdb))
-
-    assert [res.name for res in mol.residues] == [
-        "NMET",
-        "CSER",
-        "NALA",
-        "CGLY",
-        "ACE",
-        "ALA",
-        "NME",
-    ]
+    pdb_path = tmp_path / "chains.pdb"
+    pdb_path.write_text(pdb)
+    _run_isolated(
+        "import sys\n"
+        "import XpongeCPP as X\n"
+        "import XpongeCPP.forcefield.amber.ff14sb\n"
+        "m = X.load_pdb(sys.argv[1])\n"
+        "assert [r.name for r in m.residues] == "
+        "['NMET','CSER','NALA','CGLY','ACE','ALA','NME']\n",
+        pdb_path,
+    )

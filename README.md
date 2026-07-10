@@ -87,6 +87,26 @@ without making every matrix job depend on the full optional chemistry stack.
 - Common Python entry points such as `load_pdb`, `load_mol2`, `Add_Solvent_Box`, `Set_Box_Padding`, `Save_SPONGE_Input`, and `Assign`.
 - Numeric equivalence goals for SPONGE input, not byte-for-byte compatibility.
 
+### Amber lipid force fields
+
+Both Lipid17 and Lipid21 are packaged. Import exactly one lipid base family:
+
+```python
+import XpongeCPP.forcefield.amber.ff14sb
+import XpongeCPP.forcefield.amber.gaff2
+import XpongeCPP.forcefield.amber.lipid21  # or lipid17
+```
+
+Either lipid import automatically registers the shared PI/phosphoinositide/LysoPL
+extension. Input remains Amber's split-residue representation, such as
+`PA + SPM + SA`; full lipid names such as `PSM` and `POPC` are not automatically
+split. The extension's mixed Lipid/GLYCAM/phosphate/GAFF2 provenance is reported
+when it is loaded.
+
+Within one Python process, `ff14sb`/`ff19sb`, `gaff`/`gaff2`, and
+`lipid17`/`lipid21` are mutually exclusive pairs. Different families may be
+combined; use separate processes to compare alternatives in the same family.
+
 ## Development Environments
 
 The lightweight development path still uses `rtk uv`:
