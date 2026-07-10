@@ -300,6 +300,48 @@ DIHE
         Xponge.register_amber_frcmod_file(str(frcmod))
 
 
+def test_later_frcmod_dihedral_override_updates_match_priority(tmp_path):
+    Xponge.register_amber_proper_dihedral_parameter(["rA", "rB", "rC", "rD"], 1, 0.1, 0.0, True)
+    Xponge.register_amber_proper_dihedral_parameter(["rD", "rC", "rB", "rA"], 1, 0.2, 0.0, True)
+    frcmod = tmp_path / "override.frcmod"
+    frcmod.write_text(
+        """later override
+DIHE
+rA-rB-rC-rD    1  0.6  0.0  -3.0  SCEE=1.2 SCNB=2.0
+              1  0.4  180.0  1.0  SCEE=1.2 SCNB=2.0
+"""
+    )
+    Xponge.register_amber_frcmod_file(str(frcmod))
+    for atom_type in ["rA", "rB", "rC", "rD"]:
+        Xponge.register_amber_lj_parameter(atom_type, atom_type, 0.1, 1.5)
+    for left, right in [("rA", "rB"), ("rB", "rC"), ("rC", "rD")]:
+        Xponge.register_amber_bond_parameter(left, right, 100.0, 1.5)
+    Xponge.register_amber_angle_parameter(["rA", "rB", "rC"], 50.0, 2.0)
+    Xponge.register_amber_angle_parameter(["rB", "rC", "rD"], 50.0, 2.0)
+    molecule = Xponge.load_mol2(
+        StringIO(
+            """@<TRIPOS>MOLECULE
+OVERRIDE
+4 3 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 A 0.0 0.0 0.0 rA 1 MOL 0.1
+2 B 1.5 0.0 0.0 rB 1 MOL -0.1
+3 C 3.0 0.0 0.0 rC 1 MOL 0.1
+4 D 4.5 0.0 0.0 rD 1 MOL -0.1
+@<TRIPOS>BOND
+1 1 2 1
+2 2 3 1
+3 3 4 1
+"""
+        )
+    )
+    Xponge.Save_SPONGE_Input(molecule, prefix="override", dirname=str(tmp_path))
+    rows = (tmp_path / "override_dihedral.txt").read_text().splitlines()[1:]
+    assert {(int(row.split()[4]), float(row.split()[5])) for row in rows} == {(3, 0.6), (1, 0.4)}
+
+
 def test_full_amber_ecosystem_import_modules_register_packaged_templates_and_parameters():
     import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
 

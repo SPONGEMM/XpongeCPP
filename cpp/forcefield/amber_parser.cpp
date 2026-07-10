@@ -5,6 +5,7 @@
 #include <cmath>
 #include <fstream>
 #include <mutex>
+#include <numeric>
 #include <optional>
 #include <shared_mutex>
 #include <sstream>
@@ -99,15 +100,21 @@ void upsert_angle_parameter(const std::array<std::string, 3>& types, const Angle
 
 void upsert_proper_parameter(const std::array<std::string, 4>& types, const DihedralTerm& term, bool reset) {
     auto& parameters = proper_parameters();
+    const std::size_t next_order = std::accumulate(
+        parameters.begin(), parameters.end(), std::size_t{0},
+        [](std::size_t current, const ProperParameter& parameter) {
+            return std::max(current, parameter.order);
+        }) + 1;
     auto it = std::find_if(parameters.begin(), parameters.end(), [&](const ProperParameter& parameter) {
         return parameter.types == types;
     });
     if (it == parameters.end()) {
-        parameters.push_back({types, {}, parameters.size() + 1});
+        parameters.push_back({types, {}, next_order});
         it = std::prev(parameters.end());
     }
     if (reset) {
         it->terms.clear();
+        it->order = next_order;
     }
     it->terms.push_back(term);
 }
