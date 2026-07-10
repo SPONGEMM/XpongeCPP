@@ -1,5 +1,9 @@
 """Amber GAFF compatibility helpers."""
 
+from ._forcefield_family import activate_forcefield_family
+
+activate_forcefield_family("small_molecule", "gaff")
+
 import os
 from importlib import import_module
 from tempfile import TemporaryDirectory

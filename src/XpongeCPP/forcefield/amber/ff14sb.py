@@ -1,5 +1,9 @@
 """Register ff14SB templates from packaged Amber force-field data."""
 
+from ._forcefield_family import activate_forcefield_family
+
+activate_forcefield_family("protein", "ff14sb")
+
 from ... import (
     register_amber_frcmod_file,
     register_amber_parmdat_file,

@@ -1,5 +1,9 @@
 """Register Amber ff19SB templates, parameters, and CMAP terms."""
 
+from ._forcefield_family import activate_forcefield_family
+
+activate_forcefield_family("protein", "ff19sb")
+
 from ... import (
     register_amber_frcmod_file,
     register_amber_parmdat_file,

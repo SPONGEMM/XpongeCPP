@@ -1,5 +1,9 @@
 """Register Amber Lipid17 templates and parameters."""
 
+from ._forcefield_family import activate_forcefield_family
+
+activate_forcefield_family("lipid", "lipid17")
+
 import json
 
 from ... import (
