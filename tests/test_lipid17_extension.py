@@ -71,7 +71,8 @@ def test_packaged_lipid17_extension_artifacts_and_manifest():
 def test_lipid17_import_prints_extension_references_once_and_not_resp():
     result = _run_python("import XpongeCPP.forcefield.amber.lipid17\n")
     output = result.stdout + result.stderr
-    assert output.count("Reference for Lipid17 and Xponge Lipid17 extensions:") == 1
+    assert output.count("Reference for Lipid17:") == 1
+    assert output.count("Reference for Xponge lipid extensions:") == 1
     assert "Reference for resp.py:" not in output
 
 
