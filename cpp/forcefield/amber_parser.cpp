@@ -123,15 +123,21 @@ void add_improper_parameter(const std::array<std::string, 4>& types, const Dihed
     improper_parameters().push_back({types, term, improper_parameters().size() + 1});
 }
 
-void upsert_nb14_parameter(const std::string& atom_type1, const std::string& atom_type4, const NB14Scale& scale) {
+void upsert_nb14_parameter(const std::array<std::string, 4>& types, const NB14Scale& scale) {
     auto& parameters = nb14_parameters();
+    const std::size_t next_order = std::accumulate(
+        parameters.begin(), parameters.end(), std::size_t{0},
+        [](std::size_t current, const NB14Parameter& parameter) {
+            return std::max(current, parameter.order);
+        }) + 1;
     auto it = std::find_if(parameters.begin(), parameters.end(), [&](const NB14Parameter& parameter) {
-        return parameter.atom_type1 == atom_type1 && parameter.atom_type4 == atom_type4;
+        return parameter.types == types;
     });
     if (it == parameters.end()) {
-        parameters.push_back({atom_type1, atom_type4, scale, parameters.size() + 1});
+        parameters.push_back({types, scale, next_order});
     } else {
         it->scale = scale;
+        it->order = next_order;
     }
 }
 
@@ -247,7 +253,7 @@ std::vector<ImproperParameter>& improper_parameters() {
 }
 
 std::vector<NB14Parameter>& nb14_parameters() {
-    static std::vector<NB14Parameter> parameters{{"X", "X", {0.5, 0.833333}, 0}};
+    static std::vector<NB14Parameter> parameters{{{"X", "X", "X", "X"}, {0.5, 0.833333}, 0}};
     return parameters;
 }
 
@@ -335,7 +341,7 @@ void register_amber_parmdat_file(const std::filesystem::path& filename) {
         const auto phase = std::stod(words[2]) / 180.0 * 3.14159265358979323846;
         const auto periodicity = std::abs(static_cast<int>(std::stod(words[3])));
         if (const auto scale = parse_nb14_scale(line)) {
-            upsert_nb14_parameter(atoms[0], atoms[3], *scale);
+            upsert_nb14_parameter(atoms, *scale);
         }
         upsert_proper_parameter(atoms, {periodicity, k, phase}, reset);
         reset = std::stod(words[3]) >= 0.0;
@@ -442,7 +448,7 @@ void register_amber_frcmod_file(const std::filesystem::path& filename) {
             const auto phase = std::stod(words[2]) / 180.0 * 3.14159265358979323846;
             const auto periodicity = std::abs(static_cast<int>(std::stod(words[3])));
             if (const auto scale = parse_nb14_scale(line)) {
-                upsert_nb14_parameter(atoms[0], atoms[3], *scale);
+                upsert_nb14_parameter(atoms, *scale);
             }
             upsert_proper_parameter(atoms, {periodicity, k, phase}, reset);
             reset = std::stod(words[3]) >= 0.0;
@@ -526,7 +532,7 @@ void register_amber_improper_dihedral_parameter(const std::array<std::string, 4>
 void register_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4, double k_lj,
                                double k_ee) {
     std::unique_lock lock(registry_mutex());
-    upsert_nb14_parameter(atom_type1, atom_type4, {k_lj, k_ee});
+    upsert_nb14_parameter({atom_type1, "X", "X", atom_type4}, {k_lj, k_ee});
 }
 
 void register_amber_cmap_parameter(const std::string& key, std::uint32_t resolution,
@@ -668,14 +674,18 @@ std::optional<AmberImproperMatch> find_amber_improper_match(const std::array<std
     return std::nullopt;
 }
 
-std::optional<NB14Scale> find_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4) {
+std::optional<NB14Scale> find_amber_nb14_dihedral_scale(
+    const std::array<std::string, 4>& atom_types) {
     std::shared_lock lock(registry_mutex());
+    const std::array<std::string, 4> reverse{
+        atom_types[3], atom_types[2], atom_types[1], atom_types[0]};
     int best_score = -1;
     std::size_t best_order = 0;
     std::optional<NB14Scale> out;
     for (const auto& parameter : nb14_parameters()) {
-        const int score = std::max(wildcard_pair_score(parameter.atom_type1, parameter.atom_type4, atom_type1, atom_type4),
-                                   wildcard_pair_score(parameter.atom_type1, parameter.atom_type4, atom_type4, atom_type1));
+        const int score = std::max(
+            wildcard_score(parameter.types, atom_types),
+            wildcard_score(parameter.types, reverse));
         if (score < 0) {
             continue;
         }
@@ -686,6 +696,11 @@ std::optional<NB14Scale> find_amber_nb14_scale(const std::string& atom_type1, co
         }
     }
     return out;
+}
+
+std::optional<NB14Scale> find_amber_nb14_scale(
+    const std::string& atom_type1, const std::string& atom_type4) {
+    return find_amber_nb14_dihedral_scale({atom_type1, "X", "X", atom_type4});
 }
 
 std::optional<BondTerm> find_amber_bond_term(const std::string& atom_type1, const std::string& atom_type2) {

@@ -249,8 +249,9 @@ public:
         return improper_terms_.emplace(key, result).first->second;
     }
 
-    std::optional<NB14Scale> nb14(AtomId atom1, AtomId atom2) {
-        const auto key = canonical_pair_key(atom_type_ids_[atom1], atom_type_ids_[atom2]);
+    std::optional<NB14Scale> nb14(AtomId atom1, AtomId atom2, AtomId atom3, AtomId atom4) {
+        const auto key = canonical_proper_key(
+            atom_type_ids_[atom1], atom_type_ids_[atom2], atom_type_ids_[atom3], atom_type_ids_[atom4]);
         {
             std::lock_guard<std::mutex> lock(nb14_mutex_);
             const auto it = nb14_scales_.find(key);
@@ -258,7 +259,12 @@ public:
                 return it->second;
             }
         }
-        const auto result = find_amber_nb14_scale(molecule_.atoms[atom1].type, molecule_.atoms[atom2].type);
+        const auto result = find_amber_nb14_dihedral_scale({
+            molecule_.atoms[atom1].type,
+            molecule_.atoms[atom2].type,
+            molecule_.atoms[atom3].type,
+            molecule_.atoms[atom4].type,
+        });
         std::lock_guard<std::mutex> lock(nb14_mutex_);
         return nb14_scales_.emplace(key, result).first->second;
     }
@@ -275,7 +281,7 @@ private:
     std::unordered_map<TripleTypeKey, std::optional<AngleTerm>, TripleTypeKeyHash> angle_terms_;
     std::unordered_map<QuadTypeKey, std::vector<DihedralTerm>, QuadTypeKeyHash> proper_terms_;
     std::unordered_map<QuadTypeKey, std::optional<AmberImproperMatch>, QuadTypeKeyHash> improper_terms_;
-    std::unordered_map<PairTypeKey, std::optional<NB14Scale>, PairTypeKeyHash> nb14_scales_;
+    std::unordered_map<QuadTypeKey, std::optional<NB14Scale>, QuadTypeKeyHash> nb14_scales_;
 };
 
 std::uint64_t pair_key(AtomId atom1, AtomId atom2) {
@@ -729,6 +735,15 @@ Topology build_topology(const Molecule& molecule) {
     std::sort(seen_14.begin(), seen_14.end());
     seen_14.erase(std::unique(seen_14.begin(), seen_14.end()), seen_14.end());
 
+    std::unordered_map<std::uint64_t, DihedralOccurrence> nb14_occurrence_by_pair;
+    nb14_occurrence_by_pair.reserve(seen_14.size());
+    for (const auto& occurrence : merged_dihedrals) {
+        const auto key = pair_key(occurrence.atom1, occurrence.atom4);
+        if (std::binary_search(seen_14.begin(), seen_14.end(), key)) {
+            nb14_occurrence_by_pair.try_emplace(key, occurrence);
+        }
+    }
+
     add_xponge_impropers(molecule, adjacency, topology.dihedrals, lookup_cache);
 
     std::sort(topology.dihedrals.begin(), topology.dihedrals.end(), [](const Dihedral& lhs, const Dihedral& rhs) {
@@ -769,7 +784,13 @@ Topology build_topology(const Molecule& molecule) {
     for (const auto key : seen_14) {
         const AtomId atom1 = static_cast<AtomId>(key >> 32U);
         const AtomId atom2 = static_cast<AtomId>(key & 0xffffffffU);
-        if (const auto scale = lookup_cache.nb14(atom1, atom2)) {
+        const auto occurrence_it = nb14_occurrence_by_pair.find(key);
+        if (occurrence_it == nb14_occurrence_by_pair.end()) {
+            continue;
+        }
+        const auto& occurrence = occurrence_it->second;
+        if (const auto scale = lookup_cache.nb14(
+                occurrence.atom1, occurrence.atom2, occurrence.atom3, occurrence.atom4)) {
             if (scale->k_lj != 0.0 && scale->k_ee != 0.0) {
                 topology.nb14s.push_back({atom1, atom2, scale->k_lj, scale->k_ee});
             }

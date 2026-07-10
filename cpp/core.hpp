@@ -590,6 +590,8 @@ std::vector<DihedralTerm> find_amber_proper_terms(const std::array<std::string, 
 std::optional<DihedralTerm> find_amber_improper_term(const std::array<std::string, 4>& atom_types);
 std::optional<AmberImproperMatch> find_amber_improper_match(const std::array<std::string, 4>& atom_types);
 std::optional<NB14Scale> find_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4);
+std::optional<NB14Scale> find_amber_nb14_dihedral_scale(
+    const std::array<std::string, 4>& atom_types);
 std::optional<BondTerm> find_amber_bond_term(const std::string& atom_type1, const std::string& atom_type2);
 std::optional<AngleTerm> find_amber_angle_term(const std::array<std::string, 3>& atom_types);
 std::string find_amber_lj_type(const std::string& atom_type);

@@ -287,6 +287,46 @@ USER_CHARGES
     assert nb14[1].split()[2:] == ["1.000000", "1.000000"]
 
 
+def test_amber_nb14_scale_can_depend_on_all_four_dihedral_types(tmp_path):
+    frcmod = tmp_path / "torsion_specific_nb14.frcmod"
+    frcmod.write_text(
+        """torsion-specific 1-4 scales
+DIHE
+zA-zB-zC-zD    1  0.2  0.0  1.0  SCEE=1.2 SCNB=6.0
+zA-zE-zF-zD    1  0.2  0.0  1.0  SCEE=1.2 SCNB=2.0
+
+NONB
+zA  1.5  0.1
+zB  1.5  0.1
+zC  1.5  0.1
+zD  1.5  0.1
+zE  1.5  0.1
+zF  1.5  0.1
+"""
+    )
+    Xponge.register_amber_frcmod_file(str(frcmod))
+
+    def build(types, prefix):
+        for left, right in zip(types, types[1:]):
+            Xponge.register_amber_bond_parameter(left, right, 100.0, 1.5)
+        for atom_types in zip(types, types[1:], types[2:]):
+            Xponge.register_amber_angle_parameter(list(atom_types), 50.0, 2.0)
+        atoms = "\n".join(
+            f"{index} A{index} {1.5 * (index - 1):.1f} 0.0 0.0 {atom_type} 1 MOL 0.0"
+            for index, atom_type in enumerate(types, 1)
+        )
+        molecule = Xponge.load_mol2(StringIO(
+            "@<TRIPOS>MOLECULE\nNB14\n4 3 1\nSMALL\nUSER_CHARGES\n"
+            "@<TRIPOS>ATOM\n" + atoms + "\n@<TRIPOS>BOND\n"
+            "1 1 2 1\n2 2 3 1\n3 3 4 1\n"
+        ))
+        Xponge.Save_SPONGE_Input(molecule, prefix=prefix, dirname=str(tmp_path))
+        return (tmp_path / f"{prefix}_nb14.txt").read_text().splitlines()[1].split()[2:]
+
+    assert build(["zA", "zB", "zC", "zD"], "scale6") == ["0.166667", "0.833333"]
+    assert build(["zA", "zE", "zF", "zD"], "scale2") == ["0.500000", "0.833333"]
+
+
 def test_amber_frcmod_rejects_orphan_dihedral_continuation(tmp_path):
     frcmod = tmp_path / "orphan.frcmod"
     frcmod.write_text(
