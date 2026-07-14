@@ -48,15 +48,17 @@ so old `Xponge` package-name imports can continue to work after installation.
 The package now declares a practical default dependency set for pip users:
 
 - `numpy`
+- `geometric`
+- `matplotlib`
 - `PubChemPy`
 - `MDAnalysis`
 - `rdkit`
 - `pyscf` on non-Windows platforms
-- `XpongeLib`
+- `mokda-xpongelib` (imported as `XpongeLib`)
 
 Windows automatically skips `pyscf` through environment markers.
 
-`XpongeLib` is included so legacy `gaff.parmchk2_gaff(...)` workflows can
+`mokda-xpongelib` is included so legacy `gaff.parmchk2_gaff(...)` workflows can
 resolve the `XpongeLib` bridge automatically after installation.
 
 See:

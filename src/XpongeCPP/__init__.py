@@ -163,7 +163,7 @@ from .process import (
 from .legacy_types import _LegacyResidueTypeHandle
 from .template_ops import load_mol2
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 pi = np.pi
 kb = 0.00198716
 bar = 1.439506089041446e-5
