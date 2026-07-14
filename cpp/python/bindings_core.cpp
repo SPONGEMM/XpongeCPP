@@ -144,9 +144,14 @@ void bind_core_module(py::module_& m) {
         .def_property_readonly("explicit_bonds", &molecule_explicit_bonds)
         .def_property_readonly("residue_links", &molecule_residue_links)
         .def_readwrite("box_length", &Molecule::box_length)
+        .def_readwrite("box_origin", &Molecule::box_origin)
         .def_readwrite("box_angle", &Molecule::box_angle)
         .def("set_box_padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
         .def("Set_Box_Padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
+        .def("set_periodic_box", &Molecule::set_periodic_box, py::arg("origin"), py::arg("lengths"),
+             py::arg("angles") = std::array<double, 3>{90.0, 90.0, 90.0})
+        .def("Set_Periodic_Box", &Molecule::set_periodic_box, py::arg("origin"), py::arg("lengths"),
+             py::arg("angles") = std::array<double, 3>{90.0, 90.0, 90.0})
         .def("add_molecule", &Molecule::add_molecule, py::arg("other"))
         .def("Add_Molecule", &Molecule::add_molecule, py::arg("other"))
         .def("add_residue_link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))

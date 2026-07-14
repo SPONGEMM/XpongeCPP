@@ -363,8 +363,10 @@ public:
     std::unordered_map<std::string, EDIPParameter> edip_parameters;
     std::optional<Topology> topology_override;
     std::array<double, 3> box_length{0.0, 0.0, 0.0};
+    std::array<double, 3> box_origin{0.0, 0.0, 0.0};
     std::array<double, 3> box_angle{90.0, 90.0, 90.0};
     bool has_box{false};
+    bool has_box_origin{false};
     bool has_gb_parameters{false};
     bool write_min_bonded_parameters{false};
     bool write_subsys_division{false};
@@ -402,6 +404,8 @@ public:
                        double q0, double u1, double u2, double u3, double u4);
     void set_ignore_missing_atoms(bool enabled = true) noexcept;
     void set_box_padding(double padding, bool center);
+    void set_periodic_box(const std::array<double, 3>& origin, const std::array<double, 3>& lengths,
+                          const std::array<double, 3>& angles = {90.0, 90.0, 90.0});
     void replace_residues(const std::unordered_map<ResidueId, Molecule>& replacements,
                           const std::vector<double>& residue_sort_keys = {}, bool sort = true);
     void reorder_atoms_by_template(const Molecule& template_molecule);

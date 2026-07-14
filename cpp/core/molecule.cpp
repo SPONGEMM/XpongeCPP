@@ -1,6 +1,7 @@
 #include "core.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 
@@ -441,6 +442,7 @@ void Molecule::set_box_padding(double padding, bool center) {
         maxv[2] - minv[2] + 2.0 * padding,
     };
     has_box = true;
+    has_box_origin = false;
     if (center) {
         const std::array<double, 3> shift{padding - minv[0], padding - minv[1], padding - minv[2]};
         for (auto& atom : atoms) {
@@ -449,6 +451,26 @@ void Molecule::set_box_padding(double padding, bool center) {
             atom.z += shift[2];
         }
     }
+}
+
+void Molecule::set_periodic_box(const std::array<double, 3>& origin, const std::array<double, 3>& lengths,
+                                const std::array<double, 3>& angles) {
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+        if (!std::isfinite(origin[axis]) || !std::isfinite(lengths[axis]) || !std::isfinite(angles[axis])) {
+            throw std::invalid_argument("periodic box values must be finite");
+        }
+        if (lengths[axis] <= 0.0) {
+            throw std::invalid_argument("periodic box lengths must be positive");
+        }
+        if (std::abs(angles[axis] - 90.0) > 1.0e-6) {
+            throw std::invalid_argument("only orthorhombic periodic boxes are supported");
+        }
+    }
+    box_origin = origin;
+    box_length = lengths;
+    box_angle = angles;
+    has_box = true;
+    has_box_origin = true;
 }
 
 bool Molecule::validate() const {

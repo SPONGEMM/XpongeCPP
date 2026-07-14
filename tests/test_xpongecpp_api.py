@@ -601,6 +601,20 @@ def test_save_sponge_input_writes_core_files(tmp_path):
     assert (tmp_path / "case_residue.txt").read_text().splitlines()[0] == "4 1"
 
 
+def test_save_sponge_input_translates_explicit_box_origin_without_wrapping(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    mol = Xponge.load_pdb(StringIO(PDB_TEXT))
+    mol.set_periodic_box(origin=[1.0, 2.0, 3.0], lengths=[20.0, 21.0, 22.0])
+
+    Xponge.Save_SPONGE_Input(mol, prefix="explicit", dirname=str(tmp_path))
+
+    coordinate_lines = (tmp_path / "explicit_coordinate.txt").read_text().splitlines()
+    assert coordinate_lines[1] == "-1.000000 -2.000000 -3.000000"
+    assert coordinate_lines[-1] == "20.000000 21.000000 22.000000 90.000000 90.000000 90.000000"
+    assert [mol.atoms[0].x, mol.atoms[0].y, mol.atoms[0].z] == [0.0, 0.0, 0.0]
+
+
 def test_save_sponge_input_is_byte_identical_across_repeated_exports(tmp_path):
     import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
     import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
