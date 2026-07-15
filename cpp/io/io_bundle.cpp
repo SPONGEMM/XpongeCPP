@@ -235,21 +235,23 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
   std::vector<float> improper_pk, improper_phi0;
   for (const auto &item : molecule.harmonic_impropers) {
     improper_atoms.insert(improper_atoms.end(),
-                          {static_cast<std::int32_t>(item.atom0),
+                          {static_cast<std::int32_t>(item.atom2),
+                           static_cast<std::int32_t>(item.atom0),
                            static_cast<std::int32_t>(item.atom1),
-                           static_cast<std::int32_t>(item.atom2),
                            static_cast<std::int32_t>(item.atom3)});
     improper_pk.push_back(item.k);
     improper_phi0.push_back(item.phi0);
   }
-  write_array(file, "/forcefield/improper/atoms",
-              {molecule.harmonic_impropers.size(), 4}, improper_atoms);
-  write_array(file, "/forcefield/improper/pk",
-              {molecule.harmonic_impropers.size()}, improper_pk);
-  write_array(file, "/forcefield/improper/phi0",
-              {molecule.harmonic_impropers.size()}, improper_phi0);
-  write_scalar<std::int64_t>(file, "/forcefield/improper/count",
-                             molecule.harmonic_impropers.size());
+  if (!molecule.harmonic_impropers.empty()) {
+    write_array(file, "/forcefield/improper/atoms",
+                {molecule.harmonic_impropers.size(), 4}, improper_atoms);
+    write_array(file, "/forcefield/improper/pk",
+                {molecule.harmonic_impropers.size()}, improper_pk);
+    write_array(file, "/forcefield/improper/phi0",
+                {molecule.harmonic_impropers.size()}, improper_phi0);
+    write_scalar<std::int64_t>(file, "/forcefield/improper/count",
+                               molecule.harmonic_impropers.size());
+  }
   write_array(file, "/forcefield/nb14/atoms", {topology.nb14s.size(), 2},
               nb14_atoms);
   write_array(file, "/forcefield/nb14/params",
@@ -383,9 +385,15 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
 
   std::vector<std::int64_t> exclude_offset{0};
   std::vector<std::int32_t> exclude_list;
-  for (const auto &row : topology.exclusions) {
-    for (const auto atom : row)
-      exclude_list.push_back(atom);
+  for (std::size_t atom_index = 0; atom_index < topology.exclusions.size();
+       ++atom_index) {
+    for (const auto excluded_atom : topology.exclusions[atom_index]) {
+      // SPONGE's legacy exclusion payload stores each unordered pair once,
+      // under the lower-index atom.  build_topology() intentionally exposes a
+      // symmetric adjacency list, so materialize only its upper triangle.
+      if (atom_index < excluded_atom)
+        exclude_list.push_back(excluded_atom);
+    }
     exclude_offset.push_back(exclude_list.size());
   }
   write_array(file, "/topology/exclusions/offset", {exclude_offset.size()},
