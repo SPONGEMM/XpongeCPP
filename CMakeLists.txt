@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(XpongeCPP LANGUAGES CXX)
+project(XpongeCPP LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -7,6 +7,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(PYBIND11_FINDPYTHON ON)
 
 find_package(pybind11 CONFIG REQUIRED)
+find_package(HighFive CONFIG REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS C)
 
 pybind11_add_module(_core
     cpp/assign/assign.cpp
@@ -35,6 +37,7 @@ pybind11_add_module(_core
     cpp/io/coordinate.cpp
     cpp/io/mol2.cpp
     cpp/io/gro.cpp
+    cpp/io/io_bundle.cpp
     cpp/io/pdb_hybrid36.cpp
     cpp/io/pdb.cpp
     cpp/io/pdb_reader.cpp
@@ -52,6 +55,19 @@ pybind11_add_module(_core
 )
 
 target_include_directories(_core PRIVATE cpp cpp/assign cpp/core cpp/forcefield cpp/io cpp/solvation cpp/topology)
+if(TARGET HighFive::HighFive)
+    target_link_libraries(_core PRIVATE HighFive::HighFive)
+elseif(TARGET HighFive)
+    target_link_libraries(_core PRIVATE HighFive)
+else()
+    message(FATAL_ERROR "HighFive target was not provided by find_package(HighFive)")
+endif()
+if(TARGET HDF5::HDF5)
+    target_link_libraries(_core PRIVATE HDF5::HDF5)
+else()
+    target_include_directories(_core PRIVATE ${HDF5_INCLUDE_DIRS})
+    target_link_libraries(_core PRIVATE ${HDF5_LIBRARIES})
+endif()
 target_compile_options(_core PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
 )

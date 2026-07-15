@@ -490,6 +490,8 @@ void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname);
+std::unordered_map<std::string, std::filesystem::path> save_sponge_input_bundle(
+    const Molecule& molecule, const std::string& prefix, const std::filesystem::path& dirname);
 void save_pdb(const Molecule& molecule, const std::filesystem::path& filename);
 void save_mol2(const Molecule& molecule, const std::filesystem::path& filename);
 struct GroData {

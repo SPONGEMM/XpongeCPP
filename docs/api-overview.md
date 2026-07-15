@@ -65,6 +65,7 @@ from Xponge.forcefield.special import fep
 - `Save_Mol2`
 - `Save_GRO`
 - `Save_SPONGE_Input`
+- `save_sponge_input_bundle` (native HighFive/HDF5 topology, protocol, and restart output)
 - `Add_Solvent_Box`
 - `Add_Ions`
 - `Set_Box_Padding`

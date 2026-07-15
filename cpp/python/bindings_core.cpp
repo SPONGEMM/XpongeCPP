@@ -60,6 +60,34 @@ std::unordered_map<std::string, std::string> save_sponge_input_object(const std:
     return out;
 }
 
+std::shared_ptr<Molecule> save_sponge_input_bundle_object(
+    const std::shared_ptr<Molecule>& molecule, const std::string& prefix, py::object dirname) {
+    save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
+                             py::str(dirname).cast<std::string>());
+    return molecule;
+}
+
+std::shared_ptr<Molecule> save_residuetype_bundle_object(
+    const ResidueType& residue_type, const std::string& prefix, py::object dirname) {
+    auto molecule = std::make_shared<Molecule>(residue_type.name());
+    molecule->append_residue_from_type(residue_type, 0.0, 0.0, 0.0);
+    save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
+                             py::str(dirname).cast<std::string>());
+    return molecule;
+}
+
+std::shared_ptr<Molecule> save_template_like_bundle_object(
+    py::object source, const std::string& prefix, py::object dirname) {
+    if (!py::hasattr(source, "name")) {
+        throw py::type_error("save_sponge_input_bundle expects a Molecule or residue template");
+    }
+    auto molecule = std::make_shared<Molecule>(
+        get_template_molecule(py::str(source.attr("name")).cast<std::string>()));
+    save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
+                             py::str(dirname).cast<std::string>());
+    return molecule;
+}
+
 py::tuple merge_dual_topology_object(const std::shared_ptr<Molecule>& molecule, ResidueId residue_index,
                                      const std::shared_ptr<Molecule>& residue_b_molecule,
                                      const std::unordered_map<std::uint32_t, std::uint32_t>& match_b_to_a) {
@@ -264,6 +292,12 @@ void bind_core_module(py::module_& m) {
           py::arg("center") = true);
     m.def("save_sponge_input", &save_sponge_input_object, py::arg("molecule"), py::arg("prefix") = "",
           py::arg("dirname") = ".");
+    m.def("save_sponge_input_bundle", &save_sponge_input_bundle_object, py::arg("molecule"),
+          py::arg("prefix") = "", py::arg("dirname") = ".");
+    m.def("save_sponge_input_bundle", &save_residuetype_bundle_object, py::arg("molecule"),
+          py::arg("prefix") = "", py::arg("dirname") = ".");
+    m.def("save_sponge_input_bundle", &save_template_like_bundle_object, py::arg("molecule"),
+          py::arg("prefix") = "", py::arg("dirname") = ".");
     m.def("merge_dual_topology", &merge_dual_topology_object, py::arg("molecule"), py::arg("residue_index"),
           py::arg("residue_b_molecule"), py::arg("match_b_to_a"));
     m.def("merge_force_field", &merge_force_field_object, py::arg("molecule_a"), py::arg("molecule_b"),

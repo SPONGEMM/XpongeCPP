@@ -105,6 +105,11 @@ pixi run test-resp
 pixi run test
 ```
 
+Bundled SPONGE HDF5 I/O is implemented in the native C++ backend. Its build
+dependencies match SPONGE: HighFive and the HDF5 C library. The `pixi`
+environment installs both automatically; manual source builds must provide
+discoverable `HighFive` and `HDF5` CMake packages.
+
 RESP supports a multi-backend strategy:
 
 - default backend: `PySCF`
