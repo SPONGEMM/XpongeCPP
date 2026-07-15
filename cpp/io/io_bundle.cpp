@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "sha256.hpp"
 #include "sponge_writers.hpp"
 
 #include <hdf5.h>
@@ -6,18 +7,118 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstring>
+#include <map>
 #include <stdexcept>
+#include <type_traits>
 
 namespace xpongecpp {
 namespace {
 
+struct TrackedDataset {
+  std::string dtype;
+  std::vector<hsize_t> dimensions;
+  std::vector<std::uint8_t> bytes;
+};
+
+template <typename T> const char *numpy_dtype_name();
+template <> const char *numpy_dtype_name<float>() { return "float32"; }
+template <> const char *numpy_dtype_name<double>() { return "float64"; }
+template <> const char *numpy_dtype_name<std::int32_t>() { return "int32"; }
+template <> const char *numpy_dtype_name<std::int64_t>() { return "int64"; }
+template <> const char *numpy_dtype_name<std::uint32_t>() { return "uint32"; }
+
+std::string numpy_shape(const std::vector<hsize_t> &dimensions) {
+  if (dimensions.empty())
+    return "()";
+  std::string output = "(";
+  for (std::size_t index = 0; index < dimensions.size(); ++index) {
+    if (index)
+      output += ", ";
+    output += std::to_string(dimensions[index]);
+  }
+  if (dimensions.size() == 1)
+    output += ',';
+  return output + ')';
+}
+
+class DatasetHashTracker {
+public:
+  template <typename T>
+  void add_numeric(const std::string &path,
+                   const std::vector<hsize_t> &dimensions,
+                   const std::vector<T> &values) {
+    static_assert(std::is_arithmetic_v<T>, "numeric dataset required");
+    TrackedDataset dataset;
+    dataset.dtype = numpy_dtype_name<T>();
+    dataset.dimensions = dimensions;
+    dataset.bytes.resize(values.size() * sizeof(T));
+    if (!values.empty())
+      std::memcpy(dataset.bytes.data(), values.data(), dataset.bytes.size());
+    datasets_[path] = std::move(dataset);
+  }
+
+  template <typename T>
+  void add_scalar(const std::string &path, T value) {
+    add_numeric(path, {}, std::vector<T>{value});
+  }
+
+  void add_strings(const std::string &path,
+                   const std::vector<std::string> &values) {
+    TrackedDataset dataset;
+    dataset.dtype = "object";
+    dataset.dimensions = {values.size()};
+    std::size_t byte_count = values.empty() ? 0 : values.size() - 1;
+    for (const auto &value : values)
+      byte_count += value.size();
+    dataset.bytes.reserve(byte_count);
+    for (std::size_t index = 0; index < values.size(); ++index) {
+      if (index)
+        dataset.bytes.push_back(0);
+      dataset.bytes.insert(dataset.bytes.end(), values[index].begin(),
+                           values[index].end());
+    }
+    datasets_[path] = std::move(dataset);
+  }
+
+  std::string content_hash(
+      const std::string &bundle_file,
+      const std::vector<std::string> &path_prefixes = {}) const {
+    detail::Sha256 digest;
+    digest.update(bundle_file);
+    const std::uint8_t separator = 0;
+    for (const auto &[path, dataset] : datasets_) {
+      bool selected = path_prefixes.empty();
+      for (const auto &prefix : path_prefixes)
+        selected = selected || path.rfind(prefix, 0) == 0;
+      if (!selected)
+        continue;
+      digest.update(&separator, 1);
+      digest.update(path);
+      digest.update(&separator, 1);
+      digest.update(dataset.dtype);
+      digest.update(&separator, 1);
+      digest.update(numpy_shape(dataset.dimensions));
+      digest.update(&separator, 1);
+      if (!dataset.bytes.empty())
+        digest.update(dataset.bytes.data(), dataset.bytes.size());
+    }
+    return "sha256:" + digest.hex_digest();
+  }
+
+private:
+  std::map<std::string, TrackedDataset> datasets_;
+};
+
 class H5File {
 public:
-  explicit H5File(const std::filesystem::path &path)
-      : handle(path.string(), HighFive::File::Overwrite) {}
+  explicit H5File(const std::filesystem::path &path,
+                  DatasetHashTracker *tracker = nullptr)
+      : handle(path.string(), HighFive::File::Overwrite), tracker(tracker) {}
   H5File(const H5File &) = delete;
   H5File &operator=(const H5File &) = delete;
   HighFive::File handle;
+  DatasetHashTracker *tracker;
 };
 
 void ensure_groups(H5File &file, const std::string &dataset_path) {
@@ -37,6 +138,8 @@ template <typename T>
 void write_array(H5File &file, const std::string &path,
                  const std::vector<hsize_t> &dimensions,
                  const std::vector<T> &values) {
+  if (file.tracker)
+    file.tracker->add_numeric(path, dimensions, values);
   ensure_groups(file, path);
   auto dataset =
       file.handle.createDataSet<T>(path, HighFive::DataSpace(dimensions));
@@ -46,6 +149,8 @@ void write_array(H5File &file, const std::string &path,
 
 template <typename T>
 void write_scalar(H5File &file, const std::string &path, T value) {
+  if (file.tracker)
+    file.tracker->add_scalar(path, value);
   ensure_groups(file, path);
   auto dataset =
       file.handle.createDataSet<T>(path, HighFive::DataSpace::From(value));
@@ -62,6 +167,8 @@ void write_string(H5File &file, const std::string &path,
 
 void write_strings(H5File &file, const std::string &path,
                    const std::vector<std::string> &values) {
+  if (file.tracker)
+    file.tracker->add_strings(path, values);
   ensure_groups(file, path);
   auto dataset = file.handle.createDataSet<std::string>(
       path, HighFive::DataSpace({values.size()}));
@@ -108,16 +215,19 @@ void set_group_array_attribute(H5File &file, const std::string &object_path,
   attribute.write(values);
 }
 
-void finalize_topology(H5File &file, std::size_t atom_count) {
+void finalize_topology(H5File &file, std::size_t atom_count,
+                       const std::string &topology_hash,
+                       const std::string &atom_order_hash,
+                       const std::string &forcefield_hash) {
   const std::string version = "xponge.legacy_to_bundle.v1";
-  const std::string hash = "xpongecpp-native-v1:" + std::to_string(atom_count);
   write_string(file, "/schema/name", "sponge.topology.h5");
   write_string(file, "/schema/version", version);
   write_string(file, "/parameters/sponge/schema/name", "sponge.topology.h5");
   write_string(file, "/parameters/sponge/schema/version", version);
-  write_string(file, "/topology/atom_order_hash", hash);
-  write_string(file, "/topology/topology_hash", hash);
-  write_string(file, "/topology/forcefield_hash", hash);
+  write_string(file, "/topology/atom_order_hash", atom_order_hash);
+  write_string(file, "/topology/topology_hash", topology_hash);
+  write_string(file, "/topology/forcefield_hash", forcefield_hash);
+  write_scalar<std::int64_t>(file, "/topology/atom_count", atom_count);
 }
 
 std::pair<float, float> lj_ab(const std::string &lhs, const std::string &rhs) {
@@ -454,19 +564,20 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
     write_array(file, "/forcefield/lj/pair_B_6", {pair_b.size()}, pair_b);
     write_array(file, "/forcefield/lj/type", {atom_count}, atom_lj_type);
   }
-  write_scalar<std::int64_t>(file, "/topology/atom_count", atom_count);
 }
 
-void write_protocol(const std::filesystem::path &path, std::size_t atom_count) {
+void write_protocol(const std::filesystem::path &path,
+                    const std::string &topology_hash,
+                    const std::string &protocol_hash) {
   H5File file(path);
   const std::string version = "xponge.legacy_to_bundle.v1";
-  const std::string hash = "xpongecpp-native-v1:" + std::to_string(atom_count);
   write_string(file, "/schema/name", "sponge.protocol.h5");
   write_string(file, "/schema/version", version);
   write_string(file, "/parameters/sponge/schema/name", "sponge.protocol.h5");
   write_string(file, "/parameters/sponge/schema/version", version);
-  write_string(file, "/protocol/topology_compatibility/topology_hash", hash);
-  write_string(file, "/identity/content_hash", "xpongecpp-native-protocol-v1");
+  write_string(file, "/protocol/topology_compatibility/topology_hash",
+               topology_hash);
+  write_string(file, "/identity/content_hash", protocol_hash);
   write_scalar<std::int64_t>(file, "/protocol/cv_count", 0);
   write_scalar<std::int64_t>(file, "/protocol/restraint_count", 0);
 }
@@ -627,12 +738,24 @@ save_sponge_input_bundle(const Molecule &input_molecule,
 
   TemporaryBundleFiles files(topology_path, protocol_path, restart_path);
 
+  DatasetHashTracker hash_tracker;
+  std::string topology_hash;
+  std::string atom_order_hash;
+  std::string forcefield_hash;
   {
-    H5File topology(files.temporary[0]);
+    H5File topology(files.temporary[0], &hash_tracker);
     write_native_topology(topology, molecule);
-    finalize_topology(topology, molecule.atoms.size());
+    topology_hash = hash_tracker.content_hash("topology.spgt.h5");
+    atom_order_hash = hash_tracker.content_hash(
+        "topology.spgt.h5", {"/atoms/", "/residues/"});
+    forcefield_hash = hash_tracker.content_hash(
+        "topology.spgt.h5", {"/forcefield/", "/manybody/", "/qc/"});
+    finalize_topology(topology, molecule.atoms.size(), topology_hash,
+                      atom_order_hash, forcefield_hash);
   }
-  write_protocol(files.temporary[1], molecule.atoms.size());
+  const DatasetHashTracker empty_protocol_tracker;
+  write_protocol(files.temporary[1], topology_hash,
+                 empty_protocol_tracker.content_hash("protocol.spgp.h5"));
   write_restart(molecule, files.temporary[2]);
   files.commit();
   return {{"topology", topology_path},

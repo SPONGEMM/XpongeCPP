@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -80,6 +81,43 @@ def _dataset_paths(handle: h5py.File) -> set[str]:
     paths: set[str] = set()
     handle.visititems(lambda name, obj: paths.add("/" + name) if isinstance(obj, h5py.Dataset) else None)
     return paths
+
+
+def _content_hash(handle: h5py.File, bundle_file: str, path_prefixes=()) -> str:
+    excluded = {
+        "/schema/name",
+        "/schema/version",
+        "/parameters/sponge/schema/name",
+        "/parameters/sponge/schema/version",
+        "/topology/atom_count",
+        "/topology/atom_order_hash",
+        "/topology/topology_hash",
+        "/topology/forcefield_hash",
+        "/protocol/topology_compatibility/topology_hash",
+        "/identity/content_hash",
+        "/protocol/cv_count",
+        "/protocol/restraint_count",
+    }
+    datasets = {}
+    handle.visititems(
+        lambda name, item: datasets.__setitem__("/" + name, item)
+        if isinstance(item, h5py.Dataset) and "/" + name not in excluded
+        else None
+    )
+    digest = hashlib.sha256(bundle_file.encode())
+    for path, dataset in sorted(datasets.items()):
+        if path_prefixes and not path.startswith(path_prefixes):
+            continue
+        array = np.asarray(dataset[()])
+        digest.update(b"\0" + path.encode() + b"\0")
+        digest.update(str(array.dtype).encode("ascii") + b"\0")
+        digest.update(repr(array.shape).encode("ascii") + b"\0")
+        if array.dtype.kind in {"O", "U", "S"}:
+            strings = np.asarray(dataset.asstr()[()]).reshape(-1)
+            digest.update("\0".join(map(str, strings)).encode())
+        else:
+            digest.update(np.ascontiguousarray(array).tobytes())
+    return "sha256:" + digest.hexdigest()
 
 
 def _records(handle: h5py.File, group: str, parameters: tuple[str, ...]):
@@ -222,14 +260,29 @@ def compare_bundles(reference_dir: Path, candidate_dir: Path) -> dict[str, objec
             compatible_hash = protocol["/protocol/topology_compatibility/topology_hash"].asstr()[()]
             if not topology_hash or topology_hash != compatible_hash:
                 raise AssertionError(f"inconsistent topology compatibility hash in {directory}")
+            if topology_hash != _content_hash(topology, "topology.spgt.h5"):
+                raise AssertionError(f"invalid topology dataset SHA-256 in {directory}")
+            if topology["/topology/atom_order_hash"].asstr()[()] != _content_hash(
+                topology, "topology.spgt.h5", ("/atoms/", "/residues/")
+            ):
+                raise AssertionError(f"invalid atom-order dataset SHA-256 in {directory}")
+            if topology["/topology/forcefield_hash"].asstr()[()] != _content_hash(
+                topology, "topology.spgt.h5", ("/forcefield/", "/manybody/", "/qc/")
+            ):
+                raise AssertionError(f"invalid force-field dataset SHA-256 in {directory}")
+            if protocol["/identity/content_hash"].asstr()[()] != _content_hash(
+                protocol, "protocol.spgp.h5"
+            ):
+                raise AssertionError(f"invalid protocol dataset SHA-256 in {directory}")
             _assert_exact(protocol["/protocol/cv_count"][()], 0, "protocol CV count")
             _assert_exact(protocol["/protocol/restraint_count"][()], 0, "protocol restraint count")
 
     report["result"] = "PASS"
+    report["hash_semantics"] = "xponge-dataset-sha256"
     report["representational_differences"] = [
         "interaction row order",
         "equivalent LJ type compression",
-        "backend identity/hash values",
+        "content hashes reflect those dataset representation differences",
     ]
     return report
 

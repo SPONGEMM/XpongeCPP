@@ -1,3 +1,6 @@
+import hashlib
+
+import numpy as np
 import pytest
 
 import XpongeCPP as Xponge
@@ -7,6 +10,44 @@ def _peptide():
     import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
 
     return Xponge.get_peptide_from_sequence("AA")
+
+
+def _content_hash(handle, bundle_file, path_prefixes=()):
+    excluded = {
+        "/schema/name",
+        "/schema/version",
+        "/parameters/sponge/schema/name",
+        "/parameters/sponge/schema/version",
+        "/topology/atom_count",
+        "/topology/atom_order_hash",
+        "/topology/topology_hash",
+        "/topology/forcefield_hash",
+        "/protocol/topology_compatibility/topology_hash",
+        "/identity/content_hash",
+        "/protocol/cv_count",
+        "/protocol/restraint_count",
+    }
+    datasets = {}
+    handle.visititems(
+        lambda name, item: datasets.__setitem__("/" + name, item)
+        if hasattr(item, "dtype") and "/" + name not in excluded
+        else None
+    )
+    digest = hashlib.sha256(bundle_file.encode())
+    for path, dataset in sorted(datasets.items()):
+        if path_prefixes and not path.startswith(path_prefixes):
+            continue
+        values = dataset[()]
+        array = np.asarray(values)
+        digest.update(b"\0" + path.encode() + b"\0")
+        digest.update(str(array.dtype).encode("ascii") + b"\0")
+        digest.update(repr(array.shape).encode("ascii") + b"\0")
+        if array.dtype.kind in {"O", "U", "S"}:
+            strings = dataset.asstr()[()]
+            digest.update("\0".join(map(str, np.asarray(strings).reshape(-1))).encode())
+        else:
+            digest.update(np.ascontiguousarray(array).tobytes())
+    return "sha256:" + digest.hexdigest()
 
 
 def test_native_bundle_saver_writes_typed_hdf5(tmp_path):
@@ -46,6 +87,43 @@ def test_native_bundle_saver_writes_typed_hdf5(tmp_path):
         assert tuple(handle["/h5md"].attrs["version"]) == (1, 1)
         assert handle["/particles/all/position/value"].attrs["unit"] == "Angstrom"
         assert handle["/particles/all/position/step"].id == handle["/particles/all/step"].id
+
+
+def test_native_bundle_hashes_use_xponge_dataset_sha256_semantics(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    molecule = _peptide()
+    Xponge.save_sponge_input_bundle(molecule, "hashed", tmp_path)
+
+    with h5py.File(tmp_path / "hashed_topology.spgt.h5", "r") as topology:
+        topology_hash = topology["/topology/topology_hash"].asstr()[()]
+        assert topology_hash == _content_hash(topology, "topology.spgt.h5")
+        assert topology["/topology/atom_order_hash"].asstr()[()] == _content_hash(
+            topology, "topology.spgt.h5", ("/atoms/", "/residues/")
+        )
+        assert topology["/topology/forcefield_hash"].asstr()[()] == _content_hash(
+            topology, "topology.spgt.h5", ("/forcefield/", "/manybody/", "/qc/")
+        )
+    with h5py.File(tmp_path / "hashed_protocol.spgp.h5", "r") as protocol:
+        protocol_hash = protocol["/identity/content_hash"].asstr()[()]
+        assert protocol_hash == _content_hash(protocol, "protocol.spgp.h5")
+        assert protocol["/protocol/topology_compatibility/topology_hash"].asstr()[()] == topology_hash
+
+
+def test_native_bundle_topology_hash_changes_for_same_size_content(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    first = _peptide()
+    second = _peptide()
+    second.atoms[0].charge += 0.125
+    Xponge.save_sponge_input_bundle(first, "first", tmp_path)
+    Xponge.save_sponge_input_bundle(second, "second", tmp_path)
+
+    with h5py.File(tmp_path / "first_topology.spgt.h5", "r") as lhs, h5py.File(
+        tmp_path / "second_topology.spgt.h5", "r"
+    ) as rhs:
+        assert lhs["/topology/atom_count"][()] == rhs["/topology/atom_count"][()]
+        assert lhs["/topology/topology_hash"].asstr()[()] != rhs["/topology/topology_hash"].asstr()[()]
+        assert lhs["/topology/atom_order_hash"].asstr()[()] != rhs["/topology/atom_order_hash"].asstr()[()]
+        assert lhs["/topology/forcefield_hash"].asstr()[()] == rhs["/topology/forcefield_hash"].asstr()[()]
 
 
 def test_native_bundle_saver_is_available_from_legacy_package(tmp_path):
