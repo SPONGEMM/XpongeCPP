@@ -13,6 +13,8 @@ env:
     if command -v dnf >/dev/null 2>&1; then dnf install -y hdf5-devel;
     elif command -v yum >/dev/null 2>&1; then yum install -y hdf5-devel;
     else apt-get update && apt-get install -y libhdf5-dev; fi
+  CIBW_BEFORE_BUILD_WINDOWS: "python -m pip install delvewheel"
+  CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair -w {dest_dir} {wheel}"
 
 jobs:
   build-wheel-linux:
