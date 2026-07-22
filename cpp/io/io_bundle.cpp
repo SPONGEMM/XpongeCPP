@@ -965,6 +965,14 @@ save_sponge_input_bundle(const Molecule &input_molecule,
         "bundle export does not support user-defined listed forces; only "
         "typed Ryckaert-Bellemans terms are supported");
   }
+  if (!molecule.sw_parameters.empty()) {
+    throw std::invalid_argument(
+        "bundle export does not support Stillinger-Weber parameters");
+  }
+  if (!molecule.edip_parameters.empty()) {
+    throw std::invalid_argument(
+        "bundle export does not support EDIP parameters");
+  }
   const std::filesystem::path relative(prefix.empty() ? molecule.name : prefix);
   if (relative.is_absolute())
     throw std::invalid_argument("bundle prefix must be relative");

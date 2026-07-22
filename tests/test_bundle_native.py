@@ -291,6 +291,47 @@ def test_native_bundle_saver_rejects_user_defined_listed_forces(tmp_path):
     assert not list(tmp_path.glob("custom_*"))
 
 
+def test_native_bundle_saver_rejects_stillinger_weber_parameters(tmp_path):
+    molecule = _peptide()
+    molecule.add_sw_type(
+        "S-S", 1.1, 2.2, 3.3, 4.0, 5.0, 6.6, 7.7, 8.8, 0.0, 0.0
+    )
+
+    with pytest.raises(ValueError, match="Stillinger-Weber"):
+        Xponge.save_sponge_input_bundle(molecule, "sw", tmp_path)
+
+    assert not list(tmp_path.glob("sw_*"))
+
+
+def test_native_bundle_saver_rejects_edip_parameters(tmp_path):
+    molecule = _peptide()
+    molecule.add_edip_type(
+        "E-E",
+        1.1,
+        2.2,
+        3.3,
+        4.4,
+        5.5,
+        6.6,
+        7.7,
+        8.8,
+        0.0,
+        0.0,
+        0.0,
+        12.12,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    )
+
+    with pytest.raises(ValueError, match="EDIP"):
+        Xponge.save_sponge_input_bundle(molecule, "edip", tmp_path)
+
+    assert not list(tmp_path.glob("edip_*"))
+
+
 def test_native_bundle_saver_rejects_escaping_prefix(tmp_path):
     with pytest.raises(ValueError, match="escapes output directory"):
         Xponge.save_sponge_input_bundle(_peptide(), "../escape", tmp_path)
