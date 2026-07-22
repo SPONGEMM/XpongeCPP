@@ -110,6 +110,16 @@ dependencies match SPONGE: HighFive and the HDF5 C library. The `pixi`
 environment installs both automatically; manual source builds must provide
 discoverable `HighFive` and `HDF5` CMake packages.
 
+The default SPONGE input format remains the legacy raw-text layout. Bundled
+input v2 can be selected from the common API, while both format-specific entry
+points remain available:
+
+```python
+XpongeCPP.save_sponge_input(molecule, "system", "inputs", format="bundle")
+XpongeCPP.save_sponge_input_raw(molecule, "system", "inputs")
+XpongeCPP.save_sponge_input_bundle(molecule, "system", "inputs")
+```
+
 RESP supports a multi-backend strategy:
 
 - default backend: `PySCF`

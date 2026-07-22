@@ -29,6 +29,7 @@ from ._compat.process import (
     Save_SPONGE_Input,
     Set_Box_Padding,
     _single_residue_molecule,
+    save_sponge_input_raw,
 )
 
 

@@ -145,6 +145,7 @@ from .process import (
     impose_dihedral,
     main_axis_rotate,
     optimize,
+    save_sponge_input_raw,
     solvent_replace,
     sort_atoms_by,
 )
@@ -262,6 +263,7 @@ __all__ = [
     "get_assignment_from_pubchem",
     "set_box_padding",
     "save_sponge_input",
+    "save_sponge_input_raw",
     "save_sponge_input_bundle",
     "save_pdb",
     "save_gro",

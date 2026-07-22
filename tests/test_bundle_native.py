@@ -24,6 +24,7 @@ def _content_hash(handle, bundle_file, path_prefixes=()):
         "/topology/forcefield_hash",
         "/protocol/topology_compatibility/topology_hash",
         "/identity/content_hash",
+        "/identity/uuid",
         "/protocol/cv_count",
         "/protocol/restraint_count",
     }
@@ -40,7 +41,7 @@ def _content_hash(handle, bundle_file, path_prefixes=()):
         values = dataset[()]
         array = np.asarray(values)
         digest.update(b"\0" + path.encode() + b"\0")
-        digest.update(str(array.dtype).encode("ascii") + b"\0")
+        digest.update(str(dataset.dtype).encode("ascii") + b"\0")
         digest.update(repr(array.shape).encode("ascii") + b"\0")
         if array.dtype.kind in {"O", "U", "S"}:
             strings = dataset.asstr()[()]
@@ -64,6 +65,8 @@ def test_native_bundle_saver_writes_typed_hdf5(tmp_path):
     assert returned is molecule
     with h5py.File(paths["topology"], "r") as handle:
         assert handle["/schema/name"].asstr()[()] == "sponge.topology.h5"
+        assert handle["/schema/version"].asstr()[()] == "sponge.input.v2"
+        identity_uuid = handle["/identity/uuid"].asstr()[()]
         assert handle["/atoms/mass"].shape == (molecule.atom_count,)
         assert handle["/atoms/charge"].shape == (molecule.atom_count,)
         assert handle["/atoms/residue_index"].shape == (molecule.atom_count,)
@@ -81,12 +84,40 @@ def test_native_bundle_saver_writes_typed_hdf5(tmp_path):
             assert all(atom_index < excluded_atom for excluded_atom in row)
     with h5py.File(paths["protocol"], "r") as handle:
         assert handle["/schema/name"].asstr()[()] == "sponge.protocol.h5"
+        assert handle["/schema/version"].asstr()[()] == "sponge.input.v2"
+        assert handle["/identity/uuid"].asstr()[()] == identity_uuid
     with h5py.File(paths["restart"], "r") as handle:
+        assert handle["/schema/version"].asstr()[()] == "sponge.input.v2"
+        assert handle["/identity/uuid"].asstr()[()] == identity_uuid
         assert handle["/particles/all/position/value"].shape == (1, molecule.atom_count, 3)
         assert handle["/particles/all/box/edges/value"].shape == (1, 3, 3)
         assert tuple(handle["/h5md"].attrs["version"]) == (1, 1)
         assert handle["/particles/all/position/value"].attrs["unit"] == "Angstrom"
         assert handle["/particles/all/position/step"].id == handle["/particles/all/step"].id
+
+
+def test_save_sponge_input_wrapper_selects_raw_or_bundle_format(tmp_path):
+    molecule = _peptide()
+
+    assert Xponge.save_sponge_input(molecule, "default", tmp_path) is molecule
+    assert (tmp_path / "default_coordinate.txt").is_file()
+    assert not (tmp_path / "default_topology.spgt.h5").exists()
+
+    assert Xponge.save_sponge_input(molecule, "raw", tmp_path, format="raw") is molecule
+    assert (tmp_path / "raw_coordinate.txt").is_file()
+
+    assert Xponge.save_sponge_input_raw(molecule, "raw_direct", tmp_path) is molecule
+    assert (tmp_path / "raw_direct_coordinate.txt").is_file()
+
+    assert Xponge.save_sponge_input(molecule, "bundle", tmp_path, format="bundle") is molecule
+    assert (tmp_path / "bundle_topology.spgt.h5").is_file()
+    assert (tmp_path / "bundle_protocol.spgp.h5").is_file()
+    assert (tmp_path / "bundle_restart.spgr.h5").is_file()
+
+
+def test_save_sponge_input_wrapper_rejects_unknown_format(tmp_path):
+    with pytest.raises(ValueError, match="must be 'raw' or 'bundle'"):
+        Xponge.save_sponge_input(_peptide(), "system", tmp_path, format="future")
 
 
 def test_native_bundle_hashes_use_xponge_dataset_sha256_semantics(tmp_path):
@@ -192,6 +223,44 @@ def test_native_bundle_saver_materializes_lj_soft_core(tmp_path):
         assert handle["/forcefield/lj_soft_core/atom_type_B"].shape == (molecule.atom_count,)
         assert handle["/forcefield/lj_soft_core/pair_AA"].ndim == 1
         assert handle["/forcefield/lj_soft_core/pair_BB"].ndim == 1
+
+
+def test_native_bundle_saver_materializes_soft_bonds(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    molecule = _peptide()
+    molecule.add_bond_soft(1, 0, 12.5, 1.25, 1)
+
+    Xponge.save_sponge_input_bundle(molecule, "soft_bond", tmp_path)
+
+    with h5py.File(tmp_path / "soft_bond_topology.spgt.h5", "r") as handle:
+        assert handle["/forcefield/bond_soft/atoms"][:].tolist() == [[0, 1]]
+        assert handle["/forcefield/bond_soft/k"][:].tolist() == pytest.approx([12.5])
+        assert handle["/forcefield/bond_soft/r0"][:].tolist() == pytest.approx([1.25])
+        assert handle["/forcefield/bond_soft/from_a_or_b"][:].tolist() == [1]
+
+
+def test_native_bundle_saver_materializes_ryckaert_bellemans_listed_force(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    molecule = _peptide()
+    molecule.add_ryckaert_bellemans(4, 3, 2, 1, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+
+    Xponge.save_sponge_input_bundle(molecule, "rb", tmp_path)
+
+    root = "/forcefield/custom_force/listed"
+    data = f"{root}/data/Ryckaert_Bellemans"
+    with h5py.File(tmp_path / "rb_topology.spgt.h5", "r") as handle:
+        assert handle[f"{root}/name"].asstr()[:].tolist() == ["Ryckaert_Bellemans"]
+        assert handle[f"{root}/parameters/offset"][:].tolist() == [0, 10]
+        assert int(handle[f"{root}/count"][()]) == 1
+        assert int(handle[f"{data}/item_count"][()]) == 1
+        assert handle[f"{data}/parameter/is_int"].dtype == np.dtype(bool)
+        assert handle[f"{data}/parameter/int_value"][0, :4].tolist() == [1, 2, 3, 4]
+        assert handle[f"{data}/parameter/float_value"][0, 4:].tolist() == pytest.approx(
+            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+        )
+        assert handle["/topology/topology_hash"].asstr()[()] == _content_hash(
+            handle, "topology.spgt.h5"
+        )
 
 
 def test_native_bundle_saver_rejects_escaping_prefix(tmp_path):

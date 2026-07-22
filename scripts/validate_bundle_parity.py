@@ -29,7 +29,7 @@ if backend == "xponge":
     # source tree while retaining the same binary Python dependencies.
     sys.meta_path = [
         finder for finder in sys.meta_path
-        if "XpongeCPP_editable" not in type(finder).__module__
+        if "ScikitBuildRedirectingFinder" not in type(finder).__name__
     ]
     sys.path.insert(0, str(xponge_root))
     import Xponge as X
@@ -44,6 +44,34 @@ for index, atom in enumerate(molecule.atoms):
     atom.y = index * 0.2
     atom.z = index * 0.3
 molecule.box_length = [40.0, 41.0, 42.0]
+if backend == "xponge":
+    @X.Molecule.Set_Save_SPONGE_Input("bond_soft")
+    def write_soft_bond(_):
+        return "1\n0 1 12.5 1.25 1"
+
+    @X.Molecule.Set_Save_SPONGE_Input("listed_forces")
+    def write_listed_forces(_):
+        return (
+            "[[[ Ryckaert_Bellemans ]]]\n"
+            "[[ parameters ]]\n"
+            "int atom_a, int atom_b, int atom_c, int atom_d, "
+            "float c0, float c1, float c2, float c3, float c4, float c5\n"
+            "[[ potential ]]\n"
+            "SADfloat<15> cphi = cosf(phi_abcd - CONSTANT_Pi);\n"
+            "SADfloat<15> cphi2 = cphi * cphi;\n"
+            "SADfloat<15> cphi3 = cphi2 * cphi;\n"
+            "SADfloat<15> cphi4 = cphi3 * cphi;\n"
+            "SADfloat<15> cphi5 = cphi4 * cphi;\n"
+            "E = c0 + c1 * cphi + c2 * cphi2 + c3 * cphi3 + c4 * cphi4 + c5 * cphi5;\n"
+            "[[ end ]]\n"
+        )
+
+    @X.Molecule.Set_Save_SPONGE_Input("Ryckaert_Bellemans")
+    def write_ryckaert_bellemans(_):
+        return "1\n1 2 3 4 0.1 0.2 0.3 0.4 0.5 0.6"
+else:
+    molecule.add_bond_soft(1, 0, 12.5, 1.25, 1)
+    molecule.add_ryckaert_bellemans(4, 3, 2, 1, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
 X.save_sponge_input_bundle(molecule, "system", output_dir)
 """
 
@@ -65,7 +93,9 @@ def _run_builder(backend: str, output_dir: Path, xponge_root: Path) -> None:
 def _assert_close(lhs, rhs, label: str, *, rtol: float = 1e-5, atol: float = 1e-5) -> float:
     lhs = np.asarray(lhs)
     rhs = np.asarray(rhs)
-    if lhs.shape != rhs.shape or not np.allclose(lhs, rhs, rtol=rtol, atol=atol):
+    if lhs.shape != rhs.shape or not np.allclose(
+        lhs, rhs, rtol=rtol, atol=atol, equal_nan=True
+    ):
         raise AssertionError(f"{label} differs: shapes {lhs.shape} and {rhs.shape}")
     return float(np.max(np.abs(lhs - rhs))) if lhs.size else 0.0
 
@@ -95,6 +125,7 @@ def _content_hash(handle: h5py.File, bundle_file: str, path_prefixes=()) -> str:
         "/topology/forcefield_hash",
         "/protocol/topology_compatibility/topology_hash",
         "/identity/content_hash",
+        "/identity/uuid",
         "/protocol/cv_count",
         "/protocol/restraint_count",
     }
@@ -110,7 +141,7 @@ def _content_hash(handle: h5py.File, bundle_file: str, path_prefixes=()) -> str:
             continue
         array = np.asarray(dataset[()])
         digest.update(b"\0" + path.encode() + b"\0")
-        digest.update(str(array.dtype).encode("ascii") + b"\0")
+        digest.update(str(dataset.dtype).encode("ascii") + b"\0")
         digest.update(repr(array.shape).encode("ascii") + b"\0")
         if array.dtype.kind in {"O", "U", "S"}:
             strings = np.asarray(dataset.asstr()[()]).reshape(-1)
@@ -220,8 +251,14 @@ def compare_bundles(reference_dir: Path, candidate_dir: Path) -> dict[str, objec
     report: dict[str, object] = {}
 
     with h5py.File(reference_dir / topology_name) as lhs, h5py.File(candidate_dir / topology_name) as rhs:
-        if _dataset_paths(lhs) != _dataset_paths(rhs):
+        topology_paths = _dataset_paths(lhs)
+        if topology_paths != _dataset_paths(rhs):
             raise AssertionError("topology dataset schema differs")
+        for path in topology_paths:
+            if lhs[path].dtype != rhs[path].dtype:
+                raise AssertionError(
+                    f"{path} dtype differs: {lhs[path].dtype} and {rhs[path].dtype}"
+                )
         for path in (
             "/atoms/residue_index",
             "/residues/atom_offset",
@@ -236,6 +273,41 @@ def compare_bundles(reference_dir: Path, candidate_dir: Path) -> dict[str, objec
         report["angle_max_abs"] = _compare_records(lhs, rhs, "/forcefield/angle", ("k", "theta0"))
         report["dihedral_max_abs"] = _compare_dihedrals(lhs, rhs)
         report["nb14_max_abs"] = _compare_records(lhs, rhs, "/forcefield/nb14", ("params",))
+        report["soft_bond_max_abs"] = _compare_records(
+            lhs, rhs, "/forcefield/bond_soft", ("k", "r0", "from_a_or_b")
+        )
+        listed_root = "/forcefield/custom_force/listed"
+        listed_data = f"{listed_root}/data/Ryckaert_Bellemans"
+        for path in (
+            f"{listed_root}/name",
+            f"{listed_root}/potential",
+            f"{listed_root}/parameters/text",
+            f"{listed_root}/parameters/type",
+            f"{listed_root}/parameters/name",
+            f"{listed_root}/parameters/offset",
+            f"{listed_root}/parameters/is_atom",
+            f"{listed_root}/parameters/is_int",
+            f"{listed_root}/connected_atoms",
+            f"{listed_root}/constrain_distance",
+            f"{listed_root}/count",
+            f"{listed_data}/name",
+            f"{listed_data}/item_count",
+            f"{listed_data}/parameter/name",
+            f"{listed_data}/parameter/type",
+            f"{listed_data}/parameter/is_int",
+            f"{listed_data}/parameter/int_value",
+        ):
+            _assert_exact(lhs[path][()], rhs[path][()], path)
+        report["ryckaert_bellemans_max_abs"] = _assert_close(
+            lhs[f"{listed_data}/parameter/value"][:],
+            rhs[f"{listed_data}/parameter/value"][:],
+            "Ryckaert-Bellemans values",
+        )
+        _assert_close(
+            lhs[f"{listed_data}/parameter/float_value"][:],
+            rhs[f"{listed_data}/parameter/float_value"][:],
+            "Ryckaert-Bellemans typed float values",
+        )
         report["lj_max_abs"] = _assert_close(_expanded_lj(lhs), _expanded_lj(rhs), "expanded LJ")
         if _exclusion_pairs(lhs) != _exclusion_pairs(rhs):
             raise AssertionError("exclusion pair sets differ")

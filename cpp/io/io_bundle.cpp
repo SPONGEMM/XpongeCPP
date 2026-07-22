@@ -5,15 +5,51 @@
 #include <hdf5.h>
 #include <highfive/highfive.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <iomanip>
+#include <limits>
 #include <map>
+#include <random>
+#include <sstream>
 #include <stdexcept>
+#include <tuple>
 #include <type_traits>
 
 namespace xpongecpp {
 namespace {
+
+constexpr const char *kInputSchemaVersion = "sponge.input.v2";
+constexpr const char *kRyckaertBellemansParameterText =
+    "int atom_a, int atom_b, int atom_c, int atom_d, float c0, float c1, "
+    "float c2, float c3, float c4, float c5";
+constexpr const char *kRyckaertBellemansPotential =
+    "SADfloat<15> cphi = cosf(phi_abcd - CONSTANT_Pi);\n"
+    "SADfloat<15> cphi2 = cphi * cphi;\n"
+    "SADfloat<15> cphi3 = cphi2 * cphi;\n"
+    "SADfloat<15> cphi4 = cphi3 * cphi;\n"
+    "SADfloat<15> cphi5 = cphi4 * cphi;\n"
+    "E = c0 + c1 * cphi + c2 * cphi2 + c3 * cphi3 + c4 * cphi4 + "
+    "c5 * cphi5;";
+
+std::string generate_uuid_v4() {
+  std::random_device source;
+  std::array<std::uint8_t, 16> bytes{};
+  for (auto &byte : bytes)
+    byte = static_cast<std::uint8_t>(source());
+  bytes[6] = static_cast<std::uint8_t>((bytes[6] & 0x0fU) | 0x40U);
+  bytes[8] = static_cast<std::uint8_t>((bytes[8] & 0x3fU) | 0x80U);
+  std::ostringstream value;
+  value << std::hex << std::setfill('0');
+  for (std::size_t index = 0; index < bytes.size(); ++index) {
+    if (index == 4 || index == 6 || index == 8 || index == 10)
+      value << '-';
+    value << std::setw(2) << static_cast<unsigned int>(bytes[index]);
+  }
+  return value.str();
+}
 
 struct TrackedDataset {
   std::string dtype;
@@ -78,6 +114,23 @@ public:
       dataset.bytes.insert(dataset.bytes.end(), values[index].begin(),
                            values[index].end());
     }
+    datasets_[path] = std::move(dataset);
+  }
+
+  void add_string(const std::string &path, const std::string &value) {
+    TrackedDataset dataset;
+    dataset.dtype = "object";
+    dataset.bytes.assign(value.begin(), value.end());
+    datasets_[path] = std::move(dataset);
+  }
+
+  void add_bools(const std::string &path,
+                 const std::vector<hsize_t> &dimensions,
+                 const std::vector<std::uint8_t> &values) {
+    TrackedDataset dataset;
+    dataset.dtype = "bool";
+    dataset.dimensions = dimensions;
+    dataset.bytes = values;
     datasets_[path] = std::move(dataset);
   }
 
@@ -159,10 +212,54 @@ void write_scalar(H5File &file, const std::string &path, T value) {
 
 void write_string(H5File &file, const std::string &path,
                   const std::string &value) {
+  if (file.tracker)
+    file.tracker->add_string(path, value);
   ensure_groups(file, path);
   auto dataset = file.handle.createDataSet<std::string>(
       path, HighFive::DataSpace::From(value));
   dataset.write(value);
+}
+
+void write_bool_array(H5File &file, const std::string &path,
+                      const std::vector<hsize_t> &dimensions,
+                      const std::vector<std::uint8_t> &values) {
+  if (file.tracker)
+    file.tracker->add_bools(path, dimensions, values);
+  ensure_groups(file, path);
+  const hid_t space = H5Screate_simple(static_cast<int>(dimensions.size()),
+                                       dimensions.data(), nullptr);
+  if (space < 0)
+    throw std::runtime_error("failed to create HDF5 boolean dataspace");
+  const hid_t datatype = H5Tenum_create(H5T_NATIVE_UCHAR);
+  if (datatype < 0) {
+    H5Sclose(space);
+    throw std::runtime_error("failed to create HDF5 boolean datatype");
+  }
+  const std::uint8_t false_value = 0;
+  const std::uint8_t true_value = 1;
+  if (H5Tenum_insert(datatype, "FALSE", &false_value) < 0 ||
+      H5Tenum_insert(datatype, "TRUE", &true_value) < 0) {
+    H5Tclose(datatype);
+    H5Sclose(space);
+    throw std::runtime_error("failed to define HDF5 boolean datatype");
+  }
+  const hid_t dataset = H5Dcreate2(file.handle.getId(), path.c_str(), datatype,
+                                   space, H5P_DEFAULT, H5P_DEFAULT,
+                                   H5P_DEFAULT);
+  if (dataset < 0) {
+    H5Tclose(datatype);
+    H5Sclose(space);
+    throw std::runtime_error("failed to create HDF5 boolean dataset: " + path);
+  }
+  const bool write_failed =
+      !values.empty() &&
+      H5Dwrite(dataset, datatype, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+               values.data()) < 0;
+  H5Dclose(dataset);
+  H5Tclose(datatype);
+  H5Sclose(space);
+  if (write_failed)
+    throw std::runtime_error("failed to write HDF5 boolean dataset: " + path);
 }
 
 void write_strings(H5File &file, const std::string &path,
@@ -218,12 +315,14 @@ void set_group_array_attribute(H5File &file, const std::string &object_path,
 void finalize_topology(H5File &file, std::size_t atom_count,
                        const std::string &topology_hash,
                        const std::string &atom_order_hash,
-                       const std::string &forcefield_hash) {
-  const std::string version = "xponge.legacy_to_bundle.v1";
+                       const std::string &forcefield_hash,
+                       const std::string &identity_uuid) {
+  const std::string version = kInputSchemaVersion;
   write_string(file, "/schema/name", "sponge.topology.h5");
   write_string(file, "/schema/version", version);
   write_string(file, "/parameters/sponge/schema/name", "sponge.topology.h5");
   write_string(file, "/parameters/sponge/schema/version", version);
+  write_string(file, "/identity/uuid", identity_uuid);
   write_string(file, "/topology/atom_order_hash", atom_order_hash);
   write_string(file, "/topology/topology_hash", topology_hash);
   write_string(file, "/topology/forcefield_hash", forcefield_hash);
@@ -440,6 +539,133 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
                 bond_r0);
   }
 
+  if (!molecule.soft_bonds.empty()) {
+    struct SoftBondRow {
+      std::int32_t atom1;
+      std::int32_t atom2;
+      float k;
+      float r0;
+      std::int32_t from_a_or_b;
+    };
+    std::vector<SoftBondRow> rows;
+    for (const auto &bond : molecule.soft_bonds) {
+      if (bond.k == 0.0)
+        continue;
+      rows.push_back(
+          {static_cast<std::int32_t>(std::min(bond.atom1, bond.atom2)),
+           static_cast<std::int32_t>(std::max(bond.atom1, bond.atom2)),
+           static_cast<float>(bond.k), static_cast<float>(bond.b),
+           static_cast<std::int32_t>(bond.from_a_or_b)});
+    }
+    std::sort(rows.begin(), rows.end(), [](const auto &lhs, const auto &rhs) {
+      return std::tie(lhs.atom1, lhs.atom2) < std::tie(rhs.atom1, rhs.atom2);
+    });
+    if (!rows.empty()) {
+      std::vector<std::int32_t> atoms, from_a_or_b;
+      std::vector<float> k, r0;
+      for (const auto &row : rows) {
+        atoms.insert(atoms.end(), {row.atom1, row.atom2});
+        k.push_back(row.k);
+        r0.push_back(row.r0);
+        from_a_or_b.push_back(row.from_a_or_b);
+      }
+      write_array(file, "/forcefield/bond_soft/atoms", {rows.size(), 2},
+                  atoms);
+      write_array(file, "/forcefield/bond_soft/k", {rows.size()}, k);
+      write_array(file, "/forcefield/bond_soft/r0", {rows.size()}, r0);
+      write_array(file, "/forcefield/bond_soft/from_a_or_b", {rows.size()},
+                  from_a_or_b);
+      write_scalar<std::int64_t>(file, "/forcefield/bond_soft/count",
+                                 rows.size());
+    }
+  }
+
+  if (!molecule.ryckaert_bellemans.empty()) {
+    struct RyckaertBellemansRow {
+      std::array<std::int32_t, 4> atoms;
+      std::array<double, 6> coefficients;
+    };
+    std::vector<RyckaertBellemansRow> rows;
+    for (const auto &dihedral : molecule.ryckaert_bellemans) {
+      const std::array<double, 6> coefficients{
+          dihedral.c0, dihedral.c1, dihedral.c2,
+          dihedral.c3, dihedral.c4, dihedral.c5};
+      if (std::none_of(coefficients.begin(), coefficients.end(),
+                       [](double value) { return value != 0.0; }))
+        continue;
+      std::array<std::int32_t, 4> atoms{
+          static_cast<std::int32_t>(dihedral.atom0),
+          static_cast<std::int32_t>(dihedral.atom1),
+          static_cast<std::int32_t>(dihedral.atom2),
+          static_cast<std::int32_t>(dihedral.atom3)};
+      if (atoms.front() > atoms.back())
+        std::reverse(atoms.begin(), atoms.end());
+      rows.push_back({atoms, coefficients});
+    }
+    std::sort(rows.begin(), rows.end(), [](const auto &lhs, const auto &rhs) {
+      return std::tie(lhs.atoms, lhs.coefficients) <
+             std::tie(rhs.atoms, rhs.coefficients);
+    });
+    if (!rows.empty()) {
+      const std::vector<std::string> parameter_names{
+          "atom_a", "atom_b", "atom_c", "atom_d", "c0",
+          "c1",     "c2",     "c3",     "c4",     "c5"};
+      const std::vector<std::string> parameter_types{
+          "int",   "int",   "int",   "int",   "float",
+          "float", "float", "float", "float", "float"};
+      const std::vector<std::int32_t> parameter_is_atom{
+          1, 1, 1, 1, 0, 0, 0, 0, 0, 0};
+      const std::vector<std::int32_t> parameter_is_int{
+          1, 1, 1, 1, 0, 0, 0, 0, 0, 0};
+      const std::string root = "/forcefield/custom_force/listed";
+      write_strings(file, root + "/name", {"Ryckaert_Bellemans"});
+      write_strings(file, root + "/potential", {kRyckaertBellemansPotential});
+      write_strings(file, root + "/parameters/text",
+                    {kRyckaertBellemansParameterText});
+      write_strings(file, root + "/parameters/type", parameter_types);
+      write_strings(file, root + "/parameters/name", parameter_names);
+      write_array<std::int64_t>(file, root + "/parameters/offset", {2},
+                                {0, 10});
+      write_array(file, root + "/parameters/is_atom", {10},
+                  parameter_is_atom);
+      write_array(file, root + "/parameters/is_int", {10}, parameter_is_int);
+      write_strings(file, root + "/connected_atoms", {""});
+      write_strings(file, root + "/constrain_distance", {""});
+      write_scalar<std::int64_t>(file, root + "/count", 1);
+
+      const std::string data_root = root + "/data/Ryckaert_Bellemans";
+      std::vector<float> values, float_values;
+      std::vector<std::int32_t> int_values;
+      values.reserve(rows.size() * 10);
+      int_values.reserve(rows.size() * 10);
+      float_values.reserve(rows.size() * 10);
+      for (const auto &row : rows) {
+        for (const auto atom : row.atoms) {
+          values.push_back(static_cast<float>(atom));
+          int_values.push_back(atom);
+          float_values.push_back(std::numeric_limits<float>::quiet_NaN());
+        }
+        for (const auto coefficient : row.coefficients) {
+          values.push_back(static_cast<float>(coefficient));
+          int_values.push_back(0);
+          float_values.push_back(static_cast<float>(coefficient));
+        }
+      }
+      write_string(file, data_root + "/name", "Ryckaert_Bellemans");
+      write_scalar<std::int64_t>(file, data_root + "/item_count", rows.size());
+      write_strings(file, data_root + "/parameter/name", parameter_names);
+      write_strings(file, data_root + "/parameter/type", parameter_types);
+      write_bool_array(file, data_root + "/parameter/is_int", {10},
+                       {1, 1, 1, 1, 0, 0, 0, 0, 0, 0});
+      write_array(file, data_root + "/parameter/value", {rows.size(), 10},
+                  values);
+      write_array(file, data_root + "/parameter/int_value",
+                  {rows.size(), 10}, int_values);
+      write_array(file, data_root + "/parameter/float_value",
+                  {rows.size(), 10}, float_values);
+    }
+  }
+
   if (molecule.has_gb_parameters) {
     std::vector<float> gb_params;
     gb_params.reserve(atom_count * 2);
@@ -568,13 +794,15 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
 
 void write_protocol(const std::filesystem::path &path,
                     const std::string &topology_hash,
-                    const std::string &protocol_hash) {
+                    const std::string &protocol_hash,
+                    const std::string &identity_uuid) {
   H5File file(path);
-  const std::string version = "xponge.legacy_to_bundle.v1";
+  const std::string version = kInputSchemaVersion;
   write_string(file, "/schema/name", "sponge.protocol.h5");
   write_string(file, "/schema/version", version);
   write_string(file, "/parameters/sponge/schema/name", "sponge.protocol.h5");
   write_string(file, "/parameters/sponge/schema/version", version);
+  write_string(file, "/identity/uuid", identity_uuid);
   write_string(file, "/protocol/topology_compatibility/topology_hash",
                topology_hash);
   write_string(file, "/identity/content_hash", protocol_hash);
@@ -583,7 +811,8 @@ void write_protocol(const std::filesystem::path &path,
 }
 
 void write_restart(const Molecule &molecule,
-                   const std::filesystem::path &path) {
+                   const std::filesystem::path &path,
+                   const std::string &identity_uuid) {
   H5File file(path);
   for (const auto &group :
        {"/h5md", "/h5md/creator", "/run", "/particles/all",
@@ -644,8 +873,10 @@ void write_restart(const Molecule &molecule,
   create_hard_link(file, "/particles/all/time",
                    "/particles/all/box/edges/time");
   write_string(file, "/parameters/sponge/schema/name", "sponge.restart.h5");
-  write_string(file, "/parameters/sponge/schema/version",
-               "xponge.legacy_to_bundle.v1");
+  write_string(file, "/parameters/sponge/schema/version", kInputSchemaVersion);
+  write_string(file, "/schema/name", "sponge.restart.h5");
+  write_string(file, "/schema/version", kInputSchemaVersion);
+  write_string(file, "/identity/uuid", identity_uuid);
   write_string(file, "/parameters/sponge/output/status", "finalized");
   write_scalar<std::int64_t>(file, "/parameters/sponge/output/frame_count", 1);
   write_scalar<std::int64_t>(file,
@@ -739,6 +970,7 @@ save_sponge_input_bundle(const Molecule &input_molecule,
   TemporaryBundleFiles files(topology_path, protocol_path, restart_path);
 
   DatasetHashTracker hash_tracker;
+  const std::string identity_uuid = generate_uuid_v4();
   std::string topology_hash;
   std::string atom_order_hash;
   std::string forcefield_hash;
@@ -751,12 +983,13 @@ save_sponge_input_bundle(const Molecule &input_molecule,
     forcefield_hash = hash_tracker.content_hash(
         "topology.spgt.h5", {"/forcefield/", "/manybody/", "/qc/"});
     finalize_topology(topology, molecule.atoms.size(), topology_hash,
-                      atom_order_hash, forcefield_hash);
+                      atom_order_hash, forcefield_hash, identity_uuid);
   }
   const DatasetHashTracker empty_protocol_tracker;
   write_protocol(files.temporary[1], topology_hash,
-                 empty_protocol_tracker.content_hash("protocol.spgp.h5"));
-  write_restart(molecule, files.temporary[2]);
+                 empty_protocol_tracker.content_hash("protocol.spgp.h5"),
+                 identity_uuid);
+  write_restart(molecule, files.temporary[2], identity_uuid);
   files.commit();
   return {{"topology", topology_path},
           {"protocol", protocol_path},

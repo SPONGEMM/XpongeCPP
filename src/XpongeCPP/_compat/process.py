@@ -17,7 +17,8 @@ from .._core import (
     save_gro,
     save_mol2,
     save_pdb,
-    save_sponge_input,
+    save_sponge_input as _core_save_sponge_input,
+    save_sponge_input_bundle as _core_save_sponge_input_bundle,
     set_box_padding,
 )
 from .runtime import get_legacy_residue_links_override
@@ -132,7 +133,7 @@ def _patch_saved_pdb_residue_links(molecule, filename, residue_links=None):
     return None
 
 
-def Save_SPONGE_Input(molecule, prefix=None, dirname="."):
+def Save_SPONGE_Input(molecule, prefix=None, dirname=".", format="raw"):  # pylint: disable=redefined-builtin
     target = molecule
     if isinstance(molecule, Residue):
         target = Molecule(molecule.name)
@@ -144,6 +145,13 @@ def Save_SPONGE_Input(molecule, prefix=None, dirname="."):
             target = get_template_molecule(molecule.name)
         else:
             raise TypeError("save_sponge_input expects a Molecule, Residue, ResidueType, or template-like object")
+    if format == "raw":
+        writer = _core_save_sponge_input
+    elif format == "bundle":
+        writer = _core_save_sponge_input_bundle
+    else:
+        raise ValueError(f"SPONGE input format must be 'raw' or 'bundle', not {format!r}")
+
     previous_min_flag = None
     saved_links = None
     if hasattr(target, "residue_links"):
@@ -160,13 +168,19 @@ def Save_SPONGE_Input(molecule, prefix=None, dirname="."):
     except Exception:
         previous_min_flag = None
     try:
-        save_sponge_input(target, "" if prefix is None else str(prefix), str(dirname))
+        writer(target, "" if prefix is None else str(prefix), str(dirname))
     finally:
         if previous_min_flag is not None:
             target.enable_min_bonded_parameters(False)
     if prefix is not None:
         _patch_saved_pdb_residue_links(target, f"{prefix}.pdb", residue_links=saved_links)
     return target
+
+
+def save_sponge_input_raw(molecule, prefix=None, dirname="."):
+    """Save legacy raw-text SPONGE inputs through the format-specific API."""
+
+    return Save_SPONGE_Input(molecule, prefix, dirname, format="raw")
 
 
 def Save_PDB(molecule, filename, write_cryst1=True):
