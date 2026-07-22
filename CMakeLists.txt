@@ -22,6 +22,7 @@ if(NOT HighFive_FOUND)
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(highfive)
+    set_property(DIRECTORY "${highfive_SOURCE_DIR}" PROPERTY EXCLUDE_FROM_ALL TRUE)
 endif()
 
 pybind11_add_module(_core
