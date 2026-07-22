@@ -263,6 +263,34 @@ def test_native_bundle_saver_materializes_ryckaert_bellemans_listed_force(tmp_pa
         )
 
 
+def test_native_bundle_saver_rejects_minimum_bonded_parameters(tmp_path):
+    from XpongeCPP.forcefield.special import min as min_helper
+
+    molecule = _peptide()
+    min_helper.save_min_bonded_parameters()
+    try:
+        with pytest.raises(ValueError, match="minimum-bonded parameters"):
+            Xponge.save_sponge_input(
+                molecule, "minimum", tmp_path, format="bundle"
+            )
+    finally:
+        min_helper.do_not_save_min_bonded_parameters()
+
+    assert not list(tmp_path.glob("minimum_*"))
+
+
+def test_native_bundle_saver_rejects_user_defined_listed_forces(tmp_path):
+    molecule = _peptide()
+    molecule.add_listed_force_definition(
+        "[[[ User_Defined ]]]\nfloat k\nE = k;\n[[[ END ]]]\n"
+    )
+
+    with pytest.raises(ValueError, match="user-defined listed forces"):
+        Xponge.save_sponge_input_bundle(molecule, "custom", tmp_path)
+
+    assert not list(tmp_path.glob("custom_*"))
+
+
 def test_native_bundle_saver_rejects_escaping_prefix(tmp_path):
     with pytest.raises(ValueError, match="escapes output directory"):
         Xponge.save_sponge_input_bundle(_peptide(), "../escape", tmp_path)

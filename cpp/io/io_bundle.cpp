@@ -955,6 +955,16 @@ save_sponge_input_bundle(const Molecule &input_molecule,
                                  : input_molecule;
   if (!molecule.validate())
     throw std::invalid_argument("cannot export invalid molecule bundle");
+  if (molecule.write_min_bonded_parameters) {
+    throw std::invalid_argument(
+        "bundle export does not support minimum-bonded parameters "
+        "(fake_mass, fake_LJ, fake_charge)");
+  }
+  if (!molecule.listed_force_definitions.empty()) {
+    throw std::invalid_argument(
+        "bundle export does not support user-defined listed forces; only "
+        "typed Ryckaert-Bellemans terms are supported");
+  }
   const std::filesystem::path relative(prefix.empty() ? molecule.name : prefix);
   if (relative.is_absolute())
     throw std::invalid_argument("bundle prefix must be relative");
