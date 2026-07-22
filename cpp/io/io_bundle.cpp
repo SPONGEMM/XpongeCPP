@@ -53,7 +53,7 @@ std::string generate_uuid_v4() {
 
 struct TrackedDataset {
   std::string dtype;
-  std::vector<hsize_t> dimensions;
+  std::vector<std::size_t> dimensions;
   std::vector<std::uint8_t> bytes;
 };
 
@@ -64,7 +64,7 @@ template <> const char *numpy_dtype_name<std::int32_t>() { return "int32"; }
 template <> const char *numpy_dtype_name<std::int64_t>() { return "int64"; }
 template <> const char *numpy_dtype_name<std::uint32_t>() { return "uint32"; }
 
-std::string numpy_shape(const std::vector<hsize_t> &dimensions) {
+std::string numpy_shape(const std::vector<std::size_t> &dimensions) {
   if (dimensions.empty())
     return "()";
   std::string output = "(";
@@ -82,7 +82,7 @@ class DatasetHashTracker {
 public:
   template <typename T>
   void add_numeric(const std::string &path,
-                   const std::vector<hsize_t> &dimensions,
+                   const std::vector<std::size_t> &dimensions,
                    const std::vector<T> &values) {
     static_assert(std::is_arithmetic_v<T>, "numeric dataset required");
     TrackedDataset dataset;
@@ -125,7 +125,7 @@ public:
   }
 
   void add_bools(const std::string &path,
-                 const std::vector<hsize_t> &dimensions,
+                 const std::vector<std::size_t> &dimensions,
                  const std::vector<std::uint8_t> &values) {
     TrackedDataset dataset;
     dataset.dtype = "bool";
@@ -189,7 +189,7 @@ void ensure_groups(H5File &file, const std::string &dataset_path) {
 
 template <typename T>
 void write_array(H5File &file, const std::string &path,
-                 const std::vector<hsize_t> &dimensions,
+                 const std::vector<std::size_t> &dimensions,
                  const std::vector<T> &values) {
   if (file.tracker)
     file.tracker->add_numeric(path, dimensions, values);
@@ -221,13 +221,19 @@ void write_string(H5File &file, const std::string &path,
 }
 
 void write_bool_array(H5File &file, const std::string &path,
-                      const std::vector<hsize_t> &dimensions,
+                      const std::vector<std::size_t> &dimensions,
                       const std::vector<std::uint8_t> &values) {
   if (file.tracker)
     file.tracker->add_bools(path, dimensions, values);
   ensure_groups(file, path);
-  const hid_t space = H5Screate_simple(static_cast<int>(dimensions.size()),
-                                       dimensions.data(), nullptr);
+  std::vector<hsize_t> hdf5_dimensions(dimensions.size());
+  std::transform(dimensions.begin(), dimensions.end(), hdf5_dimensions.begin(),
+                 [](std::size_t dimension) {
+                   return static_cast<hsize_t>(dimension);
+                 });
+  const hid_t space = H5Screate_simple(
+      static_cast<int>(hdf5_dimensions.size()), hdf5_dimensions.data(),
+      nullptr);
   if (space < 0)
     throw std::runtime_error("failed to create HDF5 boolean dataspace");
   const hid_t datatype = H5Tenum_create(H5T_NATIVE_UCHAR);
