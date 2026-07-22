@@ -7,8 +7,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(PYBIND11_FINDPYTHON ON)
 
 find_package(pybind11 CONFIG REQUIRED)
-find_package(HighFive CONFIG REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C)
+find_package(HighFive CONFIG QUIET)
+if(NOT HighFive_FOUND)
+    include(FetchContent)
+    set(HIGHFIVE_FIND_HDF5 OFF CACHE BOOL "Do not let vendored HighFive find HDF5" FORCE)
+    set(HIGHFIVE_UNIT_TESTS OFF CACHE BOOL "Disable vendored HighFive tests" FORCE)
+    set(HIGHFIVE_EXAMPLES OFF CACHE BOOL "Disable vendored HighFive examples" FORCE)
+    set(HIGHFIVE_BUILD_DOCS OFF CACHE BOOL "Disable vendored HighFive documentation" FORCE)
+    FetchContent_Declare(
+        highfive
+        URL https://github.com/highfive-devs/highfive/archive/refs/tags/v3.3.0.tar.gz
+        URL_HASH SHA256=325cfbcf0c0296a6dd26f3b088801b7ebb8d6f109c0565c11d2d8c4af3253bff
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(highfive)
+endif()
 
 pybind11_add_module(_core
     cpp/assign/assign.cpp

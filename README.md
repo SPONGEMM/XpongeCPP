@@ -107,8 +107,9 @@ pixi run test
 
 Bundled SPONGE HDF5 I/O is implemented in the native C++ backend. Its build
 dependencies match SPONGE: HighFive and the HDF5 C library. The `pixi`
-environment installs both automatically; manual source builds must provide
-discoverable `HighFive` and `HDF5` CMake packages.
+environment installs both automatically. Manual source builds must provide a
+discoverable HDF5 C installation; when HighFive is unavailable, CMake fetches
+the pinned HighFive 3.3.0 source archive automatically.
 
 The default SPONGE input format remains the legacy raw-text layout. Bundled
 input v2 can be selected from the common API, while both format-specific entry
