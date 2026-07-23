@@ -69,20 +69,68 @@ void require_empty_native_protocol(const py::object& protocol) {
     }
 }
 
+void require_native_bundle_compatibility(const std::shared_ptr<Molecule>& molecule) {
+    const py::object workflows = py::module_::import("XpongeCPP._compat.workflows");
+    if (py::cast<bool>(workflows.attr("min_bonded_parameters_enabled")())) {
+        throw std::invalid_argument(
+            "bundle export does not support minimum-bonded parameters "
+            "(fake_mass, fake_LJ, fake_charge)");
+    }
+
+    const py::object molecule_type = py::module_::import("XpongeCPP._core").attr("Molecule");
+    if (!py::hasattr(molecule_type, "_save_functions")) {
+        return;
+    }
+    const py::dict serializers =
+        py::reinterpret_borrow<py::dict>(molecule_type.attr("_save_functions"));
+    if (py::len(serializers) == 0) {
+        return;
+    }
+    py::list active_keys;
+    for (const auto item : serializers) {
+        const py::object payload =
+            py::reinterpret_borrow<py::object>(item.second)(py::cast(molecule));
+        const int is_active = PyObject_IsTrue(payload.ptr());
+        if (is_active < 0) {
+            throw py::error_already_set();
+        }
+        if (is_active != 0) {
+            active_keys.append(item.first);
+        }
+    }
+    if (active_keys.empty()) {
+        return;
+    }
+    throw std::invalid_argument(
+        "bundle export does not support active compatibility serializers " +
+        py::str(active_keys).cast<std::string>() +
+        "; native bundle conversion is required");
+}
+
+std::string normalize_bundle_prefix(const py::object& prefix, const std::string& fallback) {
+    if (prefix.is_none()) {
+        return fallback;
+    }
+    const std::string normalized = py::str(prefix).cast<std::string>();
+    return normalized.empty() ? fallback : normalized;
+}
+
 std::shared_ptr<Molecule> save_sponge_input_bundle_object(
-    const std::shared_ptr<Molecule>& molecule, const std::string& prefix, py::object dirname, py::object protocol) {
+    const std::shared_ptr<Molecule>& molecule, py::object prefix, py::object dirname, py::object protocol) {
     require_empty_native_protocol(protocol);
-    save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
+    require_native_bundle_compatibility(molecule);
+    save_sponge_input_bundle(*molecule, normalize_bundle_prefix(prefix, molecule->name),
                              py::str(dirname).cast<std::string>());
     return molecule;
 }
 
 std::shared_ptr<Molecule> save_residuetype_bundle_object(
-    const ResidueType& residue_type, const std::string& prefix, py::object dirname, py::object protocol) {
+    const ResidueType& residue_type, py::object prefix, py::object dirname, py::object protocol) {
     require_empty_native_protocol(protocol);
     auto molecule = std::make_shared<Molecule>(residue_type.name());
     molecule->append_residue_from_type(residue_type, 0.0, 0.0, 0.0);
-    save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
+    require_native_bundle_compatibility(molecule);
+    save_sponge_input_bundle(*molecule, normalize_bundle_prefix(prefix, molecule->name),
                              py::str(dirname).cast<std::string>());
     return molecule;
 }
@@ -227,23 +275,25 @@ std::shared_ptr<Molecule> molecule_from_residue_view(const ResidueView& residue_
 }
 
 std::shared_ptr<Molecule> save_residue_bundle_object(
-    const ResidueView& residue, const std::string& prefix, py::object dirname, py::object protocol) {
+    const ResidueView& residue, py::object prefix, py::object dirname, py::object protocol) {
     require_empty_native_protocol(protocol);
     auto molecule = molecule_from_residue_view(residue);
-    save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
+    require_native_bundle_compatibility(molecule);
+    save_sponge_input_bundle(*molecule, normalize_bundle_prefix(prefix, molecule->name),
                              py::str(dirname).cast<std::string>());
     return molecule;
 }
 
 std::shared_ptr<Molecule> save_template_like_bundle_object(
-    py::object source, const std::string& prefix, py::object dirname, py::object protocol) {
+    py::object source, py::object prefix, py::object dirname, py::object protocol) {
     require_empty_native_protocol(protocol);
     if (!py::hasattr(source, "name")) {
         throw py::type_error("save_sponge_input_bundle expects a Molecule or residue template");
     }
     auto molecule = std::make_shared<Molecule>(
         get_template_molecule(py::str(source.attr("name")).cast<std::string>()));
-    save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
+    require_native_bundle_compatibility(molecule);
+    save_sponge_input_bundle(*molecule, normalize_bundle_prefix(prefix, molecule->name),
                              py::str(dirname).cast<std::string>());
     return molecule;
 }
@@ -453,13 +503,17 @@ void bind_core_module(py::module_& m) {
     m.def("save_sponge_input", &save_sponge_input_object, py::arg("molecule"), py::arg("prefix") = "",
           py::arg("dirname") = ".");
     m.def("save_sponge_input_bundle", &save_sponge_input_bundle_object, py::arg("molecule"),
-          py::arg("prefix") = "", py::arg("dirname") = ".", py::kw_only(), py::arg("protocol") = py::none());
+          py::arg("prefix") = py::none(), py::arg("dirname") = ".", py::kw_only(),
+          py::arg("protocol") = py::none());
     m.def("save_sponge_input_bundle", &save_residue_bundle_object, py::arg("molecule"),
-          py::arg("prefix") = "", py::arg("dirname") = ".", py::kw_only(), py::arg("protocol") = py::none());
+          py::arg("prefix") = py::none(), py::arg("dirname") = ".", py::kw_only(),
+          py::arg("protocol") = py::none());
     m.def("save_sponge_input_bundle", &save_residuetype_bundle_object, py::arg("molecule"),
-          py::arg("prefix") = "", py::arg("dirname") = ".", py::kw_only(), py::arg("protocol") = py::none());
+          py::arg("prefix") = py::none(), py::arg("dirname") = ".", py::kw_only(),
+          py::arg("protocol") = py::none());
     m.def("save_sponge_input_bundle", &save_template_like_bundle_object, py::arg("molecule"),
-          py::arg("prefix") = "", py::arg("dirname") = ".", py::kw_only(), py::arg("protocol") = py::none());
+          py::arg("prefix") = py::none(), py::arg("dirname") = ".", py::kw_only(),
+          py::arg("protocol") = py::none());
     m.def("merge_dual_topology", &merge_dual_topology_object, py::arg("molecule"), py::arg("residue_index"),
           py::arg("residue_b_molecule"), py::arg("match_b_to_a"));
     m.def("merge_force_field", &merge_force_field_object, py::arg("molecule_a"), py::arg("molecule_b"),

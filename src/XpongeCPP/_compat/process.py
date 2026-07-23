@@ -136,6 +136,15 @@ def _patch_saved_pdb_residue_links(molecule, filename, residue_links=None):
 def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
     molecule, prefix=None, dirname=".", format="raw", *, protocol=None
 ):
+    if format == "bundle":
+        return _core_save_sponge_input_bundle(
+            molecule, prefix, str(dirname), protocol=protocol
+        )
+    if format != "raw":
+        raise ValueError(f"SPONGE input format must be 'raw' or 'bundle', not {format!r}")
+    if protocol is not None:
+        raise ValueError("protocol objects require format='bundle'")
+
     target = molecule
     if isinstance(molecule, Residue):
         target = Molecule(molecule.name)
@@ -147,14 +156,6 @@ def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
             target = get_template_molecule(molecule.name)
         else:
             raise TypeError("save_sponge_input expects a Molecule, Residue, ResidueType, or template-like object")
-    if format == "raw":
-        if protocol is not None:
-            raise ValueError("protocol objects require format='bundle'")
-        writer = _core_save_sponge_input
-    elif format == "bundle":
-        writer = _core_save_sponge_input_bundle
-    else:
-        raise ValueError(f"SPONGE input format must be 'raw' or 'bundle', not {format!r}")
 
     previous_min_flag = None
     saved_links = None
@@ -172,15 +173,13 @@ def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
     except Exception:
         previous_min_flag = None
     try:
-        writer_args = (target, "" if prefix is None else str(prefix), str(dirname))
-        if format == "bundle":
-            writer(*writer_args, protocol=protocol)
-        else:
-            writer(*writer_args)
+        _core_save_sponge_input(
+            target, "" if prefix is None else str(prefix), str(dirname)
+        )
     finally:
         if previous_min_flag is not None:
             target.enable_min_bonded_parameters(False)
-    if format == "raw" and prefix is not None:
+    if prefix is not None:
         _patch_saved_pdb_residue_links(target, f"{prefix}.pdb", residue_links=saved_links)
     return target
 

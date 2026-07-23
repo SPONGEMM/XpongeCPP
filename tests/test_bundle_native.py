@@ -273,6 +273,37 @@ def test_native_bundle_saver_preserves_supplied_residue_state(tmp_path):
         )
 
 
+def test_save_sponge_input_bundle_format_preserves_supplied_residue_state(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    parent = _peptide()
+    residue = parent.residues[0]
+    residue.atoms[0].x = 9.25
+    residue.atoms[0].charge = -0.2468
+    residue.atoms[0].bad_coordinate = True
+
+    molecule = Xponge.save_sponge_input(
+        residue, "residue_wrapper", tmp_path, format="bundle"
+    )
+
+    assert molecule.residue_count == 1
+    assert molecule.atoms[0].charge == pytest.approx(-0.2468)
+    assert molecule.atoms[0].bad_coordinate is True
+    with h5py.File(tmp_path / "residue_wrapper_topology.spgt.h5", "r") as handle:
+        assert handle["/atoms/charge"][0] == pytest.approx(-0.2468 * 18.2223)
+    with h5py.File(tmp_path / "residue_wrapper_restart.spgr.h5", "r") as handle:
+        assert handle["/particles/all/position/value"][0, 0, 0] == pytest.approx(
+            9.25
+        )
+
+
+def test_native_bundle_saver_accepts_none_prefix(tmp_path):
+    molecule = _peptide()
+
+    assert Xponge.save_sponge_input_bundle(molecule, None, tmp_path) is molecule
+
+    assert (tmp_path / f"{molecule.name}_topology.spgt.h5").is_file()
+
+
 def test_native_bundle_saver_materializes_extended_topology(tmp_path):
     h5py = pytest.importorskip("h5py")
     molecule = _peptide()
@@ -406,6 +437,60 @@ def test_native_bundle_saver_rejects_minimum_bonded_parameters(tmp_path):
         min_helper.do_not_save_min_bonded_parameters()
 
     assert not list(tmp_path.glob("minimum_*"))
+
+
+def test_direct_bundle_saver_rejects_minimum_bonded_parameters(tmp_path):
+    from XpongeCPP.forcefield.special import min as min_helper
+
+    molecule = _peptide()
+    min_helper.save_min_bonded_parameters()
+    try:
+        with pytest.raises(ValueError, match="minimum-bonded parameters"):
+            Xponge.save_sponge_input_bundle(molecule, "minimum_direct", tmp_path)
+    finally:
+        min_helper.do_not_save_min_bonded_parameters()
+
+    assert not list(tmp_path.glob("minimum_direct_*"))
+
+
+def test_native_bundle_saver_rejects_active_compatibility_serializers(tmp_path):
+    molecule = _peptide()
+
+    @Xponge.Molecule.Set_Save_SPONGE_Input("custom_compat_force")
+    def custom_compat_force(_molecule):
+        return "1\n0 1.0\n"
+
+    try:
+        with pytest.raises(
+            ValueError, match="compatibility serializer.*custom_compat_force"
+        ):
+            Xponge.save_sponge_input(
+                molecule, "custom_compat", tmp_path, format="bundle"
+            )
+    finally:
+        Xponge.Molecule.Del_Save_SPONGE_Input("custom_compat_force")
+
+    assert not list(tmp_path.glob("custom_compat_*"))
+
+
+def test_native_bundle_saver_ignores_empty_compatibility_serializers(tmp_path):
+    molecule = _peptide()
+
+    @Xponge.Molecule.Set_Save_SPONGE_Input("inactive_compat_force")
+    def inactive_compat_force(_molecule):
+        return ""
+
+    try:
+        assert (
+            Xponge.save_sponge_input_bundle(
+                molecule, "inactive_compat", tmp_path
+            )
+            is molecule
+        )
+    finally:
+        Xponge.Molecule.Del_Save_SPONGE_Input("inactive_compat_force")
+
+    assert (tmp_path / "inactive_compat_topology.spgt.h5").is_file()
 
 
 def test_native_bundle_saver_rejects_user_defined_listed_forces(tmp_path):
