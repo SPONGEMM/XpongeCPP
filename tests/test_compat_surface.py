@@ -120,6 +120,8 @@ def test_xpongecpp_common_legacy_import_paths_resolve():
 
     assert load.GromacsTopologyIterator is Xponge.GromacsTopologyIterator
     assert callable(build.save_pdb)
+    assert build.save_sponge_input_bundle is Xponge.save_sponge_input_bundle
+    assert "save_sponge_input_bundle" in build.__all__
     assert assign.AssignRule is Xponge.AssignRule
     assert issubclass(Xdict, dict)
     assert callable(Xprint)
@@ -146,6 +148,7 @@ def test_xponge_package_alias_supports_common_legacy_import_paths():
 
     assert load.GromacsTopologyIterator is Xponge.GromacsTopologyIterator
     assert callable(build.save_pdb)
+    assert build.save_sponge_input_bundle is Xponge.save_sponge_input_bundle
     assert assign.AssignRule is Xponge.AssignRule
     assert issubclass(Xdict, dict)
     assert callable(Xpri)
