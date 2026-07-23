@@ -140,8 +140,12 @@ def _content_hash(handle: h5py.File, bundle_file: str, path_prefixes=()) -> str:
         if path_prefixes and not path.startswith(path_prefixes):
             continue
         array = np.asarray(dataset[()])
+        dtype = dataset.dtype
+        if array.dtype.kind == "b":
+            array = array.astype(np.uint8, copy=False)
+            dtype = array.dtype
         digest.update(b"\0" + path.encode() + b"\0")
-        digest.update(str(dataset.dtype).encode("ascii") + b"\0")
+        digest.update(str(dtype).encode("ascii") + b"\0")
         digest.update(repr(array.shape).encode("ascii") + b"\0")
         if array.dtype.kind in {"O", "U", "S"}:
             strings = np.asarray(dataset.asstr()[()]).reshape(-1)

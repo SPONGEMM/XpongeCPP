@@ -128,7 +128,7 @@ public:
                  const std::vector<std::size_t> &dimensions,
                  const std::vector<std::uint8_t> &values) {
     TrackedDataset dataset;
-    dataset.dtype = "bool";
+    dataset.dtype = "uint8";
     dataset.dimensions = dimensions;
     dataset.bytes = values;
     datasets_[path] = std::move(dataset);
@@ -816,9 +816,49 @@ void write_protocol(const std::filesystem::path &path,
   write_scalar<std::int64_t>(file, "/protocol/restraint_count", 0);
 }
 
+std::vector<float> restart_box_edges(const Molecule &molecule) {
+  const auto box = sponge_coordinate_box_for_export(molecule);
+  if (!std::all_of(box.begin(), box.end(),
+                   [](double value) { return std::isfinite(value); })) {
+    throw std::invalid_argument("box values must be finite");
+  }
+  const double alpha = box[3] * 3.14159265358979323846 / 180.0;
+  const double beta = box[4] * 3.14159265358979323846 / 180.0;
+  const double gamma = box[5] * 3.14159265358979323846 / 180.0;
+  const double sin_gamma = std::sin(gamma);
+  if (std::abs(sin_gamma) < 1e-7) {
+    throw std::invalid_argument("box gamma angle produces a singular cell");
+  }
+  const double cos_alpha = std::cos(alpha);
+  const double cos_beta = std::cos(beta);
+  const double cos_gamma = std::cos(gamma);
+  const double edge_y_x = box[1] * cos_gamma;
+  const double edge_y_y = box[1] * sin_gamma;
+  const double edge_z_x = box[2] * cos_beta;
+  const double edge_z_y =
+      box[2] * (cos_alpha - cos_beta * cos_gamma) / sin_gamma;
+  const double z2 =
+      box[2] * box[2] - edge_z_x * edge_z_x - edge_z_y * edge_z_y;
+  if (z2 < -1e-5) {
+    throw std::invalid_argument("box angles produce an invalid cell");
+  }
+  return {
+      static_cast<float>(box[0]),
+      0,
+      0,
+      static_cast<float>(edge_y_x),
+      static_cast<float>(edge_y_y),
+      0,
+      static_cast<float>(edge_z_x),
+      static_cast<float>(edge_z_y),
+      static_cast<float>(std::sqrt(std::max(0.0, z2))),
+  };
+}
+
 void write_restart(const Molecule &molecule,
                    const std::filesystem::path &path,
                    const std::string &identity_uuid) {
+  const auto edges = restart_box_edges(molecule);
   H5File file(path);
   for (const auto &group :
        {"/h5md", "/h5md/creator", "/run", "/particles/all",
@@ -838,24 +878,6 @@ void write_restart(const Molecule &molecule,
     positions.push_back(static_cast<float>(atom.y + shift[1]));
     positions.push_back(static_cast<float>(atom.z + shift[2]));
   }
-  const auto box = sponge_coordinate_box_for_export(molecule);
-  const double alpha = box[3] * 3.14159265358979323846 / 180.0;
-  const double beta = box[4] * 3.14159265358979323846 / 180.0;
-  const double gamma = box[5] * 3.14159265358979323846 / 180.0;
-  std::vector<float> edges{
-      static_cast<float>(box[0]),
-      0,
-      0,
-      static_cast<float>(box[1] * std::cos(gamma)),
-      static_cast<float>(box[1] * std::sin(gamma)),
-      0,
-      static_cast<float>(box[2] * std::cos(beta)),
-      static_cast<float>(box[2] *
-                         (std::cos(alpha) - std::cos(beta) * std::cos(gamma)) /
-                         std::sin(gamma)),
-      0};
-  const double z2 = box[2] * box[2] - edges[6] * edges[6] - edges[7] * edges[7];
-  edges[8] = static_cast<float>(std::sqrt(std::max(0.0, z2)));
   write_array(file, "/particles/all/position/value",
               {1, molecule.atoms.size(), 3}, positions);
   write_array(file, "/particles/all/box/edges/value", {1, 3, 3}, edges);
@@ -977,10 +999,12 @@ save_sponge_input_bundle(const Molecule &input_molecule,
   if (relative.is_absolute())
     throw std::invalid_argument("bundle prefix must be relative");
   std::filesystem::create_directories(dirname);
-  const auto base = std::filesystem::weakly_canonical(dirname / relative);
+  const auto base =
+      std::filesystem::weakly_canonical(dirname / relative).lexically_normal();
   const auto root = std::filesystem::weakly_canonical(dirname);
   const auto relative_to_root = base.lexically_relative(root);
-  if (relative_to_root.empty() || *relative_to_root.begin() == "..") {
+  if (base == root || relative_to_root.empty() || relative_to_root == "." ||
+      *relative_to_root.begin() == "..") {
     throw std::invalid_argument("bundle prefix escapes output directory");
   }
   const auto topology_path =

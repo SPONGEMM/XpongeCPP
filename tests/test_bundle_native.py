@@ -1,4 +1,6 @@
 import hashlib
+import runpy
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -40,8 +42,12 @@ def _content_hash(handle, bundle_file, path_prefixes=()):
             continue
         values = dataset[()]
         array = np.asarray(values)
+        dtype = dataset.dtype
+        if array.dtype.kind == "b":
+            array = array.astype(np.uint8, copy=False)
+            dtype = array.dtype
         digest.update(b"\0" + path.encode() + b"\0")
-        digest.update(str(dataset.dtype).encode("ascii") + b"\0")
+        digest.update(str(dtype).encode("ascii") + b"\0")
         digest.update(repr(array.shape).encode("ascii") + b"\0")
         if array.dtype.kind in {"O", "U", "S"}:
             strings = dataset.asstr()[()]
@@ -194,6 +200,32 @@ def test_native_bundle_saver_accepts_residue_type(tmp_path):
     assert (tmp_path / "residue_type_topology.spgt.h5").is_file()
 
 
+def test_native_bundle_saver_preserves_supplied_residue_state(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    parent = _peptide()
+    parent.set_box_padding(5.0, center=False)
+    residue = parent.residues[0]
+    atom = residue.atoms[0]
+    atom.x = 12.25
+    atom.y = -3.5
+    atom.z = 7.75
+    atom.charge = -0.4321
+    atom.bad_coordinate = True
+
+    molecule = Xponge.save_sponge_input_bundle(residue, "residue", tmp_path)
+
+    assert molecule.residue_count == 1
+    assert molecule.atom_count == residue.atom_count
+    assert molecule.atoms[0].charge == pytest.approx(-0.4321)
+    assert molecule.atoms[0].bad_coordinate is True
+    with h5py.File(tmp_path / "residue_topology.spgt.h5", "r") as handle:
+        assert handle["/atoms/charge"][0] == pytest.approx(-0.4321 * 18.2223)
+    with h5py.File(tmp_path / "residue_restart.spgr.h5", "r") as handle:
+        assert handle["/particles/all/position/value"][0, 0].tolist() == pytest.approx(
+            [12.25, -3.5, 7.75]
+        )
+
+
 def test_native_bundle_saver_materializes_extended_topology(tmp_path):
     h5py = pytest.importorskip("h5py")
     molecule = _peptide()
@@ -282,6 +314,21 @@ def test_native_bundle_saver_materializes_ryckaert_bellemans_listed_force(tmp_pa
         )
 
 
+def test_validate_bundle_parity_hash_normalizes_boolean_datasets(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    bundle_path = tmp_path / "logical.h5"
+    with h5py.File(bundle_path, "w") as handle:
+        handle.create_dataset("/logical", data=np.asarray([False, True], dtype=bool))
+
+    helper = runpy.run_path(
+        str(Path(__file__).resolve().parents[1] / "scripts" / "validate_bundle_parity.py")
+    )["_content_hash"]
+    with h5py.File(bundle_path, "r") as handle:
+        assert helper(handle, "topology.spgt.h5") == _content_hash(
+            handle, "topology.spgt.h5"
+        )
+
+
 def test_native_bundle_saver_rejects_minimum_bonded_parameters(tmp_path):
     from XpongeCPP.forcefield.special import min as min_helper
 
@@ -354,3 +401,35 @@ def test_native_bundle_saver_rejects_edip_parameters(tmp_path):
 def test_native_bundle_saver_rejects_escaping_prefix(tmp_path):
     with pytest.raises(ValueError, match="escapes output directory"):
         Xponge.save_sponge_input_bundle(_peptide(), "../escape", tmp_path)
+
+
+@pytest.mark.parametrize("prefix", [".", "subdir/.."])
+def test_native_bundle_saver_rejects_prefix_resolving_to_output_root(
+    tmp_path, prefix
+):
+    output_root = tmp_path / "bundle-root"
+
+    with pytest.raises(ValueError, match="prefix"):
+        Xponge.save_sponge_input_bundle(_peptide(), prefix, output_root)
+
+    assert not list(tmp_path.glob("bundle-root_*"))
+
+
+@pytest.mark.parametrize(
+    "angles, message",
+    [
+        ([90.0, 90.0, 0.0], "singular"),
+        ([10.0, 10.0, 170.0], "invalid"),
+    ],
+)
+def test_native_bundle_saver_rejects_invalid_box_geometry(
+    tmp_path, angles, message
+):
+    molecule = _peptide()
+    molecule.set_box_padding(5.0)
+    molecule.box_angle = angles
+
+    with pytest.raises(ValueError, match=message):
+        Xponge.save_sponge_input_bundle(molecule, "invalid_box", tmp_path)
+
+    assert not list(tmp_path.glob("invalid_box_*"))

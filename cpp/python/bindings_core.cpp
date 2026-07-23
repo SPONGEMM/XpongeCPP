@@ -1,5 +1,8 @@
 #include "bindings_internal.hpp"
 
+#include <algorithm>
+#include <initializer_list>
+
 namespace xpongecpp {
 namespace {
 
@@ -71,6 +74,153 @@ std::shared_ptr<Molecule> save_residuetype_bundle_object(
     const ResidueType& residue_type, const std::string& prefix, py::object dirname) {
     auto molecule = std::make_shared<Molecule>(residue_type.name());
     molecule->append_residue_from_type(residue_type, 0.0, 0.0, 0.0);
+    save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
+                             py::str(dirname).cast<std::string>());
+    return molecule;
+}
+
+std::shared_ptr<Molecule> molecule_from_residue_view(const ResidueView& residue_view) {
+    const Molecule& source = *residue_view.molecule;
+    const Residue& source_residue = residue_view.get();
+    const AtomId atom_begin = source_residue.atom_begin;
+    const AtomId atom_end = atom_begin + source_residue.atom_count;
+    const auto contains = [atom_begin, atom_end](AtomId atom) {
+        return atom >= atom_begin && atom < atom_end;
+    };
+    const auto all_contained = [&contains](std::initializer_list<AtomId> atoms) {
+        return std::all_of(atoms.begin(), atoms.end(), contains);
+    };
+    const auto local = [atom_begin](AtomId atom) { return atom - atom_begin; };
+
+    auto molecule = std::make_shared<Molecule>(source_residue.name);
+    Residue residue = source_residue;
+    residue.atom_begin = 0;
+    molecule->residues.push_back(std::move(residue));
+    molecule->atoms.assign(source.atoms.begin() + atom_begin, source.atoms.begin() + atom_end);
+    for (auto& atom : molecule->atoms) {
+        atom.residue = 0;
+    }
+
+    for (const auto& bond : source.explicit_bonds) {
+        if (all_contained({bond.atom1, bond.atom2})) {
+            molecule->explicit_bonds.push_back({local(bond.atom1), local(bond.atom2)});
+        }
+    }
+    for (const auto& link : source.residue_links) {
+        if (all_contained({link.atom1, link.atom2})) {
+            molecule->residue_links.push_back({local(link.atom1), local(link.atom2)});
+        }
+    }
+    for (const auto& item : source.virtual_atoms) {
+        if (all_contained({item.virtual_atom, item.atom0, item.atom1, item.atom2})) {
+            molecule->virtual_atoms.push_back(
+                {local(item.virtual_atom), local(item.atom0), local(item.atom1), local(item.atom2),
+                 item.k1, item.k2});
+        }
+    }
+    for (const auto& item : source.harmonic_impropers) {
+        if (all_contained({item.atom0, item.atom1, item.atom2, item.atom3})) {
+            molecule->harmonic_impropers.push_back(
+                {local(item.atom0), local(item.atom1), local(item.atom2), local(item.atom3),
+                 item.k, item.phi0});
+        }
+    }
+    molecule->cmap_types = source.cmap_types;
+    for (const auto& item : source.cmaps) {
+        if (all_contained({item.atom0, item.atom1, item.atom2, item.atom3, item.atom4})) {
+            molecule->cmaps.push_back(
+                {local(item.atom0), local(item.atom1), local(item.atom2), local(item.atom3),
+                 local(item.atom4), item.type});
+        }
+    }
+    for (const auto& item : source.nb14_extras) {
+        if (all_contained({item.atom1, item.atom2})) {
+            molecule->nb14_extras.push_back(
+                {local(item.atom1), local(item.atom2), item.a, item.b, item.kee});
+        }
+    }
+    for (const auto& item : source.urey_bradleys) {
+        if (all_contained({item.atom0, item.atom1, item.atom2})) {
+            molecule->urey_bradleys.push_back(
+                {local(item.atom0), local(item.atom1), local(item.atom2),
+                 item.k, item.b, item.k_ub, item.r13});
+        }
+    }
+    for (const auto& item : source.ryckaert_bellemans) {
+        if (all_contained({item.atom0, item.atom1, item.atom2, item.atom3})) {
+            molecule->ryckaert_bellemans.push_back(
+                {local(item.atom0), local(item.atom1), local(item.atom2), local(item.atom3),
+                 item.c0, item.c1, item.c2, item.c3, item.c4, item.c5});
+        }
+    }
+    for (const auto& item : source.soft_bonds) {
+        if (all_contained({item.atom1, item.atom2})) {
+            molecule->soft_bonds.push_back(
+                {local(item.atom1), local(item.atom2), item.k, item.b, item.from_a_or_b});
+        }
+    }
+
+    if (source.topology_override) {
+        Topology topology;
+        for (const auto& item : source.topology_override->bonds) {
+            if (all_contained({item.atom1, item.atom2})) {
+                topology.bonds.push_back(
+                    {local(item.atom1), local(item.atom2), item.k, item.length});
+            }
+        }
+        for (const auto& item : source.topology_override->angles) {
+            if (all_contained({item.atom1, item.atom2, item.atom3})) {
+                topology.angles.push_back(
+                    {local(item.atom1), local(item.atom2), local(item.atom3), item.k, item.theta});
+            }
+        }
+        for (const auto& item : source.topology_override->dihedrals) {
+            if (all_contained({item.atom1, item.atom2, item.atom3, item.atom4})) {
+                topology.dihedrals.push_back(
+                    {local(item.atom1), local(item.atom2), local(item.atom3), local(item.atom4),
+                     item.periodicity, item.k, item.phase});
+            }
+        }
+        topology.exclusions.resize(source_residue.atom_count);
+        for (AtomId atom = atom_begin; atom < atom_end; ++atom) {
+            if (atom >= source.topology_override->exclusions.size()) {
+                break;
+            }
+            for (const AtomId excluded : source.topology_override->exclusions[atom]) {
+                if (contains(excluded)) {
+                    topology.exclusions[local(atom)].push_back(local(excluded));
+                }
+            }
+        }
+        for (const auto& item : source.topology_override->nb14s) {
+            if (all_contained({item.atom1, item.atom2})) {
+                topology.nb14s.push_back(
+                    {local(item.atom1), local(item.atom2), item.k_lj, item.k_ee});
+            }
+        }
+        molecule->topology_override = std::move(topology);
+    }
+
+    molecule->listed_force_definitions = source.listed_force_definitions;
+    molecule->sw_parameters = source.sw_parameters;
+    molecule->edip_parameters = source.edip_parameters;
+    molecule->box_length = source.box_length;
+    molecule->box_angle = source.box_angle;
+    molecule->has_box = source.has_box;
+    molecule->has_gb_parameters = source.has_gb_parameters;
+    molecule->write_min_bonded_parameters = source.write_min_bonded_parameters;
+    molecule->write_subsys_division = source.write_subsys_division;
+    molecule->write_lj_soft_core = source.write_lj_soft_core;
+    molecule->ignore_missing_atoms = source.ignore_missing_atoms;
+    if (!molecule->validate()) {
+        throw std::runtime_error("internal error: invalid molecule materialized from residue");
+    }
+    return molecule;
+}
+
+std::shared_ptr<Molecule> save_residue_bundle_object(
+    const ResidueView& residue, const std::string& prefix, py::object dirname) {
+    auto molecule = molecule_from_residue_view(residue);
     save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
                              py::str(dirname).cast<std::string>());
     return molecule;
@@ -293,6 +443,8 @@ void bind_core_module(py::module_& m) {
     m.def("save_sponge_input", &save_sponge_input_object, py::arg("molecule"), py::arg("prefix") = "",
           py::arg("dirname") = ".");
     m.def("save_sponge_input_bundle", &save_sponge_input_bundle_object, py::arg("molecule"),
+          py::arg("prefix") = "", py::arg("dirname") = ".");
+    m.def("save_sponge_input_bundle", &save_residue_bundle_object, py::arg("molecule"),
           py::arg("prefix") = "", py::arg("dirname") = ".");
     m.def("save_sponge_input_bundle", &save_residuetype_bundle_object, py::arg("molecule"),
           py::arg("prefix") = "", py::arg("dirname") = ".");
