@@ -105,6 +105,22 @@ pixi run test-resp
 pixi run test
 ```
 
+Bundled SPONGE HDF5 I/O is implemented in the native C++ backend. Its build
+dependencies match SPONGE: HighFive and the HDF5 C library. The `pixi`
+environment installs both automatically. Manual source builds must provide a
+discoverable HDF5 C installation; when HighFive is unavailable, CMake fetches
+the pinned HighFive 3.3.0 source archive automatically.
+
+The default SPONGE input format remains the legacy raw-text layout. Bundled
+input v2 can be selected from the common API, while both format-specific entry
+points remain available:
+
+```python
+XpongeCPP.save_sponge_input(molecule, "system", "inputs", format="bundle")
+XpongeCPP.save_sponge_input_raw(molecule, "system", "inputs")
+XpongeCPP.save_sponge_input_bundle(molecule, "system", "inputs")
+```
+
 RESP supports a multi-backend strategy:
 
 - default backend: `PySCF`
