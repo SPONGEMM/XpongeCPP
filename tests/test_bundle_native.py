@@ -102,6 +102,23 @@ def test_native_bundle_saver_writes_typed_hdf5(tmp_path):
         assert handle["/particles/all/position/step"].id == handle["/particles/all/step"].id
 
 
+def test_native_bundle_saver_preserves_restart_metadata_shapes(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    molecule = _peptide()
+
+    Xponge.save_sponge_input_bundle(molecule, "restart_shape", tmp_path)
+
+    with h5py.File(tmp_path / "restart_shape_restart.spgr.h5", "r") as handle:
+        expected = {
+            "/parameters/sponge/output/frame_count": [1],
+            "/parameters/sponge/output/last_complete_step": [0],
+            "/run/current_step": [0],
+        }
+        for path, values in expected.items():
+            assert handle[path].shape == (1,)
+            assert handle[path][:].tolist() == values
+
+
 def test_save_sponge_input_wrapper_selects_raw_or_bundle_format(tmp_path):
     molecule = _peptide()
 
@@ -229,6 +246,10 @@ def test_native_bundle_saver_preserves_supplied_residue_state(tmp_path):
 def test_native_bundle_saver_materializes_extended_topology(tmp_path):
     h5py = pytest.importorskip("h5py")
     molecule = _peptide()
+    Xponge.save_sponge_input_bundle(molecule, "regular", tmp_path)
+    with h5py.File(tmp_path / "regular_topology.spgt.h5", "r") as handle:
+        regular_nb14_count = handle["/forcefield/nb14/atoms"].shape[0]
+
     molecule.add_virtual_atom2(0, 1, 2, 3, 0.25, 0.75)
     molecule.add_nb14_extra(4, 1, 1.25, 2.5, 0.75)
     molecule.add_urey_bradley(2, 1, 0, 1.1, 2.2, 3.3, 4.4)
@@ -241,7 +262,18 @@ def test_native_bundle_saver_materializes_extended_topology(tmp_path):
 
     with h5py.File(tmp_path / "extended_topology.spgt.h5", "r") as handle:
         assert handle["/forcefield/virtual_atom/from"].shape == (3,)
-        assert handle["/forcefield/nb14_extra/params"].shape == (1, 3)
+        assert "/forcefield/nb14_extra" not in handle
+        nb14_atoms = handle["/forcefield/nb14/atoms"][:]
+        nb14_params = handle["/forcefield/nb14/params"][:]
+        assert nb14_atoms.shape == (regular_nb14_count + 1, 2)
+        assert nb14_params.shape == (regular_nb14_count + 1, 3)
+        assert handle["/forcefield/nb14/count"][()] == regular_nb14_count + 1
+        extra_rows = [
+            nb14_params[index].tolist()
+            for index, atom_pair in enumerate(nb14_atoms.tolist())
+            if atom_pair == [4, 1]
+        ]
+        assert any(row == pytest.approx([15.0, 15.0, 0.75]) for row in extra_rows)
         assert handle["/forcefield/urey_bradley/atoms"].shape == (1, 3)
         assert handle["/forcefield/cmap/atoms"].shape == (1, 5)
         assert handle["/forcefield/cmap/grid_value"].shape == (4,)

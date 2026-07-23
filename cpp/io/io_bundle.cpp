@@ -381,6 +381,8 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
       dihedral_periodicity, nb14_atoms;
   std::vector<float> bond_k, bond_r0, angle_k, angle_theta0, dihedral_k,
       dihedral_phi0, nb14_params;
+  const bool materialize_nb14 =
+      molecule.write_lj_soft_core || !molecule.nb14_extras.empty();
   for (const auto &item : topology.bonds) {
     bond_atoms.insert(bond_atoms.end(),
                       {static_cast<std::int32_t>(item.atom1),
@@ -410,7 +412,7 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
     nb14_atoms.insert(nb14_atoms.end(),
                       {static_cast<std::int32_t>(item.atom1),
                        static_cast<std::int32_t>(item.atom2)});
-    if (molecule.write_lj_soft_core) {
+    if (materialize_nb14) {
       const auto lhs = find_amber_lj_type(molecule.atoms[item.atom1].type);
       const auto rhs = find_amber_lj_type(molecule.atoms[item.atom2].type);
       const auto [a, b] = lj_ab(lhs, rhs);
@@ -422,6 +424,15 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
       nb14_params.insert(nb14_params.end(), {static_cast<float>(item.k_lj),
                                              static_cast<float>(item.k_ee)});
     }
+  }
+  for (const auto &item : molecule.nb14_extras) {
+    nb14_atoms.insert(nb14_atoms.end(),
+                      {static_cast<std::int32_t>(item.atom1),
+                       static_cast<std::int32_t>(item.atom2)});
+    nb14_params.insert(nb14_params.end(),
+                       {static_cast<float>(item.a * 12.0),
+                        static_cast<float>(item.b * 6.0),
+                        static_cast<float>(item.kee)});
   }
   write_array(file, "/forcefield/bond/atoms", {topology.bonds.size(), 2},
               bond_atoms);
@@ -467,31 +478,14 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
     write_scalar<std::int64_t>(file, "/forcefield/improper/count",
                                molecule.harmonic_impropers.size());
   }
-  write_array(file, "/forcefield/nb14/atoms", {topology.nb14s.size(), 2},
-              nb14_atoms);
+  const std::size_t nb14_count =
+      topology.nb14s.size() + molecule.nb14_extras.size();
+  write_array(file, "/forcefield/nb14/atoms", {nb14_count, 2}, nb14_atoms);
   write_array(file, "/forcefield/nb14/params",
-              {topology.nb14s.size(), molecule.write_lj_soft_core ? 3UL : 2UL},
+              {nb14_count, materialize_nb14 ? 3UL : 2UL},
               nb14_params);
   write_scalar<std::int64_t>(file, "/forcefield/nb14/count",
-                             topology.nb14s.size());
-
-  std::vector<std::int32_t> nb14_extra_atoms;
-  std::vector<float> nb14_extra_params;
-  for (const auto &item : molecule.nb14_extras) {
-    nb14_extra_atoms.insert(nb14_extra_atoms.end(),
-                            {static_cast<std::int32_t>(item.atom1),
-                             static_cast<std::int32_t>(item.atom2)});
-    nb14_extra_params.insert(nb14_extra_params.end(),
-                             {static_cast<float>(item.a),
-                              static_cast<float>(item.b),
-                              static_cast<float>(item.kee)});
-  }
-  if (!molecule.nb14_extras.empty()) {
-    write_array(file, "/forcefield/nb14_extra/atoms",
-                {molecule.nb14_extras.size(), 2}, nb14_extra_atoms);
-    write_array(file, "/forcefield/nb14_extra/params",
-                {molecule.nb14_extras.size(), 3}, nb14_extra_params);
-  }
+                             nb14_count);
 
   if (!molecule.virtual_atoms.empty()) {
     std::vector<std::int32_t> types, atoms, from;
@@ -906,12 +900,13 @@ void write_restart(const Molecule &molecule,
   write_string(file, "/schema/version", kInputSchemaVersion);
   write_string(file, "/identity/uuid", identity_uuid);
   write_string(file, "/parameters/sponge/output/status", "finalized");
-  write_scalar<std::int64_t>(file, "/parameters/sponge/output/frame_count", 1);
-  write_scalar<std::int64_t>(file,
-                             "/parameters/sponge/output/last_complete_step", 0);
+  write_array<std::int64_t>(file, "/parameters/sponge/output/frame_count", {1},
+                            {1});
+  write_array<std::int64_t>(
+      file, "/parameters/sponge/output/last_complete_step", {1}, {0});
   write_array<double>(file, "/parameters/sponge/output/last_complete_time", {1},
                       {0.0});
-  write_scalar<std::int64_t>(file, "/run/current_step", 0);
+  write_array<std::int64_t>(file, "/run/current_step", {1}, {0});
   write_array<double>(file, "/run/current_time", {1}, {0.0});
   write_strings(file, "/parameters/sponge/output/particle_streams", {"all"});
   write_string(file, "/run/state_type", "restart");
