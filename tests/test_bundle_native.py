@@ -115,6 +115,25 @@ def test_save_sponge_input_wrapper_selects_raw_or_bundle_format(tmp_path):
     assert (tmp_path / "bundle_restart.spgr.h5").is_file()
 
 
+def test_save_sponge_input_bundle_does_not_patch_existing_pdb(tmp_path, monkeypatch):
+    molecule = _peptide()
+    original_pdb = (
+        b"HETATM    1  C   LIG A   1       0.000   0.000   0.000  1.00  0.00           C\n"
+        b"CONECT    1    2\n"
+        b"END\n"
+    )
+    pdb_path = tmp_path / "system.pdb"
+    pdb_path.write_bytes(original_pdb)
+    monkeypatch.chdir(tmp_path)
+
+    Xponge.Save_SPONGE_Input(molecule, "system", tmp_path, format="bundle")
+
+    assert (tmp_path / "system_topology.spgt.h5").is_file()
+    assert (tmp_path / "system_protocol.spgp.h5").is_file()
+    assert (tmp_path / "system_restart.spgr.h5").is_file()
+    assert pdb_path.read_bytes() == original_pdb
+
+
 def test_save_sponge_input_wrapper_rejects_unknown_format(tmp_path):
     with pytest.raises(ValueError, match="must be 'raw' or 'bundle'"):
         Xponge.save_sponge_input(_peptide(), "system", tmp_path, format="future")

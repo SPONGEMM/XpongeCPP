@@ -172,7 +172,7 @@ def Save_SPONGE_Input(molecule, prefix=None, dirname=".", format="raw"):  # pyli
     finally:
         if previous_min_flag is not None:
             target.enable_min_bonded_parameters(False)
-    if prefix is not None:
+    if format == "raw" and prefix is not None:
         _patch_saved_pdb_residue_links(target, f"{prefix}.pdb", residue_links=saved_links)
     return target
 
