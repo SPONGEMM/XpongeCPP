@@ -851,9 +851,13 @@ std::vector<float> restart_box_edges(const Molecule &molecule) {
 
 void write_restart(const Molecule &molecule,
                    const std::filesystem::path &path,
-                   const std::string &identity_uuid) {
+                   const std::string &identity_uuid,
+                   const std::string &topology_hash,
+                   const std::string &atom_order_hash,
+                   const std::string &protocol_hash) {
   const auto edges = restart_box_edges(molecule);
-  H5File file(path);
+  DatasetHashTracker state_tracker;
+  H5File file(path, &state_tracker);
   for (const auto &group :
        {"/h5md", "/h5md/creator", "/run", "/particles/all",
         "/parameters/restart", "/parameters/restart/rng_state",
@@ -899,6 +903,13 @@ void write_restart(const Molecule &molecule,
   write_string(file, "/schema/name", "sponge.restart.h5");
   write_string(file, "/schema/version", kInputSchemaVersion);
   write_string(file, "/identity/uuid", identity_uuid);
+  write_string(file, "/run/topology_hash", topology_hash);
+  write_string(file, "/run/atom_order_hash", atom_order_hash);
+  write_string(file, "/run/producer_protocol_hash", protocol_hash);
+  write_string(
+      file, "/run/state_hash",
+      state_tracker.content_hash(
+          "restart.spgr.h5", {"/particles/", "/parameters/restart/"}));
   write_string(file, "/parameters/sponge/output/status", "finalized");
   write_array<std::int64_t>(file, "/parameters/sponge/output/frame_count", {1},
                             {1});
@@ -1029,10 +1040,12 @@ save_sponge_input_bundle(const Molecule &input_molecule,
                       atom_order_hash, forcefield_hash, identity_uuid);
   }
   const DatasetHashTracker empty_protocol_tracker;
+  const std::string protocol_hash =
+      empty_protocol_tracker.content_hash("protocol.spgp.h5");
   write_protocol(files.temporary[1], topology_hash,
-                 empty_protocol_tracker.content_hash("protocol.spgp.h5"),
-                 identity_uuid);
-  write_restart(molecule, files.temporary[2], identity_uuid);
+                 protocol_hash, identity_uuid);
+  write_restart(molecule, files.temporary[2], identity_uuid, topology_hash,
+                atom_order_hash, protocol_hash);
   files.commit();
   return {{"topology", topology_path},
           {"protocol", protocol_path},

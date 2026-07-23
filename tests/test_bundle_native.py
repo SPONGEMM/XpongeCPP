@@ -73,6 +73,8 @@ def test_native_bundle_saver_writes_typed_hdf5(tmp_path):
         assert handle["/schema/name"].asstr()[()] == "sponge.topology.h5"
         assert handle["/schema/version"].asstr()[()] == "sponge.input.v2"
         identity_uuid = handle["/identity/uuid"].asstr()[()]
+        topology_hash = handle["/topology/topology_hash"].asstr()[()]
+        atom_order_hash = handle["/topology/atom_order_hash"].asstr()[()]
         assert handle["/atoms/mass"].shape == (molecule.atom_count,)
         assert handle["/atoms/charge"].shape == (molecule.atom_count,)
         assert handle["/atoms/residue_index"].shape == (molecule.atom_count,)
@@ -92,9 +94,14 @@ def test_native_bundle_saver_writes_typed_hdf5(tmp_path):
         assert handle["/schema/name"].asstr()[()] == "sponge.protocol.h5"
         assert handle["/schema/version"].asstr()[()] == "sponge.input.v2"
         assert handle["/identity/uuid"].asstr()[()] == identity_uuid
+        protocol_hash = handle["/identity/content_hash"].asstr()[()]
     with h5py.File(paths["restart"], "r") as handle:
         assert handle["/schema/version"].asstr()[()] == "sponge.input.v2"
         assert handle["/identity/uuid"].asstr()[()] == identity_uuid
+        assert handle["/run/topology_hash"].asstr()[()] == topology_hash
+        assert handle["/run/atom_order_hash"].asstr()[()] == atom_order_hash
+        assert handle["/run/producer_protocol_hash"].asstr()[()] == protocol_hash
+        assert handle["/run/state_hash"].asstr()[()].startswith("sha256:")
         assert handle["/particles/all/position/value"].shape == (1, molecule.atom_count, 3)
         assert handle["/particles/all/box/edges/value"].shape == (1, 3, 3)
         assert tuple(handle["/h5md"].attrs["version"]) == (1, 1)
