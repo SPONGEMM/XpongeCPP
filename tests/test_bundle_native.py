@@ -129,7 +129,10 @@ def test_native_bundle_saver_preserves_restart_metadata_shapes(tmp_path):
 def test_save_sponge_input_wrapper_selects_raw_or_bundle_format(tmp_path):
     molecule = _peptide()
 
-    assert Xponge.save_sponge_input(molecule, "default", tmp_path) is molecule
+    assert (
+        Xponge.save_sponge_input(molecule, "default", tmp_path, protocol=None)
+        is molecule
+    )
     assert (tmp_path / "default_coordinate.txt").is_file()
     assert not (tmp_path / "default_topology.spgt.h5").exists()
 
@@ -139,10 +142,30 @@ def test_save_sponge_input_wrapper_selects_raw_or_bundle_format(tmp_path):
     assert Xponge.save_sponge_input_raw(molecule, "raw_direct", tmp_path) is molecule
     assert (tmp_path / "raw_direct_coordinate.txt").is_file()
 
-    assert Xponge.save_sponge_input(molecule, "bundle", tmp_path, format="bundle") is molecule
+    assert (
+        Xponge.save_sponge_input(
+            molecule, "bundle", tmp_path, format="bundle", protocol=None
+        )
+        is molecule
+    )
     assert (tmp_path / "bundle_topology.spgt.h5").is_file()
     assert (tmp_path / "bundle_protocol.spgp.h5").is_file()
     assert (tmp_path / "bundle_restart.spgr.h5").is_file()
+
+    assert (
+        Xponge.save_sponge_input_bundle(
+            molecule, "bundle_direct", tmp_path, protocol=None
+        )
+        is molecule
+    )
+    with pytest.raises(ValueError, match="require format='bundle'"):
+        Xponge.save_sponge_input(
+            molecule, "raw_protocol", tmp_path, protocol=object()
+        )
+    with pytest.raises(ValueError, match="nonempty native protocols"):
+        Xponge.save_sponge_input_bundle(
+            molecule, "bundle_protocol", tmp_path, protocol=object()
+        )
 
 
 def test_save_sponge_input_bundle_does_not_patch_existing_pdb(tmp_path, monkeypatch):
@@ -282,6 +305,7 @@ def test_native_bundle_saver_materializes_extended_topology(tmp_path):
         ]
         assert any(row == pytest.approx([15.0, 15.0, 0.75]) for row in extra_rows)
         assert handle["/forcefield/urey_bradley/atoms"].shape == (1, 3)
+        assert handle["/forcefield/urey_bradley/count"][()] == 1
         assert handle["/forcefield/cmap/atoms"].shape == (1, 5)
         assert handle["/forcefield/cmap/grid_value"].shape == (4,)
         assert handle["/forcefield/gb/params"].shape == (molecule.atom_count, 2)

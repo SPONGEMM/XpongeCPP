@@ -133,7 +133,9 @@ def _patch_saved_pdb_residue_links(molecule, filename, residue_links=None):
     return None
 
 
-def Save_SPONGE_Input(molecule, prefix=None, dirname=".", format="raw"):  # pylint: disable=redefined-builtin
+def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
+    molecule, prefix=None, dirname=".", format="raw", *, protocol=None
+):
     target = molecule
     if isinstance(molecule, Residue):
         target = Molecule(molecule.name)
@@ -146,6 +148,8 @@ def Save_SPONGE_Input(molecule, prefix=None, dirname=".", format="raw"):  # pyli
         else:
             raise TypeError("save_sponge_input expects a Molecule, Residue, ResidueType, or template-like object")
     if format == "raw":
+        if protocol is not None:
+            raise ValueError("protocol objects require format='bundle'")
         writer = _core_save_sponge_input
     elif format == "bundle":
         writer = _core_save_sponge_input_bundle
@@ -168,7 +172,11 @@ def Save_SPONGE_Input(molecule, prefix=None, dirname=".", format="raw"):  # pyli
     except Exception:
         previous_min_flag = None
     try:
-        writer(target, "" if prefix is None else str(prefix), str(dirname))
+        writer_args = (target, "" if prefix is None else str(prefix), str(dirname))
+        if format == "bundle":
+            writer(*writer_args, protocol=protocol)
+        else:
+            writer(*writer_args)
     finally:
         if previous_min_flag is not None:
             target.enable_min_bonded_parameters(False)

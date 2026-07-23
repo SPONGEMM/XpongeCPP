@@ -537,6 +537,8 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
                 bond_k);
     write_array(file, "/forcefield/urey_bradley/bond_r0", {bond_r0.size()},
                 bond_r0);
+    write_scalar<std::int64_t>(file, "/forcefield/urey_bradley/count",
+                               molecule.urey_bradleys.size());
   }
 
   if (!molecule.soft_bonds.empty()) {

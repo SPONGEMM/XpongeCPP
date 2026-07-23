@@ -63,15 +63,23 @@ std::unordered_map<std::string, std::string> save_sponge_input_object(const std:
     return out;
 }
 
+void require_empty_native_protocol(const py::object& protocol) {
+    if (!protocol.is_none()) {
+        throw std::invalid_argument("nonempty native protocols are not supported yet");
+    }
+}
+
 std::shared_ptr<Molecule> save_sponge_input_bundle_object(
-    const std::shared_ptr<Molecule>& molecule, const std::string& prefix, py::object dirname) {
+    const std::shared_ptr<Molecule>& molecule, const std::string& prefix, py::object dirname, py::object protocol) {
+    require_empty_native_protocol(protocol);
     save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
                              py::str(dirname).cast<std::string>());
     return molecule;
 }
 
 std::shared_ptr<Molecule> save_residuetype_bundle_object(
-    const ResidueType& residue_type, const std::string& prefix, py::object dirname) {
+    const ResidueType& residue_type, const std::string& prefix, py::object dirname, py::object protocol) {
+    require_empty_native_protocol(protocol);
     auto molecule = std::make_shared<Molecule>(residue_type.name());
     molecule->append_residue_from_type(residue_type, 0.0, 0.0, 0.0);
     save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
@@ -219,7 +227,8 @@ std::shared_ptr<Molecule> molecule_from_residue_view(const ResidueView& residue_
 }
 
 std::shared_ptr<Molecule> save_residue_bundle_object(
-    const ResidueView& residue, const std::string& prefix, py::object dirname) {
+    const ResidueView& residue, const std::string& prefix, py::object dirname, py::object protocol) {
+    require_empty_native_protocol(protocol);
     auto molecule = molecule_from_residue_view(residue);
     save_sponge_input_bundle(*molecule, prefix.empty() ? molecule->name : prefix,
                              py::str(dirname).cast<std::string>());
@@ -227,7 +236,8 @@ std::shared_ptr<Molecule> save_residue_bundle_object(
 }
 
 std::shared_ptr<Molecule> save_template_like_bundle_object(
-    py::object source, const std::string& prefix, py::object dirname) {
+    py::object source, const std::string& prefix, py::object dirname, py::object protocol) {
+    require_empty_native_protocol(protocol);
     if (!py::hasattr(source, "name")) {
         throw py::type_error("save_sponge_input_bundle expects a Molecule or residue template");
     }
@@ -443,13 +453,13 @@ void bind_core_module(py::module_& m) {
     m.def("save_sponge_input", &save_sponge_input_object, py::arg("molecule"), py::arg("prefix") = "",
           py::arg("dirname") = ".");
     m.def("save_sponge_input_bundle", &save_sponge_input_bundle_object, py::arg("molecule"),
-          py::arg("prefix") = "", py::arg("dirname") = ".");
+          py::arg("prefix") = "", py::arg("dirname") = ".", py::kw_only(), py::arg("protocol") = py::none());
     m.def("save_sponge_input_bundle", &save_residue_bundle_object, py::arg("molecule"),
-          py::arg("prefix") = "", py::arg("dirname") = ".");
+          py::arg("prefix") = "", py::arg("dirname") = ".", py::kw_only(), py::arg("protocol") = py::none());
     m.def("save_sponge_input_bundle", &save_residuetype_bundle_object, py::arg("molecule"),
-          py::arg("prefix") = "", py::arg("dirname") = ".");
+          py::arg("prefix") = "", py::arg("dirname") = ".", py::kw_only(), py::arg("protocol") = py::none());
     m.def("save_sponge_input_bundle", &save_template_like_bundle_object, py::arg("molecule"),
-          py::arg("prefix") = "", py::arg("dirname") = ".");
+          py::arg("prefix") = "", py::arg("dirname") = ".", py::kw_only(), py::arg("protocol") = py::none());
     m.def("merge_dual_topology", &merge_dual_topology_object, py::arg("molecule"), py::arg("residue_index"),
           py::arg("residue_b_molecule"), py::arg("match_b_to_a"));
     m.def("merge_force_field", &merge_force_field_object, py::arg("molecule_a"), py::arg("molecule_b"),
