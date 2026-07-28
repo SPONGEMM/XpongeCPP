@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy<2",
+    "h5py>=3.11",
     "geometric>=1.1",
     "matplotlib>=3.10.8",
     "MDAnalysis>=2.9.0",

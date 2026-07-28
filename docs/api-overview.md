@@ -72,6 +72,25 @@ from Xponge.forcefield.special import fep
 - `Add_Ions`
 - `Set_Box_Padding`
 
+### Bundle 读取与校验
+
+`XpongeCPP.io_bundle` 提供与 Xponge-origin 同名的 bundle case 和 reader
+边界：
+
+```python
+from XpongeCPP.io_bundle import BundleReader, bundle_case_from_prefix
+
+case = bundle_case_from_prefix("inputs", "system")
+with BundleReader(case) as reader:
+    atom_count = reader.read_scalar(
+        "topology.spgt.h5", "/topology/atom_count"
+    )
+```
+
+Reader 会校验 v2 schema、三件套 UUID、topology/atom-order/protocol lineage、
+原子维度与 restart 完成状态。已有 bundled mdin 的情况可使用
+`scan_bundle_case(...)`。
+
 ## 旧语法兼容重点
 
 ### 模板代数语法
