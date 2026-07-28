@@ -159,6 +159,17 @@ and Python-vs-C++ solver agreement on cached ESP data. This milestone can land
 before metal assignment; metal-specific capped-model ledgers are a later
 consumer of the same core.
 
+Implementation status on `codex/integrate-bundled-io`:
+
+- complete: backend-neutral Python constrained solver with deterministic
+  rank reduction, pre-QM consistency checks, equivalence groups, target
+  charge, stage-1/stage-2 propagation, ESP diagnostics, and a row ledger;
+- complete: cached-ESP tests for exact target recovery, dependent rows,
+  inconsistent/non-finite input, and atom permutation stability;
+- preserved: requests without constraints or diagnostics still use the
+  existing C++ RESP path;
+- pending: constrained C++ entrypoint and cached-ESP Python/C++ parity gate.
+
 ## P4 — introduce molecule-first metal assignment
 
 Origin's `bbe86ad`/`7efa65e` workflow is the design reference: a complete,

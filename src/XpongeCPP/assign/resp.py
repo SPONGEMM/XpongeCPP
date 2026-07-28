@@ -112,11 +112,24 @@ def resp_fit(assign, basis=None, opt=False, charge=None, spin=0, extra_equivalen
              grid_density=6, grid_cell_layer=4, radius=None, a1=0.0005, a2=0.001,
              two_stage=True, only_esp=False, backend=None, core=None,
              esp_memory_limit=None, esp_chunk_policy="auto", esp_safety_factor=0.8,
-             return_metadata=False):
+             constraint_matrix=None, constraint_targets=None,
+             return_diagnostics=False, return_metadata=False):
     if extra_equivalence is None:
         extra_equivalence = []
     if charge is None:
         charge = int(round(sum(assign.charges)))
+    if (
+        constraint_matrix is not None
+        or constraint_targets is not None
+        or return_diagnostics
+    ):
+        resp_core._prepare_linear_constraints(
+            len(assign.atoms),
+            charge,
+            extra_equivalence=extra_equivalence,
+            constraint_matrix=constraint_matrix,
+            constraint_targets=constraint_targets,
+        )
     backend_name = _normalize_backend_name(backend)
     _normalize_core_name(core)
     backend_module = _BACKEND_MODULES[backend_name]
@@ -141,7 +154,7 @@ def resp_fit(assign, basis=None, opt=False, charge=None, spin=0, extra_equivalen
         chunk_policy=esp_chunk_policy,
         safety_factor=esp_safety_factor,
     )
-    charges = resp_core.fit_resp_from_esp(
+    fitted = resp_core.fit_resp_from_esp(
         assign,
         atom_coordinates_bohr=payload["atom_coordinates_bohr"],
         nuclear_charges=payload["nuclear_charges"],
@@ -153,7 +166,16 @@ def resp_fit(assign, basis=None, opt=False, charge=None, spin=0, extra_equivalen
         a2=a2,
         two_stage=two_stage,
         only_esp=only_esp,
+        constraint_matrix=constraint_matrix,
+        constraint_targets=constraint_targets,
+        return_diagnostics=return_diagnostics,
     )
-    if return_metadata:
-        return {"charges": charges, "metadata": metadata}
+    charges = fitted["charges"] if return_diagnostics else fitted
+    if return_metadata or return_diagnostics:
+        result = {"charges": charges}
+        if return_metadata:
+            result["metadata"] = metadata
+        if return_diagnostics:
+            result["diagnostics"] = fitted["diagnostics"]
+        return result
     return charges

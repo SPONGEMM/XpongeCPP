@@ -55,6 +55,28 @@ from Xponge.forcefield.special import gb
 from Xponge.forcefield.special import fep
 ```
 
+### Constrained RESP
+
+`Assign.calculate_charge("RESP", ...)` now accepts general linear constraints
+`Cq=d` in addition to equivalence groups:
+
+```python
+assignment.calculate_charge(
+    "RESP",
+    charge=0,
+    extra_equivalence=[[1, 2]],
+    constraint_matrix=[[1.0, 0.0, 0.0]],
+    constraint_targets=[-0.4],
+    return_diagnostics=True,
+)
+diagnostics = assignment.charge_fit_diagnostics
+```
+
+Constraints are checked before the QM backend runs. Diagnostics include
+constraint rank, dependent rows, KKT condition/residual, ESP error metrics,
+and the applied row ledger. The existing unconstrained route remains on the
+C++ RESP core; the constrained C++ parity path is still being implemented.
+
 ### Load / Build / Process
 
 常见高频入口包括：

@@ -82,28 +82,36 @@ def _assign_calculate_charge(self, method, **parameters):
     if method == "RESP":
         from ..assign import resp
 
-        self.set_charges(
-            resp.resp_fit(
-                self,
-                basis=parameters.get("basis", None),
-                opt=parameters.get("opt", False),
-                charge=parameters.get("charge", int(round(sum(self.formal_charges)))),
-                spin=parameters.get("spin", 0),
-                extra_equivalence=parameters.get("extra_equivalence", []),
-                grid_density=parameters.get("grid_density", 6),
-                grid_cell_layer=parameters.get("grid_cell_layer", 4),
-                a1=parameters.get("a1", 0.0005),
-                a2=parameters.get("a2", 0.001),
-                two_stage=parameters.get("two_stage", True),
-                only_esp=parameters.get("only_esp", False),
-                radius=parameters.get("radius", None),
-                backend=parameters.get("backend", None),
-                core=parameters.get("core", None),
-                esp_memory_limit=parameters.get("esp_memory_limit", None),
-                esp_chunk_policy=parameters.get("esp_chunk_policy", "auto"),
-                esp_safety_factor=parameters.get("esp_safety_factor", 0.8),
-            )
+        return_diagnostics = parameters.get("return_diagnostics", False)
+        fitted = resp.resp_fit(
+            self,
+            basis=parameters.get("basis", None),
+            opt=parameters.get("opt", False),
+            charge=parameters.get(
+                "charge", int(round(sum(self.formal_charges)))
+            ),
+            spin=parameters.get("spin", 0),
+            extra_equivalence=parameters.get("extra_equivalence", []),
+            grid_density=parameters.get("grid_density", 6),
+            grid_cell_layer=parameters.get("grid_cell_layer", 4),
+            a1=parameters.get("a1", 0.0005),
+            a2=parameters.get("a2", 0.001),
+            two_stage=parameters.get("two_stage", True),
+            only_esp=parameters.get("only_esp", False),
+            radius=parameters.get("radius", None),
+            backend=parameters.get("backend", None),
+            core=parameters.get("core", None),
+            esp_memory_limit=parameters.get("esp_memory_limit", None),
+            esp_chunk_policy=parameters.get("esp_chunk_policy", "auto"),
+            esp_safety_factor=parameters.get("esp_safety_factor", 0.8),
+            constraint_matrix=parameters.get("constraint_matrix", None),
+            constraint_targets=parameters.get("constraint_targets", None),
+            return_diagnostics=return_diagnostics,
         )
+        charges = fitted["charges"] if return_diagnostics else fitted
+        self.set_charges(charges)
+        if return_diagnostics:
+            self.charge_fit_diagnostics = fitted["diagnostics"]
         return None
     raise ValueError("methods should be one of the following: 'RESP', 'GASTEIGER', 'TPACM4' (case-insensitive)")
 

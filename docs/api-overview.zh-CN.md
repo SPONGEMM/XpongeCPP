@@ -54,6 +54,27 @@ from Xponge.forcefield.special import gb
 from Xponge.forcefield.special import fep
 ```
 
+### Constrained RESP
+
+`Assign.calculate_charge("RESP", ...)` 除等价原子组外，也接受一般线性约束
+`Cq=d`：
+
+```python
+assignment.calculate_charge(
+    "RESP",
+    charge=0,
+    extra_equivalence=[[1, 2]],
+    constraint_matrix=[[1.0, 0.0, 0.0]],
+    constraint_targets=[-0.4],
+    return_diagnostics=True,
+)
+diagnostics = assignment.charge_fit_diagnostics
+```
+
+约束会在 QM backend 启动前完成预检。诊断结果包括约束秩、被丢弃的依赖行、
+KKT 条件数/残差、ESP 拟合误差和逐行 ledger。既有无约束路径仍使用 C++
+RESP core；constrained C++ parity 路径仍在实现中。
+
 ### Load / Build / Process
 
 高频入口包括：
