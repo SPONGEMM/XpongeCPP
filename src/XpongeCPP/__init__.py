@@ -92,6 +92,18 @@ from .mcpb import (
     save_pdb_with_connect as MCPB_Save_PDB,
     write_mcpb_artifacts as MCPB_Write_Artifacts,
 )
+from .metal_assignment import (
+    ChargeLedgerEntry,
+    ChargeUpdate,
+    ElectronicState,
+    MetalAssignmentPlan,
+    MetalAssignmentRequest,
+    MetalAssignmentResult,
+    MetalAssignmentValidationError,
+    MetalSite,
+    apply_metal_assignment,
+    prepare_metal_assignment,
+)
 
 _CoreMolecule = Molecule
 _CoreResidue = Residue
@@ -337,6 +349,16 @@ __all__ = [
     "MCPBRequest",
     "MCPBResult",
     "MCPBSelection",
+    "ChargeLedgerEntry",
+    "ChargeUpdate",
+    "ElectronicState",
+    "MetalAssignmentPlan",
+    "MetalAssignmentRequest",
+    "MetalAssignmentResult",
+    "MetalAssignmentValidationError",
+    "MetalSite",
+    "apply_metal_assignment",
+    "prepare_metal_assignment",
     "Add_Ions",
     "Add_Molecule",
     "Add_Solvent_Box",

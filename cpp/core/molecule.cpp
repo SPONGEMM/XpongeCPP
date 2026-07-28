@@ -305,6 +305,18 @@ void Molecule::add_residue_link(AtomId atom1, AtomId atom2) {
     residue_links.push_back({lo, hi});
 }
 
+void Molecule::replace_from(const Molecule& other) {
+    if (!other.validate()) {
+        throw std::invalid_argument(
+            "cannot replace molecule state from an invalid molecule");
+    }
+    *this = other;
+}
+
+bool Molecule::has_topology_override() const noexcept {
+    return topology_override.has_value();
+}
+
 void Molecule::add_virtual_atom2(AtomId virtual_atom, AtomId atom0, AtomId atom1, AtomId atom2,
                                  double k1, double k2) {
     ensure_atom_id(*this, virtual_atom);

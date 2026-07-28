@@ -394,6 +394,9 @@ void bind_core_module(py::module_& m) {
         .def("Add_Molecule", &Molecule::add_molecule, py::arg("other"))
         .def("add_residue_link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
         .def("Add_Residue_Link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
+        .def("_replace_from", &Molecule::replace_from, py::arg("other"))
+        .def_property_readonly(
+            "has_topology_override", &Molecule::has_topology_override)
         .def("copy", [](const std::shared_ptr<Molecule>& self) { return std::make_shared<Molecule>(*self); })
         .def("deepcopy", [](const std::shared_ptr<Molecule>& self) { return std::make_shared<Molecule>(*self); })
         .def("__add__", [](const std::shared_ptr<Molecule>& self, const std::shared_ptr<Molecule>& other) {

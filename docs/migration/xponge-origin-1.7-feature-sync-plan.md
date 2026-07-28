@@ -201,6 +201,22 @@ atom/residue order preserved across successful apply; explicit metal links and
 charges reach raw and bundle savers; and focused tests corresponding to
 origin's contracts, base, charge, RESP, apply, and artifact suites.
 
+Implementation status on `codex/integrate-bundled-io`:
+
+- complete: a new `XpongeCPP.metal_assignment` facade with frozen,
+  hash-closed request/plan/result contracts, explicit metal sites,
+  whole-system electronic state, coordination edges, and an auditable charge
+  ledger;
+- complete: side-effect-free planning bound to topology/input hashes and
+  transactional copy or `inplace=True` application; the latter builds and
+  validates a complete copy before one C++ state replacement;
+- complete: stale-parent, stale-plan, element, spin, edge, and charge
+  validation plus compatibility export from `Xponge.metal_assignment`;
+- in progress: immutable atom/LJ/bonded parameter overlays, provenance
+  artifacts, same-residue coordination bonds, and saver coverage;
+- pending: route legacy `Xponge.MCPB()` through the facade while retaining its
+  documented in-place identity and global-force-field compatibility behavior.
+
 ## P5 — deliver `manual_bonded` as the first metal overlay mode
 
 Port origin `2aa38d6` only after P4 provides stable topology/artifact identity.

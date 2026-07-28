@@ -383,6 +383,8 @@ public:
     void add_molecule(const Molecule& other);
     void add_molecule_linked(const Molecule& other, bool link);
     void add_residue_link(AtomId atom1, AtomId atom2);
+    void replace_from(const Molecule& other);
+    bool has_topology_override() const noexcept;
     void add_virtual_atom2(AtomId virtual_atom, AtomId atom0, AtomId atom1, AtomId atom2, double k1, double k2);
     void add_improper_dihedral(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3, double k, double phi0);
     std::uint32_t add_cmap_type(std::uint32_t resolution, const std::vector<double>& parameters);
