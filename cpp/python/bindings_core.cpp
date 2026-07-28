@@ -392,8 +392,17 @@ void bind_core_module(py::module_& m) {
              py::arg("angles") = std::array<double, 3>{90.0, 90.0, 90.0})
         .def("add_molecule", &Molecule::add_molecule, py::arg("other"))
         .def("Add_Molecule", &Molecule::add_molecule, py::arg("other"))
+        .def("add_explicit_bond", &Molecule::add_explicit_bond, py::arg("atom1"), py::arg("atom2"))
         .def("add_residue_link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
         .def("Add_Residue_Link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
+        .def(
+            "_set_bond_parameter_override", &Molecule::set_bond_parameter_override,
+            py::arg("atom1"), py::arg("atom2"), py::arg("k"),
+            py::arg("length"), py::arg("source"))
+        .def(
+            "_set_angle_parameter_override", &Molecule::set_angle_parameter_override,
+            py::arg("atom1"), py::arg("atom2"), py::arg("atom3"),
+            py::arg("k"), py::arg("theta"), py::arg("source"))
         .def("_replace_from", &Molecule::replace_from, py::arg("other"))
         .def_property_readonly(
             "has_topology_override", &Molecule::has_topology_override)

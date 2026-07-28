@@ -75,6 +75,66 @@ class ChargeLedgerEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class AtomParameterUpdate:
+    """Molecule-local atom type and mass replacement."""
+
+    atom_id: int
+    atom_type: str | None = None
+    mass: float | None = None
+    source: str = "metal_assignment"
+
+
+@dataclass(frozen=True, slots=True)
+class BondParameter:
+    """Atom-specific harmonic bond parameter."""
+
+    atom_ids: tuple[int, int]
+    force_constant: float
+    equilibrium_length: float
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
+class AngleParameter:
+    """Atom-specific harmonic angle parameter, in radians."""
+
+    atom_ids: tuple[int, int, int]
+    force_constant: float
+    equilibrium_angle: float
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
+class MetalParameterOverlay:
+    """Hash-closed molecule-local atom and bonded parameter overlay."""
+
+    topology_hash: str
+    atom_parameters: tuple[AtomParameterUpdate, ...] = ()
+    bond_parameters: tuple[BondParameter, ...] = ()
+    angle_parameters: tuple[AngleParameter, ...] = ()
+    parameter_source: str = "metal_assignment"
+    precedence: int = 100
+    overlay_hash: str = ""
+    schema_version: int = SCHEMA_VERSION
+
+    def payload(self) -> dict[str, Any]:
+        data = asdict(self)
+        data.pop("overlay_hash", None)
+        return data
+
+    def computed_hash(self) -> str:
+        return _canonical_hash(self.payload())
+
+    def validate_hash(self) -> None:
+        if not self.overlay_hash or self.overlay_hash != self.computed_hash():
+            raise MetalAssignmentValidationError(
+                "stale_parameter_overlay_hash",
+                "metal parameter overlay hash does not match its payload",
+                path="parameter_overlay.overlay_hash",
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class MetalAssignmentRequest:
     """Hash-closed, explicit molecule-first request."""
 
@@ -103,6 +163,7 @@ class MetalAssignmentPlan:
     topology_hash: str
     charge_ledger: tuple[ChargeLedgerEntry, ...]
     link_overlay: tuple[tuple[int, int], ...]
+    parameter_overlay: MetalParameterOverlay | None = None
     plan_hash: str = ""
     schema_version: int = SCHEMA_VERSION
 
@@ -146,6 +207,9 @@ def validate_finite_charge(update: ChargeUpdate, index: int) -> None:
 
 
 __all__ = [
+    "AngleParameter",
+    "AtomParameterUpdate",
+    "BondParameter",
     "ChargeLedgerEntry",
     "ChargeUpdate",
     "ElectronicState",
@@ -153,5 +217,6 @@ __all__ = [
     "MetalAssignmentRequest",
     "MetalAssignmentResult",
     "MetalAssignmentValidationError",
+    "MetalParameterOverlay",
     "MetalSite",
 ]

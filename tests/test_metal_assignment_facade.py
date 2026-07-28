@@ -4,11 +4,14 @@ from io import StringIO
 import pytest
 import XpongeCPP as Xponge
 from XpongeCPP.metal_assignment import (
+    AtomParameterUpdate,
+    BondParameter,
     ChargeUpdate,
     ElectronicState,
     MetalAssignmentValidationError,
     MetalSite,
     apply_metal_assignment,
+    build_metal_parameter_overlay,
     molecule_input_hash,
     molecule_topology_hash,
     prepare_metal_assignment,
@@ -149,3 +152,108 @@ def test_legacy_namespace_exports_molecule_first_facade():
     from Xponge.metal_assignment import prepare_metal_assignment as legacy_prepare
 
     assert legacy_prepare is prepare_metal_assignment
+
+
+def test_parameter_overlay_is_hash_closed_and_applied_locally():
+    molecule = _load_metal_site()
+    overlay = build_metal_parameter_overlay(
+        molecule,
+        atom_parameters=(
+            AtomParameterUpdate(
+                atom_id=0,
+                atom_type="metal_Zn_test",
+                mass=65.4,
+                source="fixture",
+            ),
+        ),
+        bond_parameters=(
+            BondParameter(
+                atom_ids=(0, 1),
+                force_constant=123.5,
+                equilibrium_length=2.1,
+                source="fixture",
+            ),
+        ),
+        parameter_source="fixture",
+    )
+    plan = prepare_metal_assignment(
+        molecule,
+        metal_sites=(MetalSite(0, "Zn", 2),),
+        electronic_state=ElectronicState(0, 1),
+        coordination_edges=((0, 1),),
+        parameter_overlay=overlay,
+    )
+
+    result = apply_metal_assignment(molecule, plan)
+
+    assert overlay.overlay_hash == overlay.computed_hash()
+    assert result.molecule.atoms[0].type == "metal_Zn_test"
+    assert result.molecule.atoms[0].mass == pytest.approx(65.4)
+    assert molecule.atoms[0].type == "Zn"
+    assert molecule.atoms[0].mass == pytest.approx(0.0)
+
+
+def test_parameter_overlay_reaches_raw_and_bundle_bond_savers(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    molecule = _load_metal_site()
+    Xponge.register_amber_lj_parameter(
+        "metal_Zn_export_test", "metal_Zn_export_test", 0.0125, 1.1
+    )
+    Xponge.register_amber_lj_parameter(
+        "donor_N_export_test", "donor_N_export_test", 0.025, 1.5
+    )
+    overlay = build_metal_parameter_overlay(
+        molecule,
+        atom_parameters=(
+            AtomParameterUpdate(0, "metal_Zn_export_test", 65.4, "fixture"),
+            AtomParameterUpdate(1, "donor_N_export_test", 14.01, "fixture"),
+        ),
+        bond_parameters=(
+            BondParameter((0, 1), 123.5, 2.1, "fixture"),
+        ),
+        parameter_source="fixture",
+    )
+    plan = prepare_metal_assignment(
+        molecule,
+        metal_sites=(MetalSite(0, "Zn", 2),),
+        electronic_state=ElectronicState(0, 1),
+        coordination_edges=((0, 1),),
+        parameter_overlay=overlay,
+    )
+    applied = apply_metal_assignment(molecule, plan).molecule
+
+    Xponge.Save_SPONGE_Input(applied, "metal", dirname=str(tmp_path / "raw"))
+    Xponge.save_sponge_input_bundle(applied, "metal", tmp_path / "bundle")
+
+    raw_row = (tmp_path / "raw" / "metal_bond.txt").read_text().splitlines()[1]
+    assert raw_row == "0 1 123.500000 2.100000"
+    with h5py.File(
+        tmp_path / "bundle" / "metal_topology.spgt.h5", "r"
+    ) as handle:
+        assert handle["/forcefield/bond/atoms"][:].tolist() == [[0, 1]]
+        assert handle["/forcefield/bond/k"][:].tolist() == pytest.approx([123.5])
+        assert handle["/forcefield/bond/r0"][:].tolist() == pytest.approx([2.1])
+
+
+def test_tampered_parameter_overlay_is_rejected_before_mutation():
+    molecule = _load_metal_site()
+    overlay = build_metal_parameter_overlay(
+        molecule,
+        bond_parameters=(BondParameter((0, 1), 100.0, 2.0, "fixture"),),
+    )
+    tampered = replace(
+        overlay,
+        bond_parameters=(BondParameter((0, 1), 999.0, 2.0, "fixture"),),
+    )
+
+    with pytest.raises(MetalAssignmentValidationError) as exc:
+        prepare_metal_assignment(
+            molecule,
+            metal_sites=(MetalSite(0, "Zn", 2),),
+            electronic_state=ElectronicState(0, 1),
+            coordination_edges=((0, 1),),
+            parameter_overlay=tampered,
+        )
+
+    assert exc.value.code == "stale_parameter_overlay_hash"
+    assert molecule.residue_links == []

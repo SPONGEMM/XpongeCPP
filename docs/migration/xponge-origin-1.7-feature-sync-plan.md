@@ -212,8 +212,16 @@ Implementation status on `codex/integrate-bundled-io`:
   validates a complete copy before one C++ state replacement;
 - complete: stale-parent, stale-plan, element, spin, edge, and charge
   validation plus compatibility export from `Xponge.metal_assignment`;
-- in progress: immutable atom/LJ/bonded parameter overlays, provenance
-  artifacts, same-residue coordination bonds, and saver coverage;
+- complete: immutable atom/mass and atom-specific bond/angle parameter
+  overlays; bonded overrides are molecule-local, take precedence during
+  topology construction, survive deep copy/transactional publish, and reach
+  both raw and bundle savers without mutating the process-global Amber
+  parameter registry;
+- complete: same-residue coordination edges are represented as explicit bonds
+  while cross-residue edges remain residue links; existing template bonds are
+  preserved when explicit additions are present;
+- in progress: local LJ parameter overlays and the remaining general
+  provenance/result artifacts;
 - pending: route legacy `Xponge.MCPB()` through the facade while retaining its
   documented in-place identity and global-force-field compatibility behavior.
 
@@ -229,6 +237,19 @@ explicit-reference contract. It does not infer terms from distances and does
 not claim QM fitting. Acceptance is a complete explicit geometry fixture,
 coverage failures for omitted terms, deterministic overlay output, and raw/
 bundle export of the applied parent molecule.
+
+Implementation status on `codex/integrate-bundled-io`:
+
+- complete: hash-closed explicit-reference artifact and wrapper plan, fixed
+  `frozen_current_geometry`/angstrom/radian contract, bounded positive force
+  constants, and exact `manual_bonded:explicit_reference_geometry` provenance;
+- complete: exact coverage checks for every coordination bond and every donor
+  pair angle around each metal, including duplicate/extra-term rejection;
+- complete: transactional copy/in-place application, coordinate-drift and
+  artifact-tamper rejection, cross-residue links and same-residue explicit
+  bonds;
+- complete: raw and native bundle saver regression coverage for manual bond
+  and angle values; the mode exposes no Hessian or RESP artifact inputs.
 
 ## P6 — fitted-metal workflow, release gate, and remaining parity
 

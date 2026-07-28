@@ -189,6 +189,13 @@ public:
     }
 
     std::optional<BondTerm> bond(AtomId atom1, AtomId atom2) {
+        const auto lo = std::min(atom1, atom2);
+        const auto hi = std::max(atom1, atom2);
+        for (const auto& term : molecule_.bond_parameter_overrides) {
+            if (term.atom1 == lo && term.atom2 == hi) {
+                return BondTerm{term.k, term.length};
+            }
+        }
         const auto key = canonical_pair_key(atom_type_ids_[atom1], atom_type_ids_[atom2]);
         {
             std::lock_guard<std::mutex> lock(bond_mutex_);
@@ -203,6 +210,13 @@ public:
     }
 
     std::optional<AngleTerm> angle(AtomId atom1, AtomId atom2, AtomId atom3) {
+        const auto end1 = std::min(atom1, atom3);
+        const auto end3 = std::max(atom1, atom3);
+        for (const auto& term : molecule_.angle_parameter_overrides) {
+            if (term.atom1 == end1 && term.atom2 == atom2 && term.atom3 == end3) {
+                return AngleTerm{term.k, term.theta};
+            }
+        }
         const auto key = canonical_angle_key(atom_type_ids_[atom1], atom_type_ids_[atom2], atom_type_ids_[atom3]);
         {
             std::lock_guard<std::mutex> lock(angle_mutex_);
@@ -582,9 +596,6 @@ Topology build_topology(const Molecule& molecule) {
     }
     for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
         const auto& residue = molecule.residues[residue_id];
-        if (residue_has_explicit_bond[residue_id]) {
-            continue;
-        }
         if (has_template(residue.name)) {
             const auto& residue_type = get_residue_template(residue.name);
             const auto atoms_by_name = residue_atom_map(molecule, residue);
@@ -605,6 +616,9 @@ Topology build_topology(const Molecule& molecule) {
                     add_bond(topology.bonds, seen_bonds, it1->second, it2->second, molecule, &lookup_cache);
                 }
             }
+            continue;
+        }
+        if (residue_has_explicit_bond[residue_id]) {
             continue;
         }
         if (residue.name == "NA" || residue.name == "CL") {

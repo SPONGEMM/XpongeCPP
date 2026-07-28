@@ -7,6 +7,9 @@ import math
 from typing import Iterable
 
 from .contracts import (
+    AngleParameter,
+    AtomParameterUpdate,
+    BondParameter,
     ChargeLedgerEntry,
     ChargeUpdate,
     ElectronicState,
@@ -14,6 +17,7 @@ from .contracts import (
     MetalAssignmentRequest,
     MetalAssignmentResult,
     MetalAssignmentValidationError,
+    MetalParameterOverlay,
     MetalSite,
     _canonical_hash,
     validate_finite_charge,
@@ -71,9 +75,17 @@ def molecule_input_hash(molecule) -> str:
                 str(atom.type),
                 float(atom.mass),
                 float(atom.charge),
+                float(atom.x),
+                float(atom.y),
+                float(atom.z),
             )
             for atom in molecule.atoms
         ),
+        "box": {
+            "length": tuple(map(float, molecule.box_length)),
+            "origin": tuple(map(float, molecule.box_origin)),
+            "angle": tuple(map(float, molecule.box_angle)),
+        },
     }
     return _canonical_hash(payload)
 
@@ -104,6 +116,181 @@ def _normalize_edges(edges: Iterable[tuple[int, int]]) -> tuple[tuple[int, int],
     return tuple(sorted(normalized))
 
 
+def _validate_parameter_overlay(
+    molecule, overlay: MetalParameterOverlay, topology_hash: str
+) -> None:
+    overlay.validate_hash()
+    if overlay.topology_hash != topology_hash:
+        raise MetalAssignmentValidationError(
+            "parameter_overlay_topology_mismatch",
+            "metal parameter overlay targets a different topology",
+            path="parameter_overlay.topology_hash",
+        )
+    if not overlay.parameter_source:
+        raise MetalAssignmentValidationError(
+            "missing_parameter_source",
+            "metal parameter overlay requires a parameter source",
+            path="parameter_overlay.parameter_source",
+        )
+    if overlay.precedence <= 0:
+        raise MetalAssignmentValidationError(
+            "invalid_parameter_precedence",
+            "metal parameter overlay precedence must be positive",
+            path="parameter_overlay.precedence",
+        )
+    atom_count = int(molecule.atom_count)
+    atom_parameter_ids = []
+    for index, update in enumerate(overlay.atom_parameters):
+        atom_id = int(update.atom_id)
+        if atom_id < 0 or atom_id >= atom_count:
+            raise MetalAssignmentValidationError(
+                "parameter_atom_out_of_range",
+                "atom parameter update references an atom outside the molecule",
+                path=f"parameter_overlay.atom_parameters[{index}].atom_id",
+            )
+        atom_parameter_ids.append(atom_id)
+        if update.atom_type is None and update.mass is None:
+            raise MetalAssignmentValidationError(
+                "empty_atom_parameter_update",
+                "atom parameter update must set atom_type or mass",
+                path=f"parameter_overlay.atom_parameters[{index}]",
+            )
+        if update.atom_type is not None and not str(update.atom_type).strip():
+            raise MetalAssignmentValidationError(
+                "invalid_atom_type",
+                "atom parameter type must not be empty",
+                path=f"parameter_overlay.atom_parameters[{index}].atom_type",
+            )
+        if update.mass is not None and (
+            not math.isfinite(float(update.mass)) or float(update.mass) <= 0.0
+        ):
+            raise MetalAssignmentValidationError(
+                "invalid_atom_mass",
+                "atom parameter mass must be finite and positive",
+                path=f"parameter_overlay.atom_parameters[{index}].mass",
+            )
+        if not str(update.source):
+            raise MetalAssignmentValidationError(
+                "missing_atom_parameter_source",
+                "atom parameter update requires a source",
+                path=f"parameter_overlay.atom_parameters[{index}].source",
+            )
+    if len(atom_parameter_ids) != len(set(atom_parameter_ids)):
+        raise MetalAssignmentValidationError(
+            "duplicate_atom_parameter_update",
+            "atom parameter update ids must be unique",
+            path="parameter_overlay.atom_parameters",
+        )
+    bond_keys = []
+    for index, term in enumerate(overlay.bond_parameters):
+        if len(term.atom_ids) != 2:
+            raise MetalAssignmentValidationError(
+                "invalid_bond_parameter_atoms",
+                "bond parameter requires exactly two atom ids",
+                path=f"parameter_overlay.bond_parameters[{index}].atom_ids",
+            )
+        atom1, atom2 = map(int, term.atom_ids)
+        key = tuple(sorted((atom1, atom2)))
+        if atom1 == atom2 or key[0] < 0 or key[1] >= atom_count:
+            raise MetalAssignmentValidationError(
+                "invalid_bond_parameter_atoms",
+                "bond parameter atom ids must be distinct and in range",
+                path=f"parameter_overlay.bond_parameters[{index}].atom_ids",
+            )
+        if (
+            not math.isfinite(float(term.force_constant))
+            or float(term.force_constant) < 0.0
+            or not math.isfinite(float(term.equilibrium_length))
+            or float(term.equilibrium_length) <= 0.0
+        ):
+            raise MetalAssignmentValidationError(
+                "invalid_bond_parameter",
+                "bond force constant must be non-negative and length positive",
+                path=f"parameter_overlay.bond_parameters[{index}]",
+            )
+        if not str(term.source):
+            raise MetalAssignmentValidationError(
+                "missing_bond_parameter_source",
+                "bond parameter requires a source",
+                path=f"parameter_overlay.bond_parameters[{index}].source",
+            )
+        bond_keys.append(key)
+    if len(bond_keys) != len(set(bond_keys)):
+        raise MetalAssignmentValidationError(
+            "duplicate_bond_parameter",
+            "bond parameter atom pairs must be unique",
+            path="parameter_overlay.bond_parameters",
+        )
+    angle_keys = []
+    for index, term in enumerate(overlay.angle_parameters):
+        if len(term.atom_ids) != 3:
+            raise MetalAssignmentValidationError(
+                "invalid_angle_parameter_atoms",
+                "angle parameter requires exactly three atom ids",
+                path=f"parameter_overlay.angle_parameters[{index}].atom_ids",
+            )
+        atom1, center, atom3 = map(int, term.atom_ids)
+        key = (min(atom1, atom3), center, max(atom1, atom3))
+        if (
+            len({atom1, center, atom3}) != 3
+            or min(key) < 0
+            or max(key) >= atom_count
+        ):
+            raise MetalAssignmentValidationError(
+                "invalid_angle_parameter_atoms",
+                "angle parameter atom ids must be distinct and in range",
+                path=f"parameter_overlay.angle_parameters[{index}].atom_ids",
+            )
+        if (
+            not math.isfinite(float(term.force_constant))
+            or float(term.force_constant) < 0.0
+            or not math.isfinite(float(term.equilibrium_angle))
+            or not 0.0 < float(term.equilibrium_angle) < math.pi
+        ):
+            raise MetalAssignmentValidationError(
+                "invalid_angle_parameter",
+                "angle force constant must be non-negative and angle in (0, pi)",
+                path=f"parameter_overlay.angle_parameters[{index}]",
+            )
+        if not str(term.source):
+            raise MetalAssignmentValidationError(
+                "missing_angle_parameter_source",
+                "angle parameter requires a source",
+                path=f"parameter_overlay.angle_parameters[{index}].source",
+            )
+        angle_keys.append(key)
+    if len(angle_keys) != len(set(angle_keys)):
+        raise MetalAssignmentValidationError(
+            "duplicate_angle_parameter",
+            "angle parameter atom triples must be unique",
+            path="parameter_overlay.angle_parameters",
+        )
+
+
+def build_metal_parameter_overlay(
+    molecule,
+    *,
+    atom_parameters: Iterable[AtomParameterUpdate] = (),
+    bond_parameters: Iterable[BondParameter] = (),
+    angle_parameters: Iterable[AngleParameter] = (),
+    parameter_source: str = "metal_assignment",
+    precedence: int = 100,
+) -> MetalParameterOverlay:
+    """Build and validate a hash-closed, molecule-local parameter overlay."""
+
+    overlay = MetalParameterOverlay(
+        topology_hash=molecule_topology_hash(molecule),
+        atom_parameters=tuple(atom_parameters),
+        bond_parameters=tuple(bond_parameters),
+        angle_parameters=tuple(angle_parameters),
+        parameter_source=str(parameter_source),
+        precedence=int(precedence),
+    )
+    overlay = replace(overlay, overlay_hash=overlay.computed_hash())
+    _validate_parameter_overlay(molecule, overlay, overlay.topology_hash)
+    return overlay
+
+
 def prepare_metal_assignment(
     molecule,
     *,
@@ -112,6 +299,7 @@ def prepare_metal_assignment(
     coordination_edges: Iterable[tuple[int, int]],
     charge_updates: Iterable[ChargeUpdate] = (),
     interaction_model: str = "bonded",
+    parameter_overlay: MetalParameterOverlay | None = None,
 ) -> MetalAssignmentPlan:
     """Create a validated plan without mutating the parent molecule."""
 
@@ -172,12 +360,6 @@ def prepare_metal_assignment(
                 "each coordination edge must contain exactly one metal site",
                 path=f"coordination_edges[{index}]",
             )
-        if residue_ids[atom1] == residue_ids[atom2]:
-            raise MetalAssignmentValidationError(
-                "same_residue_coordination_unsupported",
-                "same-residue metal edges require an explicit-bond overlay",
-                path=f"coordination_edges[{index}]",
-            )
     updates = tuple(charge_updates)
     update_ids = [int(update.atom_id) for update in updates]
     if len(update_ids) != len(set(update_ids)):
@@ -203,6 +385,9 @@ def prepare_metal_assignment(
                 source=str(update.source),
             )
         )
+    topology_hash = molecule_topology_hash(molecule)
+    if parameter_overlay is not None:
+        _validate_parameter_overlay(molecule, parameter_overlay, topology_hash)
     request = MetalAssignmentRequest(
         metal_sites=sites,
         electronic_state=electronic_state,
@@ -213,9 +398,10 @@ def prepare_metal_assignment(
     plan = MetalAssignmentPlan(
         request=request,
         input_hash=molecule_input_hash(molecule),
-        topology_hash=molecule_topology_hash(molecule),
+        topology_hash=topology_hash,
         charge_ledger=tuple(ledger),
         link_overlay=edges,
+        parameter_overlay=parameter_overlay,
     )
     return replace(plan, plan_hash=plan.computed_hash())
 
@@ -250,8 +436,35 @@ def apply_metal_assignment(
                 f"atom {entry.atom_id} charge no longer matches the plan",
             )
         working.atoms[entry.atom_id].charge = entry.new_charge
+    overlay = plan.parameter_overlay
+    if overlay is not None:
+        _validate_parameter_overlay(working, overlay, plan.topology_hash)
+        for update in overlay.atom_parameters:
+            atom = working.atoms[update.atom_id]
+            if update.atom_type is not None:
+                atom.type = str(update.atom_type)
+            if update.mass is not None:
+                atom.mass = float(update.mass)
+        for term in overlay.bond_parameters:
+            working._set_bond_parameter_override(
+                *term.atom_ids,
+                float(term.force_constant),
+                float(term.equilibrium_length),
+                str(term.source),
+            )
+        for term in overlay.angle_parameters:
+            working._set_angle_parameter_override(
+                *term.atom_ids,
+                float(term.force_constant),
+                float(term.equilibrium_angle),
+                str(term.source),
+            )
+    residue_ids = _atom_residue_ids(working)
     for atom1, atom2 in plan.link_overlay:
-        working.add_residue_link(atom1, atom2)
+        if residue_ids[atom1] == residue_ids[atom2]:
+            working.add_explicit_bond(atom1, atom2)
+        else:
+            working.add_residue_link(atom1, atom2)
     if not working.validate():
         raise MetalAssignmentValidationError(
             "invalid_applied_molecule",
@@ -279,6 +492,7 @@ def apply_metal_assignment(
 
 __all__ = [
     "apply_metal_assignment",
+    "build_metal_parameter_overlay",
     "molecule_input_hash",
     "molecule_topology_hash",
     "prepare_metal_assignment",

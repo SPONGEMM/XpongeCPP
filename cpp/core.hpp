@@ -76,6 +76,23 @@ struct Angle {
     double theta{0.0};
 };
 
+struct BondParameterOverride {
+    AtomId atom1{0};
+    AtomId atom2{0};
+    double k{0.0};
+    double length{0.0};
+    std::string source;
+};
+
+struct AngleParameterOverride {
+    AtomId atom1{0};
+    AtomId atom2{0};
+    AtomId atom3{0};
+    double k{0.0};
+    double theta{0.0};
+    std::string source;
+};
+
 struct Dihedral {
     AtomId atom1{0};
     AtomId atom2{0};
@@ -350,6 +367,8 @@ public:
     std::vector<Residue> residues;
     std::vector<ResidueLink> explicit_bonds;
     std::vector<ResidueLink> residue_links;
+    std::vector<BondParameterOverride> bond_parameter_overrides;
+    std::vector<AngleParameterOverride> angle_parameter_overrides;
     std::vector<VirtualAtom2> virtual_atoms;
     std::vector<HarmonicImproper> harmonic_impropers;
     std::vector<CMapType> cmap_types;
@@ -382,7 +401,14 @@ public:
     void append_residue_from_type(const ResidueType& type, double dx, double dy, double dz);
     void add_molecule(const Molecule& other);
     void add_molecule_linked(const Molecule& other, bool link);
+    void add_explicit_bond(AtomId atom1, AtomId atom2);
     void add_residue_link(AtomId atom1, AtomId atom2);
+    void set_bond_parameter_override(
+        AtomId atom1, AtomId atom2, double k, double length,
+        const std::string& source);
+    void set_angle_parameter_override(
+        AtomId atom1, AtomId atom2, AtomId atom3, double k, double theta,
+        const std::string& source);
     void replace_from(const Molecule& other);
     bool has_topology_override() const noexcept;
     void add_virtual_atom2(AtomId virtual_atom, AtomId atom0, AtomId atom1, AtomId atom2, double k1, double k2);
