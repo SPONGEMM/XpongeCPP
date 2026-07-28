@@ -74,8 +74,9 @@ diagnostics = assignment.charge_fit_diagnostics
 
 Constraints are checked before the QM backend runs. Diagnostics include
 constraint rank, dependent rows, KKT condition/residual, ESP error metrics,
-and the applied row ledger. The existing unconstrained route remains on the
-C++ RESP core; the constrained C++ parity path is still being implemented.
+and the applied row ledger. Both unconstrained fitting and constrained KKT
+solves use the C++ numerical core by default; `core="python"` remains
+available for cached-ESP parity checks.
 
 ### Load / Build / Process
 

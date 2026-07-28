@@ -526,6 +526,12 @@ RespFitDebugResult fit_resp_from_esp_cpp_debug(
     bool two_stage = true,
     bool only_esp = false
 );
+std::vector<double> solve_resp_constrained_quadratic_cpp(
+    const std::vector<std::vector<double>>& quadratic_matrix,
+    const std::vector<double>& linear_term,
+    const std::vector<std::vector<double>>& constraint_matrix,
+    const std::vector<double>& constraint_targets
+);
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distance, double tolerance,
                      std::int64_t n_solvent, std::uint64_t seed = 0);
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::array<double, 6>& distance,

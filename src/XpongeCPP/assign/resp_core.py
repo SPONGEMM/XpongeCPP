@@ -11,6 +11,10 @@ import numpy as np
 from .._core import fit_resp_from_esp_cpp as _fit_resp_from_esp_cpp
 from .._core import fit_resp_from_esp_cpp_debug as _fit_resp_from_esp_cpp_debug
 from .._core import generate_resp_mk_grid as _generate_resp_mk_grid_cpp
+from .._core import (
+    solve_resp_constrained_quadratic_cpp
+    as _solve_resp_constrained_quadratic_cpp,
+)
 
 
 def _prepare_linear_constraints(
@@ -132,7 +136,7 @@ def _prepare_linear_constraints(
 
 
 def _solve_constrained_quadratic(
-    matrix_a, matrix_b, constraints, targets
+    matrix_a, matrix_b, constraints, targets, *, core="python"
 ):
     matrix_a = np.asarray(matrix_a, dtype=float)
     matrix_b = np.asarray(matrix_b, dtype=float).reshape(-1)
@@ -158,18 +162,32 @@ def _solve_constrained_quadratic(
         ]
     )
     rhs = np.concatenate((matrix_b, targets))
-    solution, _, rank, singular_values = np.linalg.lstsq(
+    reference_solution, _, rank, singular_values = np.linalg.lstsq(
         kkt, rhs, rcond=None
     )
-    residual = kkt @ solution - rhs
+    reference_residual = kkt @ reference_solution - rhs
     scale = max(1.0, float(np.max(np.abs(rhs))))
     if (
         rank < kkt.shape[0]
-        or float(np.max(np.abs(residual))) > 1.0e-10 * scale
+        or float(np.max(np.abs(reference_residual))) > 1.0e-10 * scale
     ):
         raise ValueError(
             "RESP constrained quadratic system is singular or inconsistent"
         )
+    if core == "cpp":
+        solution = np.asarray(
+            _solve_resp_constrained_quadratic_cpp(
+                matrix_a.tolist(),
+                matrix_b.tolist(),
+                constraints.tolist(),
+                targets.tolist(),
+            ),
+            dtype=float,
+        )
+    elif core == "python":
+        solution = reference_solution[:atom_count]
+    else:
+        raise ValueError("RESP constrained core should be 'python' or 'cpp'")
     charges = solution[:atom_count]
     constraint_residual = constraints @ charges - targets
     condition_number = (
@@ -198,6 +216,7 @@ def _fit_constrained_stage(
     initial_charges,
     restraint,
     restrained_atoms,
+    core,
 ):
     charges = np.asarray(initial_charges, dtype=float).reshape(-1)
     restrained_atoms = frozenset(restrained_atoms)
@@ -209,7 +228,7 @@ def _fit_constrained_stage(
                     charges[index] * charges[index] + 0.01
                 )
         updated, diagnostics = _solve_constrained_quadratic(
-            matrix, matrix_b, constraints, targets
+            matrix, matrix_b, constraints, targets, core=core
         )
         if float(np.max(np.abs(updated - charges))) <= 1.0e-8:
             diagnostics["iterations"] = iteration
@@ -276,6 +295,7 @@ def _fit_with_constraints(
     a2,
     two_stage,
     only_esp,
+    core,
 ):
     atom_count = len(assign.atoms)
     constraints, targets, diagnostics = _prepare_linear_constraints(
@@ -286,7 +306,7 @@ def _fit_with_constraints(
         constraint_targets=constraint_targets,
     )
     charges, initial = _solve_constrained_quadratic(
-        matrix_a, matrix_b, constraints, targets
+        matrix_a, matrix_b, constraints, targets, core=core
     )
     diagnostics.update({"initial": initial, "stage1": None, "stage2": None})
     if only_esp:
@@ -303,6 +323,7 @@ def _fit_with_constraints(
         charges,
         a1,
         range(atom_count),
+        core,
     )
     diagnostics["stage1"] = stage1
     if not two_stage:
@@ -350,6 +371,7 @@ def _fit_with_constraints(
         charges,
         a2,
         active,
+        core,
     )
     stage2.update(stage2_constraint_info)
     diagnostics["stage2"] = stage2
@@ -398,6 +420,7 @@ def fit_resp_from_esp(
     constraint_matrix=None,
     constraint_targets=None,
     return_diagnostics=False,
+    core="python",
 ):
     """Fit RESP charges, using the constrained path when requested."""
     if extra_equivalence is None:
@@ -425,6 +448,7 @@ def fit_resp_from_esp(
             a2,
             two_stage,
             only_esp,
+            core,
         )
         if return_diagnostics:
             residual = charges @ inverse - molecular_esp
@@ -481,6 +505,7 @@ def fit_resp_from_esp_debug(
     only_esp=False,
     constraint_matrix=None,
     constraint_targets=None,
+    core="python",
 ):
     """Compatibility wrapper that routes RESP debug fitting to C++."""
     if extra_equivalence is None:
@@ -501,6 +526,7 @@ def fit_resp_from_esp_debug(
             constraint_matrix=constraint_matrix,
             constraint_targets=constraint_targets,
             return_diagnostics=True,
+            core=core,
         )
         return {
             "final_charges": result["charges"],
@@ -552,6 +578,7 @@ def fit_resp_from_esp_cpp(
         constraint_matrix=constraint_matrix,
         constraint_targets=constraint_targets,
         return_diagnostics=return_diagnostics,
+        core="cpp",
     )
 
 
@@ -584,4 +611,5 @@ def fit_resp_from_esp_cpp_debug(
         only_esp=only_esp,
         constraint_matrix=constraint_matrix,
         constraint_targets=constraint_targets,
+        core="cpp",
     )

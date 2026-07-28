@@ -530,4 +530,74 @@ std::vector<double> fit_resp_from_esp_cpp(
     ).final_charges;
 }
 
+std::vector<double> solve_resp_constrained_quadratic_cpp(
+    const std::vector<std::vector<double>>& quadratic_matrix,
+    const std::vector<double>& linear_term,
+    const std::vector<std::vector<double>>& constraint_matrix,
+    const std::vector<double>& constraint_targets
+) {
+    const std::size_t atom_count = linear_term.size();
+    const std::size_t constraint_count = constraint_matrix.size();
+    if (atom_count == 0 || quadratic_matrix.size() != atom_count) {
+        throw std::invalid_argument(
+            "RESP quadratic matrix has incompatible dimensions");
+    }
+    if (constraint_targets.size() != constraint_count) {
+        throw std::invalid_argument(
+            "RESP constraint targets have incompatible dimensions");
+    }
+    const std::size_t size = atom_count + constraint_count;
+    std::vector<std::vector<double>> kkt(
+        size, std::vector<double>(size, 0.0));
+    std::vector<double> rhs(size, 0.0);
+    for (std::size_t row = 0; row < atom_count; ++row) {
+        if (quadratic_matrix[row].size() != atom_count) {
+            throw std::invalid_argument(
+                "RESP quadratic matrix has incompatible dimensions");
+        }
+        rhs[row] = linear_term[row];
+        if (!std::isfinite(rhs[row])) {
+            throw std::invalid_argument(
+                "RESP quadratic system should be finite");
+        }
+        for (std::size_t column = 0; column < atom_count; ++column) {
+            const double value = quadratic_matrix[row][column];
+            if (!std::isfinite(value)) {
+                throw std::invalid_argument(
+                    "RESP quadratic system should be finite");
+            }
+            kkt[row][column] = value;
+        }
+    }
+    for (std::size_t row = 0; row < constraint_count; ++row) {
+        if (constraint_matrix[row].size() != atom_count) {
+            throw std::invalid_argument(
+                "RESP constraint matrix has incompatible dimensions");
+        }
+        rhs[atom_count + row] = constraint_targets[row];
+        if (!std::isfinite(rhs[atom_count + row])) {
+            throw std::invalid_argument(
+                "RESP quadratic system should be finite");
+        }
+        for (std::size_t column = 0; column < atom_count; ++column) {
+            const double value = constraint_matrix[row][column];
+            if (!std::isfinite(value)) {
+                throw std::invalid_argument(
+                    "RESP quadratic system should be finite");
+            }
+            kkt[column][atom_count + row] = value;
+            kkt[atom_count + row][column] = value;
+        }
+    }
+    std::vector<double> solution;
+    try {
+        solution = solve_linear_system(std::move(kkt), std::move(rhs));
+    } catch (const std::runtime_error&) {
+        throw std::invalid_argument(
+            "RESP constrained quadratic system is singular or inconsistent");
+    }
+    solution.resize(atom_count);
+    return solution;
+}
+
 }  // namespace xpongecpp

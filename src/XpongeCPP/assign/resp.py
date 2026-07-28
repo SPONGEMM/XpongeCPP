@@ -105,7 +105,7 @@ def _normalize_core_name(core):
     if core_name not in _CORE_MODULES:
         supported = ", ".join(sorted(_CORE_MODULES))
         raise ValueError(f"RESP core should be one of: {supported}")
-    return "cpp"
+    return core_name
 
 
 def resp_fit(assign, basis=None, opt=False, charge=None, spin=0, extra_equivalence=None,
@@ -131,7 +131,7 @@ def resp_fit(assign, basis=None, opt=False, charge=None, spin=0, extra_equivalen
             constraint_targets=constraint_targets,
         )
     backend_name = _normalize_backend_name(backend)
-    _normalize_core_name(core)
+    core_name = _normalize_core_name(core)
     backend_module = _BACKEND_MODULES[backend_name]
     resolved_basis = _resolve_basis_for_resp(assign, basis)
     resolved_radius = _merge_resp_radii(assign, radius)
@@ -169,6 +169,7 @@ def resp_fit(assign, basis=None, opt=False, charge=None, spin=0, extra_equivalen
         constraint_matrix=constraint_matrix,
         constraint_targets=constraint_targets,
         return_diagnostics=return_diagnostics,
+        core=core_name,
     )
     charges = fitted["charges"] if return_diagnostics else fitted
     if return_metadata or return_diagnostics:

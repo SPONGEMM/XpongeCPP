@@ -166,9 +166,11 @@ Implementation status on `codex/integrate-bundled-io`:
   charge, stage-1/stage-2 propagation, ESP diagnostics, and a row ledger;
 - complete: cached-ESP tests for exact target recovery, dependent rows,
   inconsistent/non-finite input, and atom permutation stability;
-- preserved: requests without constraints or diagnostics still use the
-  existing C++ RESP path;
-- pending: constrained C++ entrypoint and cached-ESP Python/C++ parity gate.
+- complete: constrained C++ KKT entrypoint, selected by default from the
+  public RESP orchestration, while Python retains deterministic constraint
+  reduction and stage orchestration;
+- complete: cached-ESP Python/C++ solver parity at `1e-10`; requests without
+  constraints continue to use the pre-existing C++ RESP path.
 
 ## P4 — introduce molecule-first metal assignment
 

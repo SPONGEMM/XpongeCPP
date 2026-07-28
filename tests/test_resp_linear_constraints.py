@@ -162,6 +162,32 @@ def test_constrained_resp_is_stable_under_atom_permutation():
     )
 
 
+def test_constrained_resp_python_and_cpp_solvers_agree_on_cached_esp():
+    assignment = _assignment(["O", "H", "H"])
+    problem = _exact_esp_problem([-0.4, 0.2, 0.2])
+    kwargs = {
+        "charge": 0,
+        "extra_equivalence": [[1, 2]],
+        "constraint_matrix": [[1.0, 0.0, 0.0]],
+        "constraint_targets": [-0.4],
+        "only_esp": False,
+        "two_stage": False,
+        "return_diagnostics": True,
+    }
+
+    python_result = resp_core.fit_resp_from_esp(
+        assignment, *problem, core="python", **kwargs
+    )
+    cpp_result = resp_core.fit_resp_from_esp(
+        assignment, *problem, core="cpp", **kwargs
+    )
+
+    assert cpp_result["charges"] == pytest.approx(
+        python_result["charges"], abs=1e-10
+    )
+    assert cpp_result["diagnostics"]["max_constraint_residual"] <= 1e-10
+
+
 def test_resp_preflights_constraints_before_qm_backend(monkeypatch):
     assignment = _assignment(["H", "H"])
     called = False

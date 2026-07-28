@@ -191,6 +191,14 @@ void bind_assign_module(py::module_& m) {
           py::arg("extra_equivalence") = std::vector<std::vector<int>>{},
           py::arg("a1") = 0.0005, py::arg("a2") = 0.001,
           py::arg("two_stage") = true, py::arg("only_esp") = false);
+    m.def(
+        "solve_resp_constrained_quadratic_cpp",
+        &solve_resp_constrained_quadratic_cpp,
+        py::arg("quadratic_matrix"),
+        py::arg("linear_term"),
+        py::arg("constraint_matrix"),
+        py::arg("constraint_targets")
+    );
 }
 
 }  // namespace xpongecpp

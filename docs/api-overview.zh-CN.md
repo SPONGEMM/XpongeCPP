@@ -72,8 +72,9 @@ diagnostics = assignment.charge_fit_diagnostics
 ```
 
 约束会在 QM backend 启动前完成预检。诊断结果包括约束秩、被丢弃的依赖行、
-KKT 条件数/残差、ESP 拟合误差和逐行 ledger。既有无约束路径仍使用 C++
-RESP core；constrained C++ parity 路径仍在实现中。
+KKT 条件数/残差、ESP 拟合误差和逐行 ledger。无约束拟合与 constrained
+KKT 求解默认都使用 C++ numerical core；`core="python"` 保留用于 cached-ESP
+对照。
 
 ### Load / Build / Process
 
