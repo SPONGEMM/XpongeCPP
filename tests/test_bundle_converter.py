@@ -1,5 +1,7 @@
+import os
 from pathlib import Path
 import runpy
+import subprocess
 
 import numpy as np
 import pytest
@@ -21,7 +23,7 @@ def _peptide():
     import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
 
     molecule = Xponge.get_peptide_from_sequence("AA")
-    molecule.set_box_padding(4.0)
+    molecule.set_box_padding(12.0)
     return molecule
 
 
@@ -46,8 +48,12 @@ def _legacy_case(tmp_path: Path):
     )
     mdin = "\n".join(
         [
-            "mode = minimization",
-            "minimization_step = 0",
+            'mode = "minimization"',
+            "step_limit = 0",
+            "cutoff = 8.0",
+            "print_zeroth_frame = 1",
+            "write_mdout_interval = 1",
+            "write_information_interval = 1",
             *[
                 f'{key}_in_file = "system_{key}.txt"'
                 for key in keys
@@ -111,6 +117,19 @@ def _read_hash_inputs(handle):
 
     handle.visititems(collect)
     return values
+
+
+def _read_mdout_first_frame(path: Path):
+    lines = path.read_text().splitlines()
+    if len(lines) < 2:
+        raise AssertionError(f"SPONGE did not write a frame to {path}")
+    headers = lines[0].split()
+    values = lines[1].split()
+    return {
+        key: float(value)
+        for key, value in zip(headers, values)
+        if key not in {"step"}
+    }
 
 
 def test_convert_legacy_to_bundle_round_trips_supported_raw_case(tmp_path):
@@ -227,3 +246,44 @@ def test_legacy_converter_is_available_from_legacy_package():
     from XpongeCPP.io_bundle import LegacyToBundleConverter
 
     assert LegacyImport is LegacyToBundleConverter
+
+
+@pytest.mark.skipif(
+    not os.environ.get("SPONGE_EXECUTABLE"),
+    reason="set SPONGE_EXECUTABLE to run the numerical round-trip gate",
+)
+def test_round_tripped_legacy_inputs_match_sponge_zeroth_frame(tmp_path):
+    executable = Path(os.environ["SPONGE_EXECUTABLE"]).resolve()
+    if not executable.is_file():
+        pytest.fail(f"SPONGE_EXECUTABLE does not exist: {executable}")
+    raw_dir = _legacy_case(tmp_path)
+    converted_root = tmp_path / "converted"
+    convert_legacy_to_bundle(raw_dir, converted_root)
+    roundtrip_dir = tmp_path / "roundtrip"
+    convert_bundle_to_legacy(converted_root / "bundle", roundtrip_dir)
+
+    runs = (
+        (raw_dir, "mdin.spg.toml"),
+        (roundtrip_dir, "mdin.legacy.spg.toml"),
+    )
+    frames = []
+    for cwd, mdin in runs:
+        completed = subprocess.run(
+            [str(executable), "-mdin", mdin],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert completed.returncode == 0, (
+            f"SPONGE failed in {cwd}\nstdout:\n{completed.stdout}\n"
+            f"stderr:\n{completed.stderr}"
+        )
+        frames.append(_read_mdout_first_frame(cwd / "mdout.txt"))
+
+    assert frames[0].keys() == frames[1].keys()
+    for key in frames[0]:
+        assert frames[1][key] == pytest.approx(
+            frames[0][key], abs=1e-5, rel=1e-7
+        ), key

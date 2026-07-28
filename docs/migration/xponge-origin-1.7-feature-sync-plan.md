@@ -117,9 +117,12 @@ Implementation status on `codex/integrate-bundled-io`:
 - complete: ordinary legacy-to-bundle conversion with canonical hashes,
   shared UUID/lineage, bundled mdin preservation, and bidirectional semantic
   round-trip coverage;
-- pending: actual SPONGE runtime evidence (the checked-out SPONGE source does
-  not currently expose the v2 HDF5 input keys, so raw-versus-round-tripped raw
-  execution is the immediately available numerical gate).
+- complete: an opt-in SPONGE numerical gate compares every zeroth-frame mdout
+  column for original raw versus raw -> bundle -> raw inputs. It passes with
+  the local SPONGE `v2.0.0-beta.1` CUDA executable;
+- explicit boundary: the checked-out SPONGE source does not expose
+  `input_h5_*` keys, so this establishes conversion/runtime equivalence but
+  does not claim direct HDF5-bundle execution by that binary.
 
 Required evidence:
 
