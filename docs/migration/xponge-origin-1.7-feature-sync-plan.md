@@ -107,6 +107,16 @@ independently reviewable changes:
 4. protocol objects beyond the empty/default sidecar only when their v2 schema
    contract and origin tests have been ported.
 
+Implementation status on `codex/integrate-bundled-io`:
+
+- complete: validated v2 bundle reader and canonical case discovery;
+- complete: single-frame MDAnalysis adapter for topology plus restart/H5MD;
+- complete: atomic bundle-to-legacy conversion for the documented ordinary
+  force subset, including dry-run/conflict handling and explicit rejection of
+  unsupported typed forces;
+- pending: legacy-to-bundle conversion and the round-trip/runtime evidence
+  below.
+
 Required evidence:
 
 - raw -> bundle -> parsed semantic equivalence;
@@ -211,4 +221,3 @@ Release only when all of the following hold:
 - claiming raw/bundle numerical equivalence from HDF5 schema or roundtrip tests
   alone;
 - changing SPONGE runtime behavior itself.
-

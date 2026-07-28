@@ -15,3 +15,15 @@ class BundleValidationError(BundleError):
 
 class BundlePathError(BundleError):
     """Raised when a bundle path escapes its allowed root."""
+
+
+class BundleCapabilityError(BundleError):
+    """Raised when a bundle cannot be represented by legacy inputs."""
+
+
+class BundleConflictError(BundleError):
+    """Raised when conversion would overwrite an existing output."""
+
+
+class BundleExportError(BundleError):
+    """Raised when typed bundle data cannot be exported safely."""

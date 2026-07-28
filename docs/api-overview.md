@@ -103,6 +103,22 @@ universe = load_bundle_universe("inputs/system_topology.spgt.h5")
 版本会将选择的单帧 materialize 到内存；多帧 trajectory streaming 属于后续
 对齐阶段。
 
+受支持的普通力场 bundle 也可以安全地回转为 SPONGE direct/legacy 输入：
+
+```python
+from XpongeCPP.io_bundle import convert_bundle_to_legacy
+
+manifest = convert_bundle_to_legacy(
+    "inputs", "legacy-inputs", prefix="system"
+)
+```
+
+转换器先规划并校验所有目标，再原子写入文件；`dry_run=True` 只做规划，
+`overwrite=False` 默认拒绝覆盖。当前支持普通 LJ、键、角、周期二面角、
+harmonic improper、排除表和两列 nb14。soft-core LJ、CMAP、GB、虚拟原子、
+Urey-Bradley、soft bond 与 custom listed force 在 strict 模式下会明确报错，
+不会被静默丢弃。
+
 ## 旧语法兼容重点
 
 ### 模板代数语法

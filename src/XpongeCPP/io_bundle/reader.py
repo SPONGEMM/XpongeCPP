@@ -84,6 +84,20 @@ class BundleReader:
             raise BundleValidationError(f"{bundle_file} is missing {dataset_path}")
         return _decode_h5_text(handle[dataset_path][()])
 
+    def read_attribute(
+        self, bundle_file: str, dataset_path: str, attribute: str
+    ):
+        """Read one HDF5 attribute from a validated artifact."""
+
+        handle = self._require_handle(bundle_file)
+        if dataset_path not in handle:
+            raise BundleValidationError(f"{bundle_file} is missing {dataset_path}")
+        if attribute not in handle[dataset_path].attrs:
+            raise BundleValidationError(
+                f"{bundle_file}:{dataset_path} is missing attribute {attribute!r}"
+            )
+        return _decode_h5_text(handle[dataset_path].attrs[attribute])
+
     def read_legacy_sidecars(self, bundle_file: str) -> dict[str, Path]:
         key_path = "/parameters/sponge/files/legacy_sidecars/key"
         value_path = "/parameters/sponge/files/legacy_sidecars/path"
