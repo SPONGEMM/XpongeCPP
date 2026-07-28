@@ -119,6 +119,20 @@ harmonic improper、排除表和两列 nb14。soft-core LJ、CMAP、GB、虚拟�
 Urey-Bradley、soft bond 与 custom listed force 在 strict 模式下会明确报错，
 不会被静默丢弃。
 
+已有 direct/legacy SPONGE case 可以转换为 canonical v2 三件套：
+
+```python
+from XpongeCPP.io_bundle import convert_legacy_to_bundle
+
+manifest = convert_legacy_to_bundle(
+    "legacy-case", "converted-case", mdin="mdin.spg.toml"
+)
+```
+
+输出位于 `converted-case/bundle/`，包括 topology、protocol、restart 与
+`mdin.bundled.spg.toml`；转换时会重新生成 UUID、canonical content hash 和
+lineage。当前只接受上面列出的普通力场子集，遇到其他已绑定输入会明确拒绝。
+
 ## 旧语法兼容重点
 
 ### 模板代数语法

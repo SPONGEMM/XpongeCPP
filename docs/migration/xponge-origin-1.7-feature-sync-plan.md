@@ -114,8 +114,12 @@ Implementation status on `codex/integrate-bundled-io`:
 - complete: atomic bundle-to-legacy conversion for the documented ordinary
   force subset, including dry-run/conflict handling and explicit rejection of
   unsupported typed forces;
-- pending: legacy-to-bundle conversion and the round-trip/runtime evidence
-  below.
+- complete: ordinary legacy-to-bundle conversion with canonical hashes,
+  shared UUID/lineage, bundled mdin preservation, and bidirectional semantic
+  round-trip coverage;
+- pending: actual SPONGE runtime evidence (the checked-out SPONGE source does
+  not currently expose the v2 HDF5 input keys, so raw-versus-round-tripped raw
+  execution is the immediately available numerical gate).
 
 Required evidence:
 
