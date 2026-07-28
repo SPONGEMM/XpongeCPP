@@ -582,7 +582,7 @@ def test_save_sponge_input_writes_core_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="case", dirname=str(tmp_path))
 
-    assert sorted(out) == [
+    expected_outputs = [
         "LJ",
         "angle",
         "atom_name",
@@ -597,6 +597,8 @@ def test_save_sponge_input_writes_core_files(tmp_path):
         "residue",
         "resname",
     ]
+    assert out is mol
+    assert all((tmp_path / f"case_{name}.txt").is_file() for name in expected_outputs)
     assert (tmp_path / "case_coordinate.txt").exists()
     assert (tmp_path / "case_residue.txt").read_text().splitlines()[0] == "4 1"
 
@@ -646,7 +648,7 @@ def test_save_sponge_input_writes_xponge_extra_bonded_force_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="extra", dirname=str(tmp_path))
 
-    assert {"virtual_atom", "improper_dihedral", "cmap", "nb14_extra"}.issubset(out)
+    assert out is mol
     assert (tmp_path / "extra_virtual_atom.txt").read_text().splitlines() == [
         "2 0 1 2 3 0.250000 0.750000",
     ]
@@ -710,9 +712,10 @@ def test_extra_bonded_force_entries_on_removed_solvent_are_dropped_during_ion_re
     out = Xponge.Save_SPONGE_Input(mol, prefix="ion_extra", dirname=str(tmp_path))
 
     assert mol.validate()
-    assert "virtual_atom" not in out
-    assert "improper_dihedral" not in out
-    assert "nb14_extra" not in out
+    assert out is mol
+    assert not (tmp_path / "ion_extra_virtual_atom.txt").exists()
+    assert not (tmp_path / "ion_extra_improper_dihedral.txt").exists()
+    assert not (tmp_path / "ion_extra_nb14_extra.txt").exists()
 
 
 def test_save_sponge_input_writes_xponge_general_bonded_force_files(tmp_path):
@@ -725,7 +728,7 @@ def test_save_sponge_input_writes_xponge_general_bonded_force_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="general", dirname=str(tmp_path))
 
-    assert {"urey_bradley", "Ryckaert_Bellemans", "bond_soft", "listed_forces"}.issubset(out)
+    assert out is mol
     assert (tmp_path / "general_urey_bradley.txt").read_text().splitlines() == [
         "1",
         "0 1 2 1.100000 2.200000 3.300000 4.400000",
@@ -776,7 +779,7 @@ def test_save_sponge_input_writes_xponge_special_state_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="special", dirname=str(tmp_path))
 
-    assert {"gb", "fake_mass", "fake_LJ", "fake_charge", "subsys_division"}.issubset(out)
+    assert out is mol
     assert (tmp_path / "special_gb.txt").read_text().splitlines()[:3] == [
         "5",
         "1.5200 0.8500",
@@ -840,8 +843,9 @@ def test_save_sponge_input_writes_xponge_pairwise_and_softcore_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="pairwise", dirname=str(tmp_path))
 
-    assert {"SW", "EDIP", "LJ_soft_core", "subsys_division"}.issubset(out)
-    assert "LJ" not in out
+    assert out is mol
+    assert (tmp_path / "pairwise_subsys_division.txt").is_file()
+    assert not (tmp_path / "pairwise_LJ.txt").exists()
     assert (tmp_path / "pairwise_SW.txt").read_text().splitlines() == [
         "5 1",
         "# type1 type2 A B epsilon[kcal/mol] p q a gamma sigma[Angstrom] (This is the first required comment line)",

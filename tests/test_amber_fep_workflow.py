@@ -32,8 +32,9 @@ USER_CHARGES
     fep.prepare_lj_soft_core(mol, {0: "c3", 1: "hc", 2: "oh"}, subsys=1)
     out = Xponge.Save_SPONGE_Input(mol, prefix="fep", dirname=str(tmp_path))
 
-    assert {"LJ_soft_core", "subsys_division"}.issubset(out)
-    assert "LJ" not in out
+    assert out is mol
+    assert (tmp_path / "fep_LJ_soft_core.txt").is_file()
+    assert not (tmp_path / "fep_LJ.txt").exists()
     assert (tmp_path / "fep_subsys_division.txt").read_text().splitlines() == ["3", "1", "1", "1"]
 
 
@@ -61,7 +62,7 @@ USER_CHARGES
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="soft", dirname=str(tmp_path))
 
-    assert "bond_soft" in out
+    assert out is mol
     assert (tmp_path / "soft_bond_soft.txt").read_text().splitlines() == [
         "2",
         "0 1 10.000000 1.500000 0",
@@ -180,8 +181,10 @@ USER_CHARGES
 
     out = Xponge.Save_SPONGE_Input(merged, prefix="merged", dirname=str(tmp_path))
 
-    assert {"LJ_soft_core", "subsys_division", "bond_soft"}.issubset(out)
-    assert "LJ" not in out
+    assert out is merged
+    assert (tmp_path / "merged_LJ_soft_core.txt").is_file()
+    assert (tmp_path / "merged_bond_soft.txt").is_file()
+    assert not (tmp_path / "merged_LJ.txt").exists()
     assert (tmp_path / "merged_subsys_division.txt").read_text().splitlines() == ["3", "0", "1", "2"]
     assert (tmp_path / "merged_bond.txt").read_text().splitlines() == [
         "2",
@@ -281,7 +284,9 @@ USER_CHARGES
 
     fep.save_soft_core_lj(free)
     out = Xponge.Save_SPONGE_Input(free, prefix="free", dirname=str(tmp_path))
-    assert {"LJ_soft_core", "subsys_division"}.issubset(out)
+    assert out is free
+    assert (tmp_path / "free_LJ_soft_core.txt").is_file()
+    assert (tmp_path / "free_subsys_division.txt").is_file()
     assert fep.Merge_Dual_Topology is fep.merge_dual_topology
     assert fep.Merge_Force_Field is fep.merge_force_field
     assert fep.Get_Free_Molecule is fep.get_free_molecule

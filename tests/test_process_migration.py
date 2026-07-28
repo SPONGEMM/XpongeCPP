@@ -323,7 +323,11 @@ def test_original_process_workflow_shape_is_reproducible_without_external_sponge
     assert counts["NA"] == 5
     assert counts["CL"] == 5
     assert counts["WAT"] > 0
-    assert {"bond", "angle", "dihedral", "exclude", "nb14"}.issubset(outputs)
+    assert outputs is mol
+    assert all(
+        (tmp_path / f"ala_{name}.txt").is_file()
+        for name in ("bond", "angle", "dihedral", "exclude", "nb14")
+    )
     assert mol.validate()
 
 

@@ -56,7 +56,7 @@ def test_1kv2_10a_water_ion_counts_match_xponge(tmp_path):
     outputs = Xponge.Save_SPONGE_Input(mol, prefix="spg", dirname=str(tmp_path))
     assert (tmp_path / "spg_residue.txt").read_text().splitlines()[0] == "51887 15802"
     assert (tmp_path / "spg_coordinate.txt").read_text().splitlines()[0] == "51887"
-    assert set(outputs) == {
+    expected_outputs = {
         "LJ",
         "angle",
         "atom_name",
@@ -71,6 +71,10 @@ def test_1kv2_10a_water_ion_counts_match_xponge(tmp_path):
         "residue",
         "resname",
     }
+    assert outputs is mol
+    assert all(
+        (tmp_path / f"spg_{name}.txt").is_file() for name in expected_outputs
+    )
 
 
 def test_1kv2_10a_sponge_file_headers_match_xponge(tmp_path):

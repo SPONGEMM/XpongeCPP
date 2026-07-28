@@ -65,7 +65,8 @@ def test_1kv2_tip3p_ion_export_workflow(tmp_path):
         "residue",
         "resname",
     }
-    assert set(outputs) == expected
+    assert outputs is mol
+    assert all((tmp_path / f"spg_{name}.txt").is_file() for name in expected)
 
     atom_count = mol.atom_count
     residue_count = mol.residue_count

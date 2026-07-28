@@ -14,6 +14,13 @@ import XpongeCPP as Xponge
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _exported_keys(directory, prefix):
+    return {
+        path.name[len(prefix) + 1 : -4]
+        for path in directory.glob(f"{prefix}_*.txt")
+    }
+
+
 def _run_isolated(code, *args):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
@@ -104,7 +111,7 @@ USER_CHARGES
         "import XpongeCPP.forcefield.amber.ff19sb\n"
         "assert X.template_atom_count('ALA') >= 10 and X.template_atom_count('GLY') >= 7\n"
         "m = X.load_mol2(sys.argv[1])\n"
-        "assert 'cmap' in X.Save_SPONGE_Input(m, prefix='ff19', dirname=sys.argv[2])\n",
+        "assert X.Save_SPONGE_Input(m, prefix='ff19', dirname=sys.argv[2]) is m\n",
         mol2, tmp_path,
     )
     assert (tmp_path / "ff19_cmap.txt").read_text().splitlines()[0] == "1 1"
@@ -150,7 +157,8 @@ def test_amber_multi_site_water_imports_register_complete_templates(tmp_path):
         assert water.residues[0].name2atom("EPW").type == "EP"
 
         out = Xponge.Save_SPONGE_Input(water, prefix=prefix, dirname=str(tmp_path))
-        assert "virtual_atom" in out
+        assert out is water
+        assert "virtual_atom" in _exported_keys(tmp_path, prefix)
         assert (tmp_path / f"{prefix}_virtual_atom.txt").read_text().splitlines() == [
             f"2 3 0 1 2 {expected_k} {expected_k}",
         ]
@@ -163,7 +171,8 @@ def test_spce_import_registers_three_site_water_without_virtual_atom(tmp_path):
     assert water.atom_count == 3
 
     out = Xponge.Save_SPONGE_Input(water, prefix="spce", dirname=str(tmp_path))
-    assert "virtual_atom" not in out
+    assert out is water
+    assert "virtual_atom" not in _exported_keys(tmp_path, "spce")
     assert (tmp_path / "spce_bond.txt").read_text().splitlines()[0] == "3"
 
 
@@ -239,7 +248,8 @@ USER_CHARGES
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="cmap", dirname=str(tmp_path))
 
-    assert "cmap" in out
+    assert out is mol
+    assert "cmap" in _exported_keys(tmp_path, "cmap")
     assert (tmp_path / "cmap_cmap.txt").read_text().splitlines() == [
         "1 1",
         "2 ",
@@ -438,7 +448,8 @@ def test_amber_nucleic_lipid_and_glycam_modules_support_representative_export_wo
 
         out = Xponge.Save_SPONGE_Input(mol, prefix=prefix, dirname=str(tmp_path))
 
-        assert sorted(out) == [
+        assert out is mol
+        assert sorted(_exported_keys(tmp_path, prefix)) == [
             "LJ",
             "angle",
             "atom_name",
@@ -478,7 +489,16 @@ def test_amber_nucleic_lipid_and_glycam_modules_support_broader_assembled_export
 
         out = Xponge.Save_SPONGE_Input(mol, prefix=prefix, dirname=str(tmp_path))
 
-        assert {"bond", "angle", "dihedral", "exclude", "nb14", "residue", "resname"}.issubset(out)
+        assert out is mol
+        assert {
+            "bond",
+            "angle",
+            "dihedral",
+            "exclude",
+            "nb14",
+            "residue",
+            "resname",
+        }.issubset(_exported_keys(tmp_path, prefix))
         assert int((tmp_path / f"{prefix}_bond.txt").read_text().splitlines()[0]) > 0
         assert int((tmp_path / f"{prefix}_angle.txt").read_text().splitlines()[0]) > 0
         assert int((tmp_path / f"{prefix}_dihedral.txt").read_text().splitlines()[0]) > 0
