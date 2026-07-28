@@ -13,6 +13,7 @@ from .contracts import (
     ChargeLedgerEntry,
     ChargeUpdate,
     ElectronicState,
+    LJParameter,
     MetalAssignmentPlan,
     MetalAssignmentRequest,
     MetalAssignmentResult,
@@ -58,6 +59,12 @@ def molecule_topology_hash(molecule) -> str:
         "residue_links": tuple(
             sorted(tuple(sorted(map(int, edge))) for edge in molecule.residue_links)
         ),
+        "coordination_bonds": tuple(
+            sorted(
+                tuple(sorted(map(int, edge)))
+                for edge in molecule.coordination_bonds
+            )
+        ),
     }
     return _canonical_hash(payload)
 
@@ -85,6 +92,11 @@ def molecule_input_hash(molecule) -> str:
             "length": tuple(map(float, molecule.box_length)),
             "origin": tuple(map(float, molecule.box_origin)),
             "angle": tuple(map(float, molecule.box_angle)),
+        },
+        "parameter_overrides": {
+            "bond": tuple(tuple(item) for item in molecule.bond_parameter_overrides),
+            "angle": tuple(tuple(item) for item in molecule.angle_parameter_overrides),
+            "lj": tuple(tuple(item) for item in molecule.lj_parameter_overrides),
         },
     }
     return _canonical_hash(payload)
@@ -265,6 +277,48 @@ def _validate_parameter_overlay(
             "angle parameter atom triples must be unique",
             path="parameter_overlay.angle_parameters",
         )
+    lj_atom_types = []
+    lj_types = []
+    for index, term in enumerate(overlay.lj_parameters):
+        atom_type = str(term.atom_type)
+        lj_type = str(term.lj_type)
+        if not atom_type or not lj_type:
+            raise MetalAssignmentValidationError(
+                "invalid_lj_parameter_type",
+                "LJ parameter atom_type and lj_type must not be empty",
+                path=f"parameter_overlay.lj_parameters[{index}]",
+            )
+        if (
+            not math.isfinite(float(term.epsilon))
+            or float(term.epsilon) < 0.0
+            or not math.isfinite(float(term.rmin))
+            or float(term.rmin) < 0.0
+        ):
+            raise MetalAssignmentValidationError(
+                "invalid_lj_parameter",
+                "LJ epsilon and rmin must be finite and non-negative",
+                path=f"parameter_overlay.lj_parameters[{index}]",
+            )
+        if not str(term.source):
+            raise MetalAssignmentValidationError(
+                "missing_lj_parameter_source",
+                "LJ parameter requires a source",
+                path=f"parameter_overlay.lj_parameters[{index}].source",
+            )
+        lj_atom_types.append(atom_type)
+        lj_types.append(lj_type)
+    if len(lj_atom_types) != len(set(lj_atom_types)):
+        raise MetalAssignmentValidationError(
+            "duplicate_lj_atom_type",
+            "LJ parameter atom types must be unique",
+            path="parameter_overlay.lj_parameters",
+        )
+    if len(lj_types) != len(set(lj_types)):
+        raise MetalAssignmentValidationError(
+            "duplicate_lj_type",
+            "LJ parameter types must be unique",
+            path="parameter_overlay.lj_parameters",
+        )
 
 
 def build_metal_parameter_overlay(
@@ -273,6 +327,7 @@ def build_metal_parameter_overlay(
     atom_parameters: Iterable[AtomParameterUpdate] = (),
     bond_parameters: Iterable[BondParameter] = (),
     angle_parameters: Iterable[AngleParameter] = (),
+    lj_parameters: Iterable[LJParameter] = (),
     parameter_source: str = "metal_assignment",
     precedence: int = 100,
 ) -> MetalParameterOverlay:
@@ -283,6 +338,7 @@ def build_metal_parameter_overlay(
         atom_parameters=tuple(atom_parameters),
         bond_parameters=tuple(bond_parameters),
         angle_parameters=tuple(angle_parameters),
+        lj_parameters=tuple(lj_parameters),
         parameter_source=str(parameter_source),
         precedence=int(precedence),
     )
@@ -459,10 +515,18 @@ def apply_metal_assignment(
                 float(term.equilibrium_angle),
                 str(term.source),
             )
+        for term in overlay.lj_parameters:
+            working._set_lj_parameter_override(
+                str(term.atom_type),
+                str(term.lj_type),
+                float(term.epsilon),
+                float(term.rmin),
+                str(term.source),
+            )
     residue_ids = _atom_residue_ids(working)
     for atom1, atom2 in plan.link_overlay:
         if residue_ids[atom1] == residue_ids[atom2]:
-            working.add_explicit_bond(atom1, atom2)
+            working.add_coordination_bond(atom1, atom2)
         else:
             working.add_residue_link(atom1, atom2)
     if not working.validate():
@@ -477,7 +541,13 @@ def apply_metal_assignment(
         published = molecule
     else:
         published = working
-    return MetalAssignmentResult(
+    provenance = [
+        f"request:{plan.request.request_id}",
+        *(f"charge:{entry.source}" for entry in plan.charge_ledger),
+    ]
+    if overlay is not None:
+        provenance.append(f"parameters:{overlay.parameter_source}")
+    result = MetalAssignmentResult(
         molecule=published,
         plan=plan,
         result_input_hash=result_input_hash,
@@ -487,7 +557,16 @@ def apply_metal_assignment(
         ),
         applied_coordination_edges=plan.link_overlay,
         inplace=bool(inplace),
+        application_audit=(
+            "validated_plan_hash",
+            "validated_parent_input_hash",
+            "applied_on_deepcopy",
+            "validated_result_molecule",
+            "published_inplace" if inplace else "returned_copy",
+        ),
+        provenance=tuple(dict.fromkeys(provenance)),
     )
+    return replace(result, result_hash=result.computed_hash())
 
 
 __all__ = [

@@ -105,6 +105,17 @@ class AngleParameter:
 
 
 @dataclass(frozen=True, slots=True)
+class LJParameter:
+    """Molecule-local Lennard-Jones type mapping and parameters."""
+
+    atom_type: str
+    lj_type: str
+    epsilon: float
+    rmin: float
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
 class MetalParameterOverlay:
     """Hash-closed molecule-local atom and bonded parameter overlay."""
 
@@ -112,6 +123,7 @@ class MetalParameterOverlay:
     atom_parameters: tuple[AtomParameterUpdate, ...] = ()
     bond_parameters: tuple[BondParameter, ...] = ()
     angle_parameters: tuple[AngleParameter, ...] = ()
+    lj_parameters: tuple[LJParameter, ...] = ()
     parameter_source: str = "metal_assignment"
     precedence: int = 100
     overlay_hash: str = ""
@@ -195,6 +207,34 @@ class MetalAssignmentResult:
     applied_charge_atom_ids: tuple[int, ...]
     applied_coordination_edges: tuple[tuple[int, int], ...]
     inplace: bool
+    application_audit: tuple[str, ...] = ()
+    provenance: tuple[str, ...] = ()
+    result_hash: str = ""
+    schema_version: int = SCHEMA_VERSION
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "plan_hash": self.plan.plan_hash,
+            "result_input_hash": self.result_input_hash,
+            "result_topology_hash": self.result_topology_hash,
+            "applied_charge_atom_ids": self.applied_charge_atom_ids,
+            "applied_coordination_edges": self.applied_coordination_edges,
+            "inplace": self.inplace,
+            "application_audit": self.application_audit,
+            "provenance": self.provenance,
+            "schema_version": self.schema_version,
+        }
+
+    def computed_hash(self) -> str:
+        return _canonical_hash(self.payload())
+
+    def validate_hash(self) -> None:
+        if not self.result_hash or self.result_hash != self.computed_hash():
+            raise MetalAssignmentValidationError(
+                "stale_metal_assignment_result_hash",
+                "metal assignment result hash does not match its payload",
+                path="result_hash",
+            )
 
 
 def validate_finite_charge(update: ChargeUpdate, index: int) -> None:
@@ -213,6 +253,7 @@ __all__ = [
     "ChargeLedgerEntry",
     "ChargeUpdate",
     "ElectronicState",
+    "LJParameter",
     "MetalAssignmentPlan",
     "MetalAssignmentRequest",
     "MetalAssignmentResult",

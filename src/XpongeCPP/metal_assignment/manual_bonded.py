@@ -11,6 +11,7 @@ from .contracts import (
     AtomParameterUpdate,
     BondParameter,
     ElectronicState,
+    LJParameter,
     MetalAssignmentPlan,
     MetalAssignmentResult,
     MetalAssignmentValidationError,
@@ -225,6 +226,7 @@ def prepare_manual_bonded_assignment(
     bonds: Iterable[ManualBond],
     angles: Iterable[ManualAngle] = (),
     atom_parameters: Iterable[AtomParameterUpdate] = (),
+    lj_parameters: Iterable[LJParameter] = (),
 ) -> ManualBondedPlan:
     """Prepare manual bonded terms without QM, RESP, or parent mutation."""
 
@@ -264,6 +266,7 @@ def prepare_manual_bonded_assignment(
             )
             for term in reference.angles
         ),
+        lj_parameters=tuple(lj_parameters),
         parameter_source=MANUAL_BONDED_SOURCE,
     )
     assignment_plan = prepare_metal_assignment(

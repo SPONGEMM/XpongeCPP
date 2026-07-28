@@ -205,10 +205,14 @@ void Molecule::add_molecule_linked(const Molecule& other, bool link) {
     residues.reserve(residues.size() + other.residues.size());
     explicit_bonds.reserve(explicit_bonds.size() + other.explicit_bonds.size());
     residue_links.reserve(residue_links.size() + other.residue_links.size());
+    coordination_bonds.reserve(
+        coordination_bonds.size() + other.coordination_bonds.size());
     bond_parameter_overrides.reserve(
         bond_parameter_overrides.size() + other.bond_parameter_overrides.size());
     angle_parameter_overrides.reserve(
         angle_parameter_overrides.size() + other.angle_parameter_overrides.size());
+    lj_parameter_overrides.reserve(
+        lj_parameter_overrides.size() + other.lj_parameter_overrides.size());
     virtual_atoms.reserve(virtual_atoms.size() + other.virtual_atoms.size());
     harmonic_impropers.reserve(harmonic_impropers.size() + other.harmonic_impropers.size());
     cmap_types.reserve(cmap_types.size() + other.cmap_types.size());
@@ -237,6 +241,10 @@ void Molecule::add_molecule_linked(const Molecule& other, bool link) {
     for (const auto& link : other.residue_links) {
         residue_links.push_back({link.atom1 + atom_offset, link.atom2 + atom_offset});
     }
+    for (const auto& bond : other.coordination_bonds) {
+        coordination_bonds.push_back(
+            {bond.atom1 + atom_offset, bond.atom2 + atom_offset});
+    }
     for (const auto& term : other.bond_parameter_overrides) {
         bond_parameter_overrides.push_back(
             {term.atom1 + atom_offset, term.atom2 + atom_offset,
@@ -246,6 +254,10 @@ void Molecule::add_molecule_linked(const Molecule& other, bool link) {
         angle_parameter_overrides.push_back(
             {term.atom1 + atom_offset, term.atom2 + atom_offset,
              term.atom3 + atom_offset, term.k, term.theta, term.source});
+    }
+    for (const auto& term : other.lj_parameter_overrides) {
+        set_lj_parameter_override(
+            term.atom_type, term.lj_type, term.epsilon, term.rmin, term.source);
     }
     for (const auto& vatom : other.virtual_atoms) {
         virtual_atoms.push_back({vatom.virtual_atom + atom_offset, vatom.atom0 + atom_offset,
@@ -319,21 +331,21 @@ void Molecule::add_residue_link(AtomId atom1, AtomId atom2) {
     residue_links.push_back({lo, hi});
 }
 
-void Molecule::add_explicit_bond(AtomId atom1, AtomId atom2) {
+void Molecule::add_coordination_bond(AtomId atom1, AtomId atom2) {
     ensure_atom_id(*this, atom1);
     ensure_atom_id(*this, atom2);
     if (atom1 == atom2) {
-        throw std::invalid_argument("explicit bond atoms should be different");
+        throw std::invalid_argument("coordination bond atoms should be different");
     }
     const auto lo = std::min(atom1, atom2);
     const auto hi = std::max(atom1, atom2);
-    for (const auto& bond : explicit_bonds) {
+    for (const auto& bond : coordination_bonds) {
         if (std::min(bond.atom1, bond.atom2) == lo &&
             std::max(bond.atom1, bond.atom2) == hi) {
             return;
         }
     }
-    explicit_bonds.push_back({lo, hi});
+    coordination_bonds.push_back({lo, hi});
 }
 
 void Molecule::set_bond_parameter_override(
@@ -389,6 +401,30 @@ void Molecule::set_angle_parameter_override(
     }
     angle_parameter_overrides.push_back(
         {end1, atom2, end3, k, theta, source});
+}
+
+void Molecule::set_lj_parameter_override(
+    const std::string& atom_type, const std::string& lj_type,
+    double epsilon, double rmin, const std::string& source) {
+    if (atom_type.empty() || lj_type.empty()) {
+        throw std::invalid_argument("LJ parameter override types should not be empty");
+    }
+    if (!std::isfinite(epsilon) || epsilon < 0.0 ||
+        !std::isfinite(rmin) || rmin < 0.0) {
+        throw std::invalid_argument(
+            "LJ parameter override requires finite non-negative epsilon and rmin");
+    }
+    if (source.empty()) {
+        throw std::invalid_argument("LJ parameter override source should not be empty");
+    }
+    for (auto& term : lj_parameter_overrides) {
+        if (term.atom_type == atom_type) {
+            term = {atom_type, lj_type, epsilon, rmin, source};
+            return;
+        }
+    }
+    lj_parameter_overrides.push_back(
+        {atom_type, lj_type, epsilon, rmin, source});
 }
 
 void Molecule::replace_from(const Molecule& other) {
@@ -594,6 +630,12 @@ bool Molecule::validate() const {
             return false;
         }
     }
+    for (const auto& bond : coordination_bonds) {
+        if (bond.atom1 >= atoms.size() || bond.atom2 >= atoms.size() ||
+            bond.atom1 == bond.atom2) {
+            return false;
+        }
+    }
     for (const auto& term : bond_parameter_overrides) {
         if (term.atom1 >= atoms.size() || term.atom2 >= atoms.size() ||
             term.atom1 == term.atom2 || !std::isfinite(term.k) || term.k < 0.0 ||
@@ -609,6 +651,14 @@ bool Molecule::validate() const {
             !std::isfinite(term.k) || term.k < 0.0 ||
             !std::isfinite(term.theta) || term.theta <= 0.0 ||
             term.theta >= 3.14159265358979323846 || term.source.empty()) {
+            return false;
+        }
+    }
+    for (const auto& term : lj_parameter_overrides) {
+        if (term.atom_type.empty() || term.lj_type.empty() ||
+            !std::isfinite(term.epsilon) || term.epsilon < 0.0 ||
+            !std::isfinite(term.rmin) || term.rmin < 0.0 ||
+            term.source.empty()) {
             return false;
         }
     }
@@ -658,6 +708,26 @@ bool Molecule::validate() const {
         }
     }
     return true;
+}
+
+std::string resolve_molecule_lj_type(
+    const Molecule& molecule, const std::string& atom_type) {
+    for (const auto& term : molecule.lj_parameter_overrides) {
+        if (term.atom_type == atom_type) {
+            return term.lj_type;
+        }
+    }
+    return find_amber_lj_type(atom_type);
+}
+
+std::optional<std::pair<double, double>> resolve_molecule_lj_parameter(
+    const Molecule& molecule, const std::string& lj_type) {
+    for (const auto& term : molecule.lj_parameter_overrides) {
+        if (term.lj_type == lj_type) {
+            return std::make_pair(term.epsilon, term.rmin);
+        }
+    }
+    return find_amber_lj_parameter(lj_type);
 }
 
 std::unordered_map<std::string, std::size_t> Molecule::residue_counts() const {

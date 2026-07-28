@@ -65,6 +65,9 @@ def test_mcpb_returns_structured_result_and_patches_residue_links():
 
     assert isinstance(result, Xponge.MCPBResult)
     assert result.molecule is molecule
+    assert result.request.molecule is molecule
+    assert result.metadata["metal_assignment_transactional_apply"] is True
+    assert result.metadata["metal_assignment_plan_hash"].startswith("sha256:")
     assert result.request.ion_info[0].element == "Zn"
     assert result.selection.ion_atom_ids == (0,)
     assert result.selection.coordinating_atom_ids == (1,)
@@ -82,6 +85,45 @@ def test_mcpb_returns_structured_result_and_patches_residue_links():
     assert result.large_model.molecule.residue_count == 2
     assert result.sponge_ready is True
     assert any("provide basis" in item for item in result.pending_requirements)
+
+
+def test_mcpb_failure_does_not_publish_partial_parent_state(monkeypatch):
+    molecule = _load_metal_site()
+    state = [
+        (atom.type, atom.mass, atom.charge)
+        for atom in molecule.atoms
+    ]
+
+    def _fail_after_template_setup(request, selection):
+        del request, selection
+        raise RuntimeError("fixture failure after template setup")
+
+    monkeypatch.setattr(
+        mcpb_api,
+        "build_small_and_large_models",
+        _fail_after_template_setup,
+    )
+
+    with pytest.raises(RuntimeError, match="fixture failure"):
+        Xponge.MCPB(
+            molecule,
+            ion_ids=[0],
+            ion_info=[
+                {
+                    "atom_id": 0,
+                    "element": "Zn",
+                    "formal_charge": 2,
+                    "spin": 1,
+                }
+            ],
+            bonded_pairs=[(0, 1)],
+        )
+
+    assert [
+        (atom.type, atom.mass, atom.charge)
+        for atom in molecule.atoms
+    ] == state
+    assert molecule.residue_links == []
 
 
 def test_mcpb_requires_explicit_bonded_pairs_for_bonded_mode():

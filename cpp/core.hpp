@@ -93,6 +93,14 @@ struct AngleParameterOverride {
     std::string source;
 };
 
+struct LJParameterOverride {
+    std::string atom_type;
+    std::string lj_type;
+    double epsilon{0.0};
+    double rmin{0.0};
+    std::string source;
+};
+
 struct Dihedral {
     AtomId atom1{0};
     AtomId atom2{0};
@@ -367,8 +375,10 @@ public:
     std::vector<Residue> residues;
     std::vector<ResidueLink> explicit_bonds;
     std::vector<ResidueLink> residue_links;
+    std::vector<ResidueLink> coordination_bonds;
     std::vector<BondParameterOverride> bond_parameter_overrides;
     std::vector<AngleParameterOverride> angle_parameter_overrides;
+    std::vector<LJParameterOverride> lj_parameter_overrides;
     std::vector<VirtualAtom2> virtual_atoms;
     std::vector<HarmonicImproper> harmonic_impropers;
     std::vector<CMapType> cmap_types;
@@ -401,7 +411,7 @@ public:
     void append_residue_from_type(const ResidueType& type, double dx, double dy, double dz);
     void add_molecule(const Molecule& other);
     void add_molecule_linked(const Molecule& other, bool link);
-    void add_explicit_bond(AtomId atom1, AtomId atom2);
+    void add_coordination_bond(AtomId atom1, AtomId atom2);
     void add_residue_link(AtomId atom1, AtomId atom2);
     void set_bond_parameter_override(
         AtomId atom1, AtomId atom2, double k, double length,
@@ -409,6 +419,9 @@ public:
     void set_angle_parameter_override(
         AtomId atom1, AtomId atom2, AtomId atom3, double k, double theta,
         const std::string& source);
+    void set_lj_parameter_override(
+        const std::string& atom_type, const std::string& lj_type,
+        double epsilon, double rmin, const std::string& source);
     void replace_from(const Molecule& other);
     bool has_topology_override() const noexcept;
     void add_virtual_atom2(AtomId virtual_atom, AtomId atom0, AtomId atom1, AtomId atom2, double k1, double k2);
@@ -636,6 +649,10 @@ std::optional<BondTerm> find_amber_bond_term(const std::string& atom_type1, cons
 std::optional<AngleTerm> find_amber_angle_term(const std::array<std::string, 3>& atom_types);
 std::string find_amber_lj_type(const std::string& atom_type);
 std::optional<std::pair<double, double>> find_amber_lj_parameter(const std::string& lj_type);
+std::string resolve_molecule_lj_type(
+    const Molecule& molecule, const std::string& atom_type);
+std::optional<std::pair<double, double>> resolve_molecule_lj_parameter(
+    const Molecule& molecule, const std::string& lj_type);
 std::optional<double> find_amber_atom_type_mass(const std::string& atom_type);
 std::optional<double> find_external_atom_type_mass(const std::string& atom_type);
 std::pair<Molecule, Molecule> merge_dual_topology(const Molecule& molecule, ResidueId residue_index,

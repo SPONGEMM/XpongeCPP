@@ -127,7 +127,7 @@ def _patch_parent_molecule_connectivity(request) -> list[tuple[int, int]]:
     return connect_records
 
 
-def MCPB(
+def _run_mcpb(
     molecule,
     ion_ids,
     ion_info=None,
@@ -146,7 +146,7 @@ def MCPB(
     force_field=None,
     water_model=None,
 ):
-    """Initial MCPB workflow skeleton.
+    """Run the legacy MCPB implementation against its request molecule.
 
     Current scope:
     - validate user-specified metal-center inputs on `Molecule`
@@ -154,8 +154,8 @@ def MCPB(
     - register single-atom metal templates when needed
     - patch explicit metal-ligand residue links into the parent `Molecule`
 
-    Follow-up phases will add model construction, QM/RESP, frcmod generation,
-    and final SPONGE-export readiness.
+    The public adapter executes this function on a deep copy and publishes the
+    resulting molecule through the molecule-first transaction boundary.
     """
 
     request = normalize_request(
@@ -234,3 +234,150 @@ def MCPB(
             "sponge_audit_error": sponge_error,
         },
     )
+
+
+def MCPB(
+    molecule,
+    ion_ids,
+    ion_info=None,
+    *,
+    method="seminario",
+    model="bonded",
+    cutoff=2.8,
+    bonded_pairs=None,
+    additional_residue_ids=None,
+    charge_mode="resp",
+    qm_backend="pyscf",
+    basis=None,
+    scale_factor=1.0,
+    frcmod_files=None,
+    gaff=None,
+    force_field=None,
+    water_model=None,
+):
+    """Compatibility MCPB entrypoint backed by a molecule-first transaction.
+
+    The historical global Amber/template registrations are retained for
+    compatibility. Parent-molecule changes are prepared on a deep copy and
+    published once through :mod:`XpongeCPP.metal_assignment`.
+    """
+
+    snapshot = molecule.deepcopy()
+    working = snapshot.deepcopy()
+    try:
+        result = _run_mcpb(
+            working,
+            ion_ids,
+            ion_info,
+            method=method,
+            model=model,
+            cutoff=cutoff,
+            bonded_pairs=bonded_pairs,
+            additional_residue_ids=additional_residue_ids,
+            charge_mode=charge_mode,
+            qm_backend=qm_backend,
+            basis=basis,
+            scale_factor=scale_factor,
+            frcmod_files=frcmod_files,
+            gaff=gaff,
+            force_field=force_field,
+            water_model=water_model,
+        )
+        charge_summary = result.metadata.get("charge_refit")
+        if charge_summary is not None:
+            charges = tuple(map(float, charge_summary.get("charges", ())))
+            for source_atom_id, local_atom_id in result.large_model.atom_id_map.items():
+                if int(local_atom_id) < len(charges):
+                    working.atoms[int(source_atom_id)].charge = charges[int(local_atom_id)]
+
+        from ..metal_assignment import (
+            AtomParameterUpdate,
+            ChargeUpdate,
+            ElectronicState,
+            MetalSite,
+            apply_metal_assignment,
+            build_metal_parameter_overlay,
+            prepare_metal_assignment,
+        )
+
+        atom_parameters = []
+        charge_updates = []
+        for atom_id in range(int(snapshot.atom_count)):
+            before = snapshot.atoms[atom_id]
+            after = working.atoms[atom_id]
+            atom_type = str(after.type) if str(after.type) != str(before.type) else None
+            mass = float(after.mass) if float(after.mass) != float(before.mass) else None
+            if atom_type is not None or mass is not None:
+                atom_parameters.append(
+                    AtomParameterUpdate(
+                        atom_id=atom_id,
+                        atom_type=atom_type,
+                        mass=mass,
+                        source="legacy_mcpb_adapter",
+                    )
+                )
+            if abs(float(after.charge) - float(before.charge)) > 1.0e-12:
+                charge_updates.append(
+                    ChargeUpdate(
+                        atom_id=atom_id,
+                        charge=float(after.charge),
+                        source="legacy_mcpb_adapter",
+                    )
+                )
+        overlay = None
+        if atom_parameters:
+            overlay = build_metal_parameter_overlay(
+                snapshot,
+                atom_parameters=atom_parameters,
+                parameter_source="legacy_mcpb_adapter",
+            )
+        sites = tuple(
+            MetalSite(
+                atom_id=int(info.atom_id),
+                element=str(info.element),
+                formal_charge=int(
+                    info.formal_charge
+                    if info.formal_charge is not None
+                    else round(float(snapshot.atoms[info.atom_id].charge))
+                ),
+            )
+            for info in result.request.ion_info
+        )
+        multiplicities = [
+            int(info.spin)
+            for info in result.request.ion_info
+            if info.spin is not None
+        ]
+        electronic_state = ElectronicState(
+            total_charge=int(
+                round(sum(float(atom.charge) for atom in working.atoms))
+            ),
+            spin_multiplicity=max([1, *multiplicities]),
+        )
+        assignment_plan = prepare_metal_assignment(
+            snapshot,
+            metal_sites=sites,
+            electronic_state=electronic_state,
+            coordination_edges=result.request.bonded_pairs,
+            charge_updates=charge_updates,
+            interaction_model=(
+                "bonded"
+                if result.request.model == "bonded"
+                else "nonbonded_12_6"
+            ),
+            parameter_overlay=overlay,
+        )
+
+        # A test double or caller callback may have touched the parent while
+        # the isolated legacy workflow ran. Restore the frozen baseline before
+        # publishing the validated plan.
+        molecule._replace_from(snapshot)
+        apply_metal_assignment(molecule, assignment_plan, inplace=True)
+        result.molecule = molecule
+        result.request.molecule = molecule
+        result.metadata["metal_assignment_plan_hash"] = assignment_plan.plan_hash
+        result.metadata["metal_assignment_transactional_apply"] = True
+        return result
+    except Exception:
+        molecule._replace_from(snapshot)
+        raise

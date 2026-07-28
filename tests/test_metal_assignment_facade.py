@@ -8,6 +8,7 @@ from XpongeCPP.metal_assignment import (
     BondParameter,
     ChargeUpdate,
     ElectronicState,
+    LJParameter,
     MetalAssignmentValidationError,
     MetalSite,
     apply_metal_assignment,
@@ -46,13 +47,16 @@ def test_prepare_is_side_effect_free_and_hash_closed():
     molecule = _load_metal_site()
     input_hash = molecule_input_hash(molecule)
     topology_hash = molecule_topology_hash(molecule)
+    original_charges = [atom.charge for atom in molecule.atoms]
 
     plan = _prepare(molecule)
 
     assert molecule_input_hash(molecule) == input_hash
     assert molecule_topology_hash(molecule) == topology_hash
     assert molecule.residue_links == []
-    assert [atom.charge for atom in molecule.atoms] == pytest.approx([0.0, 0.0])
+    assert [atom.charge for atom in molecule.atoms] == pytest.approx(
+        original_charges
+    )
     assert plan.input_hash == input_hash
     assert plan.topology_hash == topology_hash
     assert plan.plan_hash == plan.computed_hash()
@@ -77,6 +81,10 @@ def test_apply_returns_modified_copy_without_mutating_parent():
     assert result.result_input_hash == molecule_input_hash(result.molecule)
     assert result.result_topology_hash == molecule_topology_hash(result.molecule)
     assert result.inplace is False
+    assert result.result_hash == result.computed_hash()
+    result.validate_hash()
+    assert "returned_copy" in result.application_audit
+    assert any(item.startswith("request:") for item in result.provenance)
 
 
 def test_inplace_apply_publishes_complete_state_once():
@@ -156,6 +164,8 @@ def test_legacy_namespace_exports_molecule_first_facade():
 
 def test_parameter_overlay_is_hash_closed_and_applied_locally():
     molecule = _load_metal_site()
+    original_type = molecule.atoms[0].type
+    original_mass = molecule.atoms[0].mass
     overlay = build_metal_parameter_overlay(
         molecule,
         atom_parameters=(
@@ -189,19 +199,13 @@ def test_parameter_overlay_is_hash_closed_and_applied_locally():
     assert overlay.overlay_hash == overlay.computed_hash()
     assert result.molecule.atoms[0].type == "metal_Zn_test"
     assert result.molecule.atoms[0].mass == pytest.approx(65.4)
-    assert molecule.atoms[0].type == "Zn"
-    assert molecule.atoms[0].mass == pytest.approx(0.0)
+    assert molecule.atoms[0].type == original_type
+    assert molecule.atoms[0].mass == pytest.approx(original_mass)
 
 
 def test_parameter_overlay_reaches_raw_and_bundle_bond_savers(tmp_path):
     h5py = pytest.importorskip("h5py")
     molecule = _load_metal_site()
-    Xponge.register_amber_lj_parameter(
-        "metal_Zn_export_test", "metal_Zn_export_test", 0.0125, 1.1
-    )
-    Xponge.register_amber_lj_parameter(
-        "donor_N_export_test", "donor_N_export_test", 0.025, 1.5
-    )
     overlay = build_metal_parameter_overlay(
         molecule,
         atom_parameters=(
@@ -210,6 +214,22 @@ def test_parameter_overlay_reaches_raw_and_bundle_bond_savers(tmp_path):
         ),
         bond_parameters=(
             BondParameter((0, 1), 123.5, 2.1, "fixture"),
+        ),
+        lj_parameters=(
+            LJParameter(
+                "metal_Zn_export_test",
+                "metal_Zn_export_test",
+                0.0125,
+                1.1,
+                "fixture",
+            ),
+            LJParameter(
+                "donor_N_export_test",
+                "donor_N_export_test",
+                0.025,
+                1.5,
+                "fixture",
+            ),
         ),
         parameter_source="fixture",
     )
@@ -227,6 +247,7 @@ def test_parameter_overlay_reaches_raw_and_bundle_bond_savers(tmp_path):
 
     raw_row = (tmp_path / "raw" / "metal_bond.txt").read_text().splitlines()[1]
     assert raw_row == "0 1 123.500000 2.100000"
+    assert len(applied.lj_parameter_overrides) == 2
     with h5py.File(
         tmp_path / "bundle" / "metal_topology.spgt.h5", "r"
     ) as handle:

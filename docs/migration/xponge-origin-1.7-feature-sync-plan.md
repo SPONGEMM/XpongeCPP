@@ -212,18 +212,23 @@ Implementation status on `codex/integrate-bundled-io`:
   validates a complete copy before one C++ state replacement;
 - complete: stale-parent, stale-plan, element, spin, edge, and charge
   validation plus compatibility export from `Xponge.metal_assignment`;
-- complete: immutable atom/mass and atom-specific bond/angle parameter
-  overlays; bonded overrides are molecule-local, take precedence during
-  topology construction, survive deep copy/transactional publish, and reach
-  both raw and bundle savers without mutating the process-global Amber
-  parameter registry;
-- complete: same-residue coordination edges are represented as explicit bonds
-  while cross-residue edges remain residue links; existing template bonds are
-  preserved when explicit additions are present;
-- in progress: local LJ parameter overlays and the remaining general
-  provenance/result artifacts;
-- pending: route legacy `Xponge.MCPB()` through the facade while retaining its
-  documented in-place identity and global-force-field compatibility behavior.
+- complete: immutable atom/mass, LJ, and atom-specific bond/angle parameter
+  overlays; overrides are molecule-local, take precedence during topology and
+  saver construction, survive deep copy/transactional publish, and reach both
+  raw and bundle savers without mutating the process-global Amber parameter
+  registry;
+- complete: same-residue coordination edges use a dedicated molecule-local
+  coordination-bond container while cross-residue edges remain residue links;
+  ordinary `explicit_bonds` retains its existing whole-residue override
+  semantics;
+- complete: result-side application audit, provenance ledger, and
+  content-derived result hash excluding the live Molecule object;
+- complete: legacy `Xponge.MCPB()` now runs parent-molecule work on a deep
+  copy, translates charge/type/mass/link changes into a hash-closed facade
+  plan, and publishes once while retaining `result.molecule is molecule`;
+  failure leaves the parent unchanged;
+- explicit compatibility boundary: legacy MCPB template and Amber parameter
+  registration remains process-global and is not claimed to be transactional.
 
 ## P5 — deliver `manual_bonded` as the first metal overlay mode
 
@@ -246,10 +251,13 @@ Implementation status on `codex/integrate-bundled-io`:
 - complete: exact coverage checks for every coordination bond and every donor
   pair angle around each metal, including duplicate/extra-term rejection;
 - complete: transactional copy/in-place application, coordinate-drift and
-  artifact-tamper rejection, cross-residue links and same-residue explicit
-  bonds;
+  artifact-tamper rejection, cross-residue links and same-residue local
+  coordination bonds;
 - complete: raw and native bundle saver regression coverage for manual bond
   and angle values; the mode exposes no Hessian or RESP artifact inputs.
+- complete: an opt-in local-SPONGE numerical gate runs the manual-bonded raw
+  export and bundle-to-legacy roundtrip at the zeroth frame and compares every
+  mdout column; it passes with SPONGE `v2.0.0-beta.1`.
 
 ## P6 — fitted-metal workflow, release gate, and remaining parity
 

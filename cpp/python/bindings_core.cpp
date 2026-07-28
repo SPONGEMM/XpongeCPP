@@ -381,6 +381,43 @@ void bind_core_module(py::module_& m) {
         .def_property_readonly("residues", &residue_views)
         .def_property_readonly("explicit_bonds", &molecule_explicit_bonds)
         .def_property_readonly("residue_links", &molecule_residue_links)
+        .def_property_readonly(
+            "coordination_bonds", [](const Molecule& self) {
+                py::list out;
+                for (const auto& bond : self.coordination_bonds) {
+                    out.append(py::make_tuple(bond.atom1, bond.atom2));
+                }
+                return out;
+            })
+        .def_property_readonly(
+            "bond_parameter_overrides", [](const Molecule& self) {
+                py::list out;
+                for (const auto& term : self.bond_parameter_overrides) {
+                    out.append(py::make_tuple(
+                        term.atom1, term.atom2, term.k, term.length, term.source));
+                }
+                return out;
+            })
+        .def_property_readonly(
+            "angle_parameter_overrides", [](const Molecule& self) {
+                py::list out;
+                for (const auto& term : self.angle_parameter_overrides) {
+                    out.append(py::make_tuple(
+                        term.atom1, term.atom2, term.atom3,
+                        term.k, term.theta, term.source));
+                }
+                return out;
+            })
+        .def_property_readonly(
+            "lj_parameter_overrides", [](const Molecule& self) {
+                py::list out;
+                for (const auto& term : self.lj_parameter_overrides) {
+                    out.append(py::make_tuple(
+                        term.atom_type, term.lj_type, term.epsilon,
+                        term.rmin, term.source));
+                }
+                return out;
+            })
         .def_readwrite("box_length", &Molecule::box_length)
         .def_readwrite("box_origin", &Molecule::box_origin)
         .def_readwrite("box_angle", &Molecule::box_angle)
@@ -392,7 +429,7 @@ void bind_core_module(py::module_& m) {
              py::arg("angles") = std::array<double, 3>{90.0, 90.0, 90.0})
         .def("add_molecule", &Molecule::add_molecule, py::arg("other"))
         .def("Add_Molecule", &Molecule::add_molecule, py::arg("other"))
-        .def("add_explicit_bond", &Molecule::add_explicit_bond, py::arg("atom1"), py::arg("atom2"))
+        .def("add_coordination_bond", &Molecule::add_coordination_bond, py::arg("atom1"), py::arg("atom2"))
         .def("add_residue_link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
         .def("Add_Residue_Link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
         .def(
@@ -403,6 +440,10 @@ void bind_core_module(py::module_& m) {
             "_set_angle_parameter_override", &Molecule::set_angle_parameter_override,
             py::arg("atom1"), py::arg("atom2"), py::arg("atom3"),
             py::arg("k"), py::arg("theta"), py::arg("source"))
+        .def(
+            "_set_lj_parameter_override", &Molecule::set_lj_parameter_override,
+            py::arg("atom_type"), py::arg("lj_type"),
+            py::arg("epsilon"), py::arg("rmin"), py::arg("source"))
         .def("_replace_from", &Molecule::replace_from, py::arg("other"))
         .def_property_readonly(
             "has_topology_override", &Molecule::has_topology_override)

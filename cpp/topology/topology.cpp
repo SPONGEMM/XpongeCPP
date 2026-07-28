@@ -594,8 +594,14 @@ Topology build_topology(const Molecule& molecule) {
     for (const auto& link : molecule.residue_links) {
         add_bond(topology.bonds, seen_bonds, link.atom1, link.atom2, molecule, &lookup_cache);
     }
+    for (const auto& bond : molecule.coordination_bonds) {
+        add_bond(topology.bonds, seen_bonds, bond.atom1, bond.atom2, molecule, &lookup_cache);
+    }
     for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
         const auto& residue = molecule.residues[residue_id];
+        if (residue_has_explicit_bond[residue_id]) {
+            continue;
+        }
         if (has_template(residue.name)) {
             const auto& residue_type = get_residue_template(residue.name);
             const auto atoms_by_name = residue_atom_map(molecule, residue);
@@ -616,9 +622,6 @@ Topology build_topology(const Molecule& molecule) {
                     add_bond(topology.bonds, seen_bonds, it1->second, it2->second, molecule, &lookup_cache);
                 }
             }
-            continue;
-        }
-        if (residue_has_explicit_bond[residue_id]) {
             continue;
         }
         if (residue.name == "NA" || residue.name == "CL") {

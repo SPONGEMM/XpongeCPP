@@ -115,9 +115,11 @@ E = c0 + c1 * cphi + c2 * cphi2 + c3 * cphi3 + c4 * cphi4 + c5 * cphi5;
 )";
 }
 
-std::pair<double, double> amber_lj_ab(const std::string& lj_type1, const std::string& lj_type2) {
-    const auto lj1 = find_amber_lj_parameter(lj_type1);
-    const auto lj2 = find_amber_lj_parameter(lj_type2);
+std::pair<double, double> amber_lj_ab(
+    const Molecule& molecule, const std::string& lj_type1,
+    const std::string& lj_type2) {
+    const auto lj1 = resolve_molecule_lj_parameter(molecule, lj_type1);
+    const auto lj2 = resolve_molecule_lj_parameter(molecule, lj_type2);
     if (!lj1) {
         throw std::runtime_error("missing Amber LJ parameter for type: " + lj_type1);
     }
@@ -135,7 +137,8 @@ std::pair<double, double> amber_lj_ab(const std::string& lj_type1, const std::st
     return {epsilon * r6 * r6, epsilon * 2.0 * r6};
 }
 
-std::pair<std::vector<double>, std::vector<double>> find_ab_lj(const std::vector<std::string>& lj_types, bool full) {
+std::pair<std::vector<double>, std::vector<double>> find_ab_lj(
+    const Molecule& molecule, const std::vector<std::string>& lj_types, bool full) {
     std::vector<double> coefficients_a;
     std::vector<double> coefficients_b;
     const std::size_t total = full ? lj_types.size() * lj_types.size() : lj_types.size() * (lj_types.size() + 1) / 2;
@@ -144,7 +147,7 @@ std::pair<std::vector<double>, std::vector<double>> find_ab_lj(const std::vector
     for (std::size_t i = 0; i < lj_types.size(); ++i) {
         const auto j_max = full ? lj_types.size() : i + 1;
         for (std::size_t j = 0; j < j_max; ++j) {
-            const auto [a, b] = amber_lj_ab(lj_types[i], lj_types[j]);
+            const auto [a, b] = amber_lj_ab(molecule, lj_types[i], lj_types[j]);
             coefficients_a.push_back(a);
             coefficients_b.push_back(b);
         }
@@ -375,17 +378,17 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
         std::unordered_map<std::string, std::uint32_t> lj_type_index;
         lj_type_index.reserve(32);
         for (const auto& atom : molecule.atoms) {
-            const auto lj_type = find_amber_lj_type(atom.type);
+            const auto lj_type = resolve_molecule_lj_type(molecule, atom.type);
             if (lj_type_index.find(lj_type) == lj_type_index.end()) {
                 lj_type_index[lj_type] = static_cast<std::uint32_t>(lj_types.size());
                 lj_types.push_back(lj_type);
             }
         }
-        const auto [full_a, full_b] = find_ab_lj(lj_types, true);
+        const auto [full_a, full_b] = find_ab_lj(molecule, lj_types, true);
         const auto checks = lj_check_rows(lj_types, full_a, full_b);
         auto same_type = judge_same_lj_type(lj_types, checks);
         const auto real_types = real_lj_types(lj_types, same_type);
-        const auto [real_a, real_b] = find_ab_lj(real_types, false);
+        const auto [real_a, real_b] = find_ab_lj(molecule, real_types, false);
 
         std::ostringstream out;
         out << molecule.atoms.size() << " " << real_types.size() << "\n\n";
@@ -410,7 +413,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
         }
         out << "\n";
         for (const auto& atom : molecule.atoms) {
-            const auto lj_type = find_amber_lj_type(atom.type);
+            const auto lj_type = resolve_molecule_lj_type(molecule, atom.type);
             out << same_type[lj_type_index.at(lj_type)] << "\n";
         }
         return OutputBuffer{"LJ", out.str()};
@@ -973,30 +976,30 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
         std::vector<std::string> lj_type_b;
         std::unordered_map<std::string, std::uint32_t> lj_type_b_index;
         for (const auto& atom : molecule.atoms) {
-            const auto lj_type = find_amber_lj_type(atom.type);
+            const auto lj_type = resolve_molecule_lj_type(molecule, atom.type);
             if (lj_type_index.find(lj_type) == lj_type_index.end()) {
                 lj_type_index[lj_type] = static_cast<std::uint32_t>(lj_types.size());
                 lj_types.push_back(lj_type);
             }
             const auto type_b = atom.lj_type_b.empty() ? atom.type : atom.lj_type_b;
-            const auto lj_b = find_amber_lj_type(type_b);
+            const auto lj_b = resolve_molecule_lj_type(molecule, type_b);
             if (lj_type_b_index.find(lj_b) == lj_type_b_index.end()) {
                 lj_type_b_index[lj_b] = static_cast<std::uint32_t>(lj_type_b.size());
                 lj_type_b.push_back(lj_b);
             }
         }
 
-        const auto [full_a, full_b] = find_ab_lj(lj_types, true);
-        const auto [full_ab, full_bb] = find_ab_lj(lj_type_b, true);
+        const auto [full_a, full_b] = find_ab_lj(molecule, lj_types, true);
+        const auto [full_ab, full_bb] = find_ab_lj(molecule, lj_type_b, true);
         const auto checks = lj_check_rows(lj_types, full_a, full_b);
         auto same_type = judge_same_lj_type(lj_types, checks);
         const auto real_types = real_lj_types(lj_types, same_type);
-        const auto [real_a, real_b] = find_ab_lj(real_types, false);
+        const auto [real_a, real_b] = find_ab_lj(molecule, real_types, false);
 
         const auto checks_b = lj_check_rows(lj_type_b, full_ab, full_bb);
         auto same_type_b = judge_same_lj_type(lj_type_b, checks_b);
         const auto real_types_b = real_lj_types(lj_type_b, same_type_b);
-        const auto [real_ab, real_bb] = find_ab_lj(real_types_b, false);
+        const auto [real_ab, real_bb] = find_ab_lj(molecule, real_types_b, false);
 
         const auto path = output_path(dirname, actual_prefix, "LJ_soft_core");
         std::ofstream out(path);
@@ -1042,9 +1045,9 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
         }
         out << "\n";
         for (const auto& atom : molecule.atoms) {
-            const auto lj_type = find_amber_lj_type(atom.type);
+            const auto lj_type = resolve_molecule_lj_type(molecule, atom.type);
             const auto type_b = atom.lj_type_b.empty() ? atom.type : atom.lj_type_b;
-            const auto lj_b = find_amber_lj_type(type_b);
+            const auto lj_b = resolve_molecule_lj_type(molecule, type_b);
             out << same_type[lj_type_index.at(lj_type)] << " "
                 << same_type_b[lj_type_b_index.at(lj_b)] << "\n";
         }
