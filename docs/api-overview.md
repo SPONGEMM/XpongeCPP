@@ -91,6 +91,18 @@ Reader 会校验 v2 schema、三件套 UUID、topology/atom-order/protocol linea
 原子维度与 restart 完成状态。已有 bundled mdin 的情况可使用
 `scan_bundle_case(...)`。
 
+如需直接分析 bundle 中的 topology 与 restart：
+
+```python
+from XpongeCPP.analysis import load_bundle_universe
+
+universe = load_bundle_universe("inputs/system_topology.spgt.h5")
+```
+
+该入口返回带原子、残基、键、坐标和周期盒的 MDAnalysis `Universe`。当前
+版本会将选择的单帧 materialize 到内存；多帧 trajectory streaming 属于后续
+对齐阶段。
+
 ## 旧语法兼容重点
 
 ### 模板代数语法
