@@ -16,7 +16,7 @@ def test_runtime_dependencies_track_xponge_origin_distribution_set():
         "PubChemPy>=1.0.5",
         "rdkit>=2025.9.3",
         "pyscf>=2.11.0; platform_system != 'Windows'",
-        "mokda-xpongelib>=1.2.5.0",
+        "mokda-xpongelib>=1.2.5.0; platform_system == 'Darwin' or platform_machine == 'x86_64' or platform_machine == 'AMD64'",
     ]
 
 
