@@ -1,9 +1,33 @@
 import importlib
+import os
+import subprocess
+import sys
 from importlib import resources
 from io import StringIO
 from pathlib import Path
 
+import pytest
+
 import XpongeCPP as Xponge
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _exported_keys(directory, prefix):
+    return {
+        path.name[len(prefix) + 1 : -4]
+        for path in directory.glob(f"{prefix}_*.txt")
+    }
+
+
+def _run_isolated(code, *args):
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-c", code, *map(str, args)], cwd=ROOT, env=env,
+        text=True, capture_output=True, check=True,
+    )
 
 
 def test_full_amber_forcefield_data_is_packaged():
@@ -63,14 +87,8 @@ def test_ff14sb_and_tip3p_imports_register_templates_from_real_amber_mol2():
 
 
 def test_ff19sb_import_registers_real_templates_and_cmap_parameters(tmp_path):
-    import XpongeCPP.forcefield.amber.ff19sb  # noqa: F401
-
-    assert Xponge.template_atom_count("ALA") >= 10
-    assert Xponge.template_atom_count("GLY") >= 7
-
-    mol = Xponge.load_mol2(
-        StringIO(
-            """@<TRIPOS>MOLECULE
+    mol2 = tmp_path / "ff19_cmap.mol2"
+    mol2.write_text("""@<TRIPOS>MOLECULE
 FF19_CMAP_TEST
 5 4 3
 SMALL
@@ -86,24 +104,22 @@ USER_CHARGES
 2 2 3 1
 3 3 4 1
 4 4 5 1
-"""
-        )
+""")
+    _run_isolated(
+        "import sys\n"
+        "import XpongeCPP as X\n"
+        "import XpongeCPP.forcefield.amber.ff19sb\n"
+        "assert X.template_atom_count('ALA') >= 10 and X.template_atom_count('GLY') >= 7\n"
+        "m = X.load_mol2(sys.argv[1])\n"
+        "assert X.Save_SPONGE_Input(m, prefix='ff19', dirname=sys.argv[2]) is m\n",
+        mol2, tmp_path,
     )
-
-    out = Xponge.Save_SPONGE_Input(mol, prefix="ff19", dirname=str(tmp_path))
-
-    assert "cmap" in out
     assert (tmp_path / "ff19_cmap.txt").read_text().splitlines()[0] == "1 1"
 
 
 def test_gaff_and_gaff2_imports_register_packaged_parameters(tmp_path):
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
-
-    # A missing parameter would raise during export; this exercises the Python import entry points.
-    mol = Xponge.load_mol2(
-        StringIO(
-        """@<TRIPOS>MOLECULE
+    mol2 = tmp_path / "eth.mol2"
+    mol2.write_text("""@<TRIPOS>MOLECULE
 ETH
 2 1 1
 SMALL
@@ -113,13 +129,18 @@ USER_CHARGES
 2 C2 1.5 0.0 0.0 c3 1 ETH 0.0
 @<TRIPOS>BOND
 1 1 2 1
-"""
+""")
+    for module, prefix in (("gaff", "eth_gaff"), ("gaff2", "eth_gaff2")):
+        _run_isolated(
+            "import importlib, sys\n"
+            "import XpongeCPP as X\n"
+            "importlib.import_module('XpongeCPP.forcefield.amber.' + sys.argv[1])\n"
+            "m = X.load_mol2(sys.argv[2])\n"
+            "assert m.atom_count == 2 and m.validate()\n"
+            "X.Save_SPONGE_Input(m, prefix=sys.argv[3], dirname=sys.argv[4])\n",
+            module, mol2, prefix, tmp_path,
         )
-    )
-    assert mol.atom_count == 2
-    assert mol.validate()
-    Xponge.Save_SPONGE_Input(mol, prefix="eth", dirname=str(tmp_path))
-    assert (tmp_path / "eth_bond.txt").read_text().splitlines()[0] == "1"
+        assert (tmp_path / f"{prefix}_bond.txt").read_text().splitlines()[0] == "1"
 
 
 def test_amber_multi_site_water_imports_register_complete_templates(tmp_path):
@@ -136,7 +157,8 @@ def test_amber_multi_site_water_imports_register_complete_templates(tmp_path):
         assert water.residues[0].name2atom("EPW").type == "EP"
 
         out = Xponge.Save_SPONGE_Input(water, prefix=prefix, dirname=str(tmp_path))
-        assert "virtual_atom" in out
+        assert out is water
+        assert "virtual_atom" in _exported_keys(tmp_path, prefix)
         assert (tmp_path / f"{prefix}_virtual_atom.txt").read_text().splitlines() == [
             f"2 3 0 1 2 {expected_k} {expected_k}",
         ]
@@ -149,7 +171,8 @@ def test_spce_import_registers_three_site_water_without_virtual_atom(tmp_path):
     assert water.atom_count == 3
 
     out = Xponge.Save_SPONGE_Input(water, prefix="spce", dirname=str(tmp_path))
-    assert "virtual_atom" not in out
+    assert out is water
+    assert "virtual_atom" not in _exported_keys(tmp_path, "spce")
     assert (tmp_path / "spce_bond.txt").read_text().splitlines()[0] == "3"
 
 
@@ -225,7 +248,8 @@ USER_CHARGES
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="cmap", dirname=str(tmp_path))
 
-    assert "cmap" in out
+    assert out is mol
+    assert "cmap" in _exported_keys(tmp_path, "cmap")
     assert (tmp_path / "cmap_cmap.txt").read_text().splitlines() == [
         "1 1",
         "2 ",
@@ -234,6 +258,150 @@ USER_CHARGES
         "",
         "0 1 2 3 4 0",
     ]
+
+
+def test_amber_frcmod_dihedral_continuation_and_nb14(tmp_path):
+    frcmod = tmp_path / "continuation.frcmod"
+    frcmod.write_text(
+        """continuation test
+DIHE
+qA-qB-qC-qD    1  0.6  0.0  -3.0  SCEE=1.0 SCNB=1.0
+              1  0.2  180.0  1.0  SCEE=1.0 SCNB=1.0
+
+NONB
+qA  1.5  0.1
+qB  1.5  0.1
+qC  1.5  0.1
+qD  1.5  0.1
+"""
+    )
+    Xponge.register_amber_frcmod_file(str(frcmod))
+    for left, right in [("qA", "qB"), ("qB", "qC"), ("qC", "qD")]:
+        Xponge.register_amber_bond_parameter(left, right, 100.0, 1.5)
+    Xponge.register_amber_angle_parameter(["qA", "qB", "qC"], 50.0, 2.0)
+    Xponge.register_amber_angle_parameter(["qB", "qC", "qD"], 50.0, 2.0)
+
+    mol = Xponge.load_mol2(
+        StringIO(
+            """@<TRIPOS>MOLECULE
+CONTINUATION
+4 3 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 A 0.0 0.0 0.0 qA 1 MOL 0.1
+2 B 1.5 0.0 0.0 qB 1 MOL -0.1
+3 C 3.0 0.0 0.0 qC 1 MOL 0.1
+4 D 4.5 0.0 0.0 qD 1 MOL -0.1
+@<TRIPOS>BOND
+1 1 2 1
+2 2 3 1
+3 3 4 1
+"""
+        )
+    )
+    Xponge.Save_SPONGE_Input(mol, prefix="continuation", dirname=str(tmp_path))
+
+    dihedrals = (tmp_path / "continuation_dihedral.txt").read_text().splitlines()
+    nb14 = (tmp_path / "continuation_nb14.txt").read_text().splitlines()
+    assert dihedrals[0] == "2"
+    assert {int(line.split()[4]) for line in dihedrals[1:]} == {1, 3}
+    assert nb14[1].split()[2:] == ["1.000000", "1.000000"]
+
+
+def test_amber_nb14_scale_can_depend_on_all_four_dihedral_types(tmp_path):
+    frcmod = tmp_path / "torsion_specific_nb14.frcmod"
+    frcmod.write_text(
+        """torsion-specific 1-4 scales
+DIHE
+zA-zB-zC-zD    1  0.2  0.0  1.0  SCEE=1.2 SCNB=6.0
+zA-zE-zF-zD    1  0.2  0.0  1.0  SCEE=1.2 SCNB=2.0
+
+NONB
+zA  1.5  0.1
+zB  1.5  0.1
+zC  1.5  0.1
+zD  1.5  0.1
+zE  1.5  0.1
+zF  1.5  0.1
+"""
+    )
+    Xponge.register_amber_frcmod_file(str(frcmod))
+
+    def build(types, prefix):
+        for left, right in zip(types, types[1:]):
+            Xponge.register_amber_bond_parameter(left, right, 100.0, 1.5)
+        for atom_types in zip(types, types[1:], types[2:]):
+            Xponge.register_amber_angle_parameter(list(atom_types), 50.0, 2.0)
+        atoms = "\n".join(
+            f"{index} A{index} {1.5 * (index - 1):.1f} 0.0 0.0 {atom_type} 1 MOL 0.0"
+            for index, atom_type in enumerate(types, 1)
+        )
+        molecule = Xponge.load_mol2(StringIO(
+            "@<TRIPOS>MOLECULE\nNB14\n4 3 1\nSMALL\nUSER_CHARGES\n"
+            "@<TRIPOS>ATOM\n" + atoms + "\n@<TRIPOS>BOND\n"
+            "1 1 2 1\n2 2 3 1\n3 3 4 1\n"
+        ))
+        Xponge.Save_SPONGE_Input(molecule, prefix=prefix, dirname=str(tmp_path))
+        return (tmp_path / f"{prefix}_nb14.txt").read_text().splitlines()[1].split()[2:]
+
+    assert build(["zA", "zB", "zC", "zD"], "scale6") == ["0.166667", "0.833333"]
+    assert build(["zA", "zE", "zF", "zD"], "scale2") == ["0.500000", "0.833333"]
+
+
+def test_amber_frcmod_rejects_orphan_dihedral_continuation(tmp_path):
+    frcmod = tmp_path / "orphan.frcmod"
+    frcmod.write_text(
+        """orphan continuation test
+DIHE
+              1  0.2  180.0  1.0
+"""
+    )
+
+    with pytest.raises(RuntimeError, match="no preceding atom types"):
+        Xponge.register_amber_frcmod_file(str(frcmod))
+
+
+def test_later_frcmod_dihedral_override_updates_match_priority(tmp_path):
+    Xponge.register_amber_proper_dihedral_parameter(["rA", "rB", "rC", "rD"], 1, 0.1, 0.0, True)
+    Xponge.register_amber_proper_dihedral_parameter(["rD", "rC", "rB", "rA"], 1, 0.2, 0.0, True)
+    frcmod = tmp_path / "override.frcmod"
+    frcmod.write_text(
+        """later override
+DIHE
+rA-rB-rC-rD    1  0.6  0.0  -3.0  SCEE=1.2 SCNB=2.0
+              1  0.4  180.0  1.0  SCEE=1.2 SCNB=2.0
+"""
+    )
+    Xponge.register_amber_frcmod_file(str(frcmod))
+    for atom_type in ["rA", "rB", "rC", "rD"]:
+        Xponge.register_amber_lj_parameter(atom_type, atom_type, 0.1, 1.5)
+    for left, right in [("rA", "rB"), ("rB", "rC"), ("rC", "rD")]:
+        Xponge.register_amber_bond_parameter(left, right, 100.0, 1.5)
+    Xponge.register_amber_angle_parameter(["rA", "rB", "rC"], 50.0, 2.0)
+    Xponge.register_amber_angle_parameter(["rB", "rC", "rD"], 50.0, 2.0)
+    molecule = Xponge.load_mol2(
+        StringIO(
+            """@<TRIPOS>MOLECULE
+OVERRIDE
+4 3 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 A 0.0 0.0 0.0 rA 1 MOL 0.1
+2 B 1.5 0.0 0.0 rB 1 MOL -0.1
+3 C 3.0 0.0 0.0 rC 1 MOL 0.1
+4 D 4.5 0.0 0.0 rD 1 MOL -0.1
+@<TRIPOS>BOND
+1 1 2 1
+2 2 3 1
+3 3 4 1
+"""
+        )
+    )
+    Xponge.Save_SPONGE_Input(molecule, prefix="override", dirname=str(tmp_path))
+    rows = (tmp_path / "override_dihedral.txt").read_text().splitlines()[1:]
+    assert {(int(row.split()[4]), float(row.split()[5])) for row in rows} == {(3, 0.6), (1, 0.4)}
 
 
 def test_full_amber_ecosystem_import_modules_register_packaged_templates_and_parameters():
@@ -280,7 +448,8 @@ def test_amber_nucleic_lipid_and_glycam_modules_support_representative_export_wo
 
         out = Xponge.Save_SPONGE_Input(mol, prefix=prefix, dirname=str(tmp_path))
 
-        assert sorted(out) == [
+        assert out is mol
+        assert sorted(_exported_keys(tmp_path, prefix)) == [
             "LJ",
             "angle",
             "atom_name",
@@ -320,16 +489,23 @@ def test_amber_nucleic_lipid_and_glycam_modules_support_broader_assembled_export
 
         out = Xponge.Save_SPONGE_Input(mol, prefix=prefix, dirname=str(tmp_path))
 
-        assert {"bond", "angle", "dihedral", "exclude", "nb14", "residue", "resname"}.issubset(out)
+        assert out is mol
+        assert {
+            "bond",
+            "angle",
+            "dihedral",
+            "exclude",
+            "nb14",
+            "residue",
+            "resname",
+        }.issubset(_exported_keys(tmp_path, prefix))
         assert int((tmp_path / f"{prefix}_bond.txt").read_text().splitlines()[0]) > 0
         assert int((tmp_path / f"{prefix}_angle.txt").read_text().splitlines()[0]) > 0
         assert int((tmp_path / f"{prefix}_dihedral.txt").read_text().splitlines()[0]) > 0
         assert (tmp_path / f"{prefix}_resname.txt").read_text().splitlines() == [str(len(expected_resnames)), *expected_resnames]
 
 
-def test_pdb_terminal_mapping_is_chain_local_and_keeps_ace_nme_caps():
-    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
-
+def test_pdb_terminal_mapping_is_chain_local_and_keeps_ace_nme_caps(tmp_path):
     pdb = """\
 ATOM      1  N   MET A   1       0.000   0.000   0.000  1.00  0.00           N
 ATOM      2  CA  MET A   1       1.000   0.000   0.000  1.00  0.00           C
@@ -362,14 +538,14 @@ TER
 END
 """
 
-    mol = Xponge.load_pdb(StringIO(pdb))
-
-    assert [res.name for res in mol.residues] == [
-        "NMET",
-        "CSER",
-        "NALA",
-        "CGLY",
-        "ACE",
-        "ALA",
-        "NME",
-    ]
+    pdb_path = tmp_path / "chains.pdb"
+    pdb_path.write_text(pdb)
+    _run_isolated(
+        "import sys\n"
+        "import XpongeCPP as X\n"
+        "import XpongeCPP.forcefield.amber.ff14sb\n"
+        "m = X.load_pdb(sys.argv[1])\n"
+        "assert [r.name for r in m.residues] == "
+        "['NMET','CSER','NALA','CGLY','ACE','ALA','NME']\n",
+        pdb_path,
+    )

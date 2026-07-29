@@ -23,6 +23,16 @@ try:  # pragma: no cover - optional dependency branch
 except ModuleNotFoundError:
     mda = None
 
+if mda is not None:
+    from .bundle_mdanalysis import (  # noqa: F401
+        BundleTopologyParser,
+        SPONGEH5MDReader,
+        SpongeH5MDReader,
+        load_bundle_universe,
+        register_mdanalysis_formats,
+        validate_bundle_pair,
+    )
+
 
 def _missing_mdanalysis():
     raise ModuleNotFoundError("'MDAnalysis' package needed. Maybe you need 'pip install MDAnalysis'")
@@ -178,4 +188,15 @@ else:
             return self.ts
 
 
-    __all__ = ["XpongeMoleculeReader", "mda", "SpongeInputReader", "SpongeNoneReader"]
+    __all__ = [
+        "BundleTopologyParser",
+        "SPONGEH5MDReader",
+        "SpongeH5MDReader",
+        "SpongeInputReader",
+        "SpongeNoneReader",
+        "XpongeMoleculeReader",
+        "load_bundle_universe",
+        "mda",
+        "register_mdanalysis_formats",
+        "validate_bundle_pair",
+    ]

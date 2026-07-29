@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from . import wham
+from .bundle_mdanalysis import load_bundle_universe
 from .md_analysis import XpongeMoleculeReader, mda
 from .sasa import SASA
 
@@ -28,4 +29,11 @@ class MdoutReader:
         return object.__getattribute__(self, attr)
 
 
-__all__ = ["MdoutReader", "SASA", "XpongeMoleculeReader", "mda", "wham"]
+__all__ = [
+    "MdoutReader",
+    "SASA",
+    "XpongeMoleculeReader",
+    "load_bundle_universe",
+    "mda",
+    "wham",
+]

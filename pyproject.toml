@@ -4,12 +4,13 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "XpongeCPP"
-version = "0.1.2"
-description = "C++ core rewrite of common Xponge workflows with a Python compatibility layer"
+version = "0.2.0"
+description = "C++ core rewrite of Xponge workflows, compatible with Xponge-origin 1.7b8"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 authors = [{ name = "The XpongeCPP contributors" }]
 license = { text = "Apache License 2.0" }
+keywords = ["molecular-dynamics", "molecular-mechanics", "Xponge-origin-1.7b8"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -20,16 +21,20 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: C++",
     "Topic :: Scientific/Engineering :: Chemistry",
 ]
 dependencies = [
-    "numpy>=1.26",
-    "PubChemPy>=1.0.4",
-    "MDAnalysis>=2.7",
-    "rdkit>=2023.9",
-    "pyscf>=2.5; platform_system != 'Windows'",
-    "XpongeLib>=1.2.5.0",
+    "numpy<2",
+    "h5py>=3.11",
+    "geometric>=1.1",
+    "matplotlib>=3.10.8",
+    "MDAnalysis>=2.9.0",
+    "PubChemPy>=1.0.5",
+    "rdkit>=2025.9.3",
+    "pyscf>=2.11.0; platform_system != 'Windows'",
+    "mokda-xpongelib>=1.2.5.0; platform_system == 'Darwin' or platform_machine == 'x86_64' or platform_machine == 'AMD64'",
 ]
 
 [project.urls]

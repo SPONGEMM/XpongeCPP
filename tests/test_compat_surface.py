@@ -4,7 +4,7 @@ import pytest
 
 def test_compat_module_adds_instance_style_molecule_save_methods(tmp_path):
     import XpongeCPP.compat  # noqa: F401
-    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.ff19sb  # noqa: F401
 
     mol = Xponge.get_template_molecule("ALA")
 
@@ -25,7 +25,7 @@ def test_compat_module_adds_instance_style_molecule_save_methods(tmp_path):
 
 
 def test_compat_layer_can_inject_legacy_template_globals():
-    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.ff19sb  # noqa: F401
     from XpongeCPP.compat import enable_legacy_namespace
 
     namespace = {}
@@ -47,7 +47,7 @@ def test_public_compat_bootstrap_entrypoint_is_available_without_hidden_auto_api
 
 
 def test_legacy_residuetype_handles_support_add_and_mul():
-    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+    import XpongeCPP.forcefield.amber.ff19sb  # noqa: F401
 
     mol = (
         Xponge.ResidueType.get_type("NALA")
@@ -249,7 +249,7 @@ def test_xponge_package_alias_special_fep_module_exports_legacy_surface():
 
 def test_xponge_package_alias_supports_minimal_cvsystem_workflow(tmp_path):
     import Xponge
-    import Xponge.forcefield.amber.ff14sb  # noqa: F401
+    import Xponge.forcefield.amber.ff19sb  # noqa: F401
     from Xponge.helper.cv import CVSystem
 
     mol = (
@@ -278,7 +278,7 @@ def test_xponge_package_alias_supports_minimal_cvsystem_workflow(tmp_path):
 
 def test_xponge_package_alias_supports_cvsystem_meta1d_output(tmp_path):
     import Xponge
-    import Xponge.forcefield.amber.ff14sb  # noqa: F401
+    import Xponge.forcefield.amber.ff19sb  # noqa: F401
     from Xponge.helper.cv import CVSystem
 
     mol = Xponge.ResidueType.get_type("ACE") + Xponge.ResidueType.get_type("ALA") + Xponge.ResidueType.get_type("NME")
@@ -345,7 +345,7 @@ def test_xponge_top_level_and_package_style_imports_match_legacy_shape():
     assert MdoutReader is not None
     assert hasattr(wham, "WHAM")
     assert XpongeMoleculeReader is not None
-    assert mda is None
+    assert mda is None or mda.__name__ == "MDAnalysis"
     assert SASA is not None
     assert callable(run)
     assert CATEGORY["0"] == "base"
@@ -375,15 +375,26 @@ def test_legacy_analysis_and_mdrun_surfaces_have_first_wave_real_and_placeholder
     w = wham.WHAM(np.linspace(-1.0, 1.0, 5), 300.0, 10.0, np.linspace(-0.5, 0.5, 4))
     assert w.window_edges.shape == (5,)
 
-    assert mda is None
-    for callable_obj in (XpongeMoleculeReader, SASA):
-        try:
-            callable_obj()
-        except (NotImplementedError, ModuleNotFoundError) as exc:
-            message = str(exc).lower()
-            assert "compatibility" in message or "legacy" in message or "analysis" in message or "mdanalysis" in message
-        else:  # pragma: no cover
-            raise AssertionError(f"{callable_obj} should fail with a clear NotImplementedError")
+    if mda is None:
+        for callable_obj in (XpongeMoleculeReader, SASA):
+            try:
+                callable_obj()
+            except (NotImplementedError, ModuleNotFoundError) as exc:
+                message = str(exc).lower()
+                assert (
+                    "compatibility" in message
+                    or "legacy" in message
+                    or "analysis" in message
+                    or "mdanalysis" in message
+                )
+            else:  # pragma: no cover
+                raise AssertionError(
+                    f"{callable_obj} should fail clearly without MDAnalysis"
+                )
+    else:
+        assert mda.__name__ == "MDAnalysis"
+        assert callable(XpongeMoleculeReader)
+        assert callable(SASA)
 
     try:
         run(["mdrun", "-reset"])

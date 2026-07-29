@@ -169,7 +169,7 @@ XpongeCPP
 | --- | --- | --- |
 | Amber ff14SB | Supported | 1KV2 workflows and packaged data are covered. |
 | Amber ff19SB / RSFF2C CMAP | Supported for current tests | CMAP generation and export are tested. |
-| Amber nucleic acid/lipid/glycam modules | Partial | Import modules, packaged data, template registration and broader multi-residue assembled export workflows for `bsc1`, `ol3`, `ol15`, `lipid14`, `lipid17` and GLYCAM variants are regression covered; broad assembled-molecule regression is not complete. |
+| Amber nucleic acid/lipid/glycam modules | Partial | Import modules, packaged data, template registration and broader multi-residue assembled export workflows for `bsc1`, `ol3`, `ol15`, `lipid14`, `lipid17`, `lipid21` and GLYCAM variants are regression covered; Lipid21 includes the shared PI/phosphoinositide/LysoPL extension and PGS/SA/SPM semantics, while broad assembled-molecule regression is not complete. |
 | TIP3P/TIP4P/TIP4PEW/OPC/SPCE | Supported for current tests | Multi-site virtual atom output covered. |
 | GAFF/GAFF2 | Supported for current typed MOL2 and assignment tests | Larger ChEMBL full-run remains optional/local. |
 | Common ions | Supported for Amber water models currently tested | Multi-water-model ion replacement regression exists for TIP3P/SPCE/TIP4P/TIP4PEW/OPC; a broader ion/water-model matrix still needs larger regression. |

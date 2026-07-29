@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import XpongeCPP as Xponge
+from XpongeCPP.io_bundle.errors import BundlePathError
 
 
 def _peptide():
@@ -162,7 +163,7 @@ def test_save_sponge_input_wrapper_selects_raw_or_bundle_format(tmp_path):
         Xponge.save_sponge_input(
             molecule, "raw_protocol", tmp_path, protocol=object()
         )
-    with pytest.raises(ValueError, match="nonempty native protocols"):
+    with pytest.raises(TypeError, match="SpongeProtocol"):
         Xponge.save_sponge_input_bundle(
             molecule, "bundle_protocol", tmp_path, protocol=object()
         )
@@ -547,7 +548,7 @@ def test_native_bundle_saver_rejects_edip_parameters(tmp_path):
 
 
 def test_native_bundle_saver_rejects_escaping_prefix(tmp_path):
-    with pytest.raises(ValueError, match="escapes output directory"):
+    with pytest.raises(BundlePathError, match="escapes output directory"):
         Xponge.save_sponge_input_bundle(_peptide(), "../escape", tmp_path)
 
 
@@ -557,7 +558,7 @@ def test_native_bundle_saver_rejects_prefix_resolving_to_output_root(
 ):
     output_root = tmp_path / "bundle-root"
 
-    with pytest.raises(ValueError, match="prefix"):
+    with pytest.raises(BundlePathError, match="prefix"):
         Xponge.save_sponge_input_bundle(_peptide(), prefix, output_root)
 
     assert not list(tmp_path.glob("bundle-root_*"))

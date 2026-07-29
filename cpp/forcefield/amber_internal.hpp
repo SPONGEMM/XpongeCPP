@@ -23,8 +23,7 @@ struct ImproperParameter {
 };
 
 struct NB14Parameter {
-    std::string atom_type1;
-    std::string atom_type4;
+    std::array<std::string, 4> types;
     NB14Scale scale;
     std::size_t order{0};
 };
@@ -56,6 +55,8 @@ std::vector<AngleParameter>& angle_parameters();
 std::vector<ProperParameter>& proper_parameters();
 std::vector<ImproperParameter>& improper_parameters();
 std::vector<NB14Parameter>& nb14_parameters();
+std::optional<NB14Scale> find_amber_nb14_dihedral_scale(
+    const std::array<std::string, 4>& atom_types);
 std::unordered_map<std::string, AmberCMapParameter>& amber_cmap_parameters();
 std::unordered_map<std::string, std::string>& lj_type_by_atom_type();
 std::unordered_map<std::string, std::pair<double, double>>& lj_parameters();

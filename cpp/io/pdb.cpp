@@ -207,6 +207,38 @@ bool is_unterminal(const ResidueSelectorSets& selectors, char chain_id, int ress
            selectors.chain_resseq_ins.count({chain_id, resseq, insertion_code}) != 0;
 }
 
+std::pair<bool, bool> terminal_residue_flags(const std::vector<PdbLoadOptions::TerminalResidue>& selectors,
+                                             char chain_id, int resseq, char insertion_code) {
+    bool n_terminal = false;
+    bool c_terminal = false;
+    for (const auto& selector : selectors) {
+        if (selector.chain_id == chain_id && selector.resseq == resseq && selector.insertion_code == insertion_code) {
+            n_terminal = n_terminal || selector.n_terminal;
+            c_terminal = c_terminal || selector.c_terminal;
+        }
+    }
+    return {n_terminal, c_terminal};
+}
+
+std::string tail_mapped_residue_name(const std::string& residue_name) {
+    const auto proteins = protein_residue_names();
+    const auto& tail = pdb_tail_map();
+    if (proteins.count(residue_name) != 0) {
+        const auto it = tail.find(residue_name);
+        if (it != tail.end()) {
+            return it->second;
+        }
+    }
+    if (residue_name.size() > 1 && residue_name[0] == 'N' && proteins.count(residue_name.substr(1)) != 0) {
+        const auto it = tail.find(residue_name.substr(1));
+        if (it != tail.end()) {
+            return "C" + residue_name.substr(1);
+        }
+    }
+    const auto it = tail.find(residue_name);
+    return it == tail.end() ? residue_name : it->second;
+}
+
 void apply_template_atom_properties(Molecule& molecule, bool ignore_unknown_name) {
     std::vector<Atom> new_atoms;
     new_atoms.reserve(molecule.atoms.size());

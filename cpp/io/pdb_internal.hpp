@@ -9,6 +9,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace xpongecpp {
@@ -49,6 +50,9 @@ std::vector<std::string> pdb_split_ws(const std::string& line);
 std::optional<std::tuple<char, int, char>> ssbond_ref(const std::string& line, bool second);
 ResidueSelectorSets parse_unterminal_residues(const std::vector<std::string>& selectors);
 bool is_unterminal(const ResidueSelectorSets& selectors, char chain_id, int resseq, char insertion_code);
+std::pair<bool, bool> terminal_residue_flags(const std::vector<PdbLoadOptions::TerminalResidue>& selectors,
+                                             char chain_id, int resseq, char insertion_code);
+std::string tail_mapped_residue_name(const std::string& residue_name);
 void apply_template_atom_properties(Molecule& molecule, bool ignore_unknown_name);
 AtomId find_atom(const Molecule& molecule, const Residue& residue, const std::string& name);
 void add_template_residue_link(Molecule& molecule, ResidueId left_id, ResidueId right_id);

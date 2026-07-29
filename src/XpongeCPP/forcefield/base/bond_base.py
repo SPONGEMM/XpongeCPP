@@ -23,6 +23,11 @@ class BondType:
 
     _types = {}
 
+    def __new__(cls, name, k, b):
+        entry = _BondTypeRecord(name, k, b)
+        cls._types[cls._norm(name)] = entry
+        return entry
+
     @staticmethod
     def _norm(name):
         return str(name).strip().upper()

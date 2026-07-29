@@ -38,6 +38,9 @@ void Assign::add_bond(std::uint32_t atom1, std::uint32_t atom2, int order) {
     if (atom1 == atom2) {
         throw std::invalid_argument("Assign self bond");
     }
+    if (bonds[atom1].count(atom2) == 0) {
+        bond_sequence.emplace_back(atom1, atom2);
+    }
     bonds[atom1][atom2] = order;
     bonds[atom2][atom1] = order;
     bond_markers[atom1][atom2] = {};
@@ -56,6 +59,17 @@ void Assign::delete_bond(std::uint32_t atom1, std::uint32_t atom2) {
     bonds[atom2].erase(atom1);
     bond_markers[atom1].erase(atom2);
     bond_markers[atom2].erase(atom1);
+    bond_sequence.erase(
+        std::remove_if(
+            bond_sequence.begin(),
+            bond_sequence.end(),
+            [atom1, atom2](const auto& pair) {
+                return (pair.first == atom1 && pair.second == atom2) ||
+                       (pair.first == atom2 && pair.second == atom1);
+            }
+        ),
+        bond_sequence.end()
+    );
     rings.clear();
     built = false;
 }
@@ -74,6 +88,16 @@ void Assign::delete_atom(std::uint32_t atom) {
     bond_markers.erase(bond_markers.begin() + atom);
     atom_markers.erase(atom_markers.begin() + atom);
     atom_types.erase(atom_types.begin() + atom);
+    bond_sequence.erase(
+        std::remove_if(
+            bond_sequence.begin(),
+            bond_sequence.end(),
+            [atom](const auto& pair) {
+                return pair.first == atom || pair.second == atom;
+            }
+        ),
+        bond_sequence.end()
+    );
 
     for (auto& atom_bonds : bonds) {
         std::unordered_map<std::uint32_t, int> remapped;
@@ -96,6 +120,14 @@ void Assign::delete_atom(std::uint32_t atom) {
             remapped[neighbor > atom ? neighbor - 1 : neighbor] = markers;
         }
         atom_markers_by_bond = std::move(remapped);
+    }
+    for (auto& pair : bond_sequence) {
+        if (pair.first > atom) {
+            --pair.first;
+        }
+        if (pair.second > atom) {
+            --pair.second;
+        }
     }
     rings.clear();
     built = false;

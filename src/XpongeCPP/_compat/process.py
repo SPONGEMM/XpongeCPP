@@ -18,7 +18,6 @@ from .._core import (
     save_mol2,
     save_pdb,
     save_sponge_input as _core_save_sponge_input,
-    save_sponge_input_bundle as _core_save_sponge_input_bundle,
     set_box_padding,
 )
 from .runtime import get_legacy_residue_links_override
@@ -134,16 +133,31 @@ def _patch_saved_pdb_residue_links(molecule, filename, residue_links=None):
 
 
 def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
-    molecule, prefix=None, dirname=".", format="raw", *, protocol=None
+    molecule,
+    prefix=None,
+    dirname=".",
+    format="raw",
+    *,
+    protocol=None,
+    source_atom_ids=None,
+    return_mapping=False,
 ):
     if format == "bundle":
-        return _core_save_sponge_input_bundle(
-            molecule, prefix, str(dirname), protocol=protocol
+        from ..io_bundle.saver import save_sponge_input_bundle
+
+        return save_sponge_input_bundle(
+            molecule,
+            prefix,
+            str(dirname),
+            protocol=protocol,
+            source_atom_ids=source_atom_ids,
+            return_mapping=return_mapping,
         )
     if format != "raw":
         raise ValueError(f"SPONGE input format must be 'raw' or 'bundle', not {format!r}")
     if protocol is not None:
         raise ValueError("protocol objects require format='bundle'")
+    source_ids = _capture_source_atom_ids(molecule, source_atom_ids)
 
     target = molecule
     if isinstance(molecule, Residue):
@@ -181,7 +195,36 @@ def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
             target.enable_min_bonded_parameters(False)
     if prefix is not None:
         _patch_saved_pdb_residue_links(target, f"{prefix}.pdb", residue_links=saved_links)
-    return target
+    return _save_result_with_mapping(target, source_ids, return_mapping)
+
+
+def _capture_source_atom_ids(molecule, source_atom_ids):
+    if source_atom_ids is None:
+        return None
+    atoms = list(molecule.atoms)
+    if isinstance(source_atom_ids, dict):
+        by_index = {int(atom.index): str(value) for atom, value in source_atom_ids.items()}
+        if set(by_index) != {int(atom.index) for atom in atoms}:
+            raise ValueError("source_atom_ids mapping must cover every input Atom exactly once")
+        values = tuple(by_index[int(atom.index)] for atom in atoms)
+    else:
+        values = tuple(str(value) for value in source_atom_ids)
+        if len(values) != len(atoms):
+            raise ValueError("source_atom_ids must contain one ID for every input Atom")
+    if len(set(values)) != len(values):
+        raise ValueError("source_atom_ids must be unique")
+    return values
+
+
+def _save_result_with_mapping(molecule, source_ids, return_mapping):
+    if not return_mapping:
+        return molecule
+    if source_ids is None:
+        raise ValueError("return_mapping=True requires source_atom_ids")
+    return molecule, tuple(
+        {"simulation_index": index, "source_atom_id": source_id}
+        for index, source_id in enumerate(source_ids)
+    )
 
 
 def save_sponge_input_raw(molecule, prefix=None, dirname="."):

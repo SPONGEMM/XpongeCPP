@@ -47,11 +47,13 @@ python -c "import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special
 基础安装会自动拉取这些高频依赖：
 
 - `numpy`
+- `geometric`
+- `matplotlib`
 - `PubChemPy`
 - `MDAnalysis`
 - `rdkit`
 - `pyscf`
-- `XpongeLib`
+- `mokda-xpongelib`（导入名仍为 `XpongeLib`）
 
 其中 `pyscf` 采用平台条件安装：
 

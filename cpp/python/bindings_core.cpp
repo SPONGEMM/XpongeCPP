@@ -318,10 +318,12 @@ std::shared_ptr<Molecule> merge_force_field_object(
 void bind_core_module(py::module_& m) {
     py::class_<AtomView>(m, "Atom")
         .def_property_readonly("index", [](const AtomView& self) { return self.id; })
-        .def_property_readonly("name", [](const AtomView& self) { return self.get().name; })
+        .def_property("name", [](const AtomView& self) { return self.get().name; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).name = value; })
         .def_property("type", [](const AtomView& self) { return self.get().type; },
                       [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).type = value; })
-        .def_property_readonly("element", [](const AtomView& self) { return self.get().element; })
+        .def_property("element", [](const AtomView& self) { return self.get().element; },
+                      [](AtomView& self, const std::string& value) { self.molecule->atom(self.id).element = value; })
         .def_property("x", [](const AtomView& self) { return self.get().x; },
                       [](AtomView& self, double value) { self.molecule->atom(self.id).x = value; })
         .def_property("y", [](const AtomView& self) { return self.get().y; },
@@ -356,7 +358,8 @@ void bind_core_module(py::module_& m) {
 
     py::class_<ResidueView>(m, "Residue")
         .def_property_readonly("index", [](const ResidueView& self) { return self.id; })
-        .def_property_readonly("name", [](const ResidueView& self) { return self.get().name; })
+        .def_property("name", [](const ResidueView& self) { return self.get().name; },
+                      [](ResidueView& self, const std::string& value) { self.molecule->residue(self.id).name = value; })
         .def_property_readonly("type_name", [](const ResidueView& self) { return self.get().type_name; })
         .def_property_readonly("chain_id", [](const ResidueView& self) { return std::string(1, self.get().chain_id); })
         .def_property_readonly("effective_chain_id",
@@ -381,14 +384,81 @@ void bind_core_module(py::module_& m) {
         .def_property_readonly("residues", &residue_views)
         .def_property_readonly("explicit_bonds", &molecule_explicit_bonds)
         .def_property_readonly("residue_links", &molecule_residue_links)
+        .def_property_readonly(
+            "coordination_bonds", [](const Molecule& self) {
+                py::list out;
+                for (const auto& bond : self.coordination_bonds) {
+                    out.append(py::make_tuple(bond.atom1, bond.atom2));
+                }
+                return out;
+            })
+        .def_property_readonly(
+            "bond_parameter_overrides", [](const Molecule& self) {
+                py::list out;
+                for (const auto& term : self.bond_parameter_overrides) {
+                    out.append(py::make_tuple(
+                        term.atom1, term.atom2, term.k, term.length, term.source));
+                }
+                return out;
+            })
+        .def_property_readonly(
+            "angle_parameter_overrides", [](const Molecule& self) {
+                py::list out;
+                for (const auto& term : self.angle_parameter_overrides) {
+                    out.append(py::make_tuple(
+                        term.atom1, term.atom2, term.atom3,
+                        term.k, term.theta, term.source));
+                }
+                return out;
+            })
+        .def_property_readonly(
+            "lj_parameter_overrides", [](const Molecule& self) {
+                py::list out;
+                for (const auto& term : self.lj_parameter_overrides) {
+                    out.append(py::make_tuple(
+                        term.atom_type, term.lj_type, term.epsilon,
+                        term.rmin, term.source));
+                }
+                return out;
+            })
         .def_readwrite("box_length", &Molecule::box_length)
+        .def_readwrite("box_origin", &Molecule::box_origin)
         .def_readwrite("box_angle", &Molecule::box_angle)
         .def("set_box_padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
         .def("Set_Box_Padding", &Molecule::set_box_padding, py::arg("padding") = 0.5, py::arg("center") = true)
+        .def("set_periodic_box", &Molecule::set_periodic_box, py::arg("origin"), py::arg("lengths"),
+             py::arg("angles") = std::array<double, 3>{90.0, 90.0, 90.0})
+        .def("Set_Periodic_Box", &Molecule::set_periodic_box, py::arg("origin"), py::arg("lengths"),
+             py::arg("angles") = std::array<double, 3>{90.0, 90.0, 90.0})
         .def("add_molecule", &Molecule::add_molecule, py::arg("other"))
         .def("Add_Molecule", &Molecule::add_molecule, py::arg("other"))
+        .def("add_coordination_bond", &Molecule::add_coordination_bond, py::arg("atom1"), py::arg("atom2"))
         .def("add_residue_link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
         .def("Add_Residue_Link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
+        .def(
+            "_set_bond_parameter_override", &Molecule::set_bond_parameter_override,
+            py::arg("atom1"), py::arg("atom2"), py::arg("k"),
+            py::arg("length"), py::arg("source"))
+        .def(
+            "_set_angle_parameter_override", &Molecule::set_angle_parameter_override,
+            py::arg("atom1"), py::arg("atom2"), py::arg("atom3"),
+            py::arg("k"), py::arg("theta"), py::arg("source"))
+        .def(
+            "_set_lj_parameter_override", &Molecule::set_lj_parameter_override,
+            py::arg("atom_type"), py::arg("lj_type"),
+            py::arg("epsilon"), py::arg("rmin"), py::arg("source"))
+        .def(
+            "_resolve_lj_parameter", [](const Molecule& self, const std::string& atom_type) {
+                const auto lj_type = resolve_molecule_lj_type(self, atom_type);
+                const auto parameters = resolve_molecule_lj_parameter(self, lj_type);
+                if (!parameters.has_value()) {
+                    throw py::key_error("LJ parameters not found for atom type " + atom_type);
+                }
+                return py::make_tuple(lj_type, parameters->first, parameters->second);
+            }, py::arg("atom_type"))
+        .def("_replace_from", &Molecule::replace_from, py::arg("other"))
+        .def_property_readonly(
+            "has_topology_override", &Molecule::has_topology_override)
         .def("copy", [](const std::shared_ptr<Molecule>& self) { return std::make_shared<Molecule>(*self); })
         .def("deepcopy", [](const std::shared_ptr<Molecule>& self) { return std::make_shared<Molecule>(*self); })
         .def("__add__", [](const std::shared_ptr<Molecule>& self, const std::shared_ptr<Molecule>& other) {

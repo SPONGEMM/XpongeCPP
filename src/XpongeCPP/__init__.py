@@ -18,6 +18,7 @@ from ._core import (
     get_template_molecule,
     has_template,
     implemented_gaff_assign_types,
+    implemented_gaff2_assign_types,
     load_coordinate,
     load_frcmod as _core_load_frcmod,
     load_gro,
@@ -28,6 +29,7 @@ from ._core import (
     load_molpsf,
     load_opls_itp_file,
     load_parmdat,
+    load_mmcif as _core_load_mmcif,
     load_pdb as _core_load_pdb,
     load_rst7,
     load_sw_parameter_file,
@@ -61,7 +63,7 @@ from ._core import (
     save_gro,
     save_mol2,
     save_sponge_input,
-    save_sponge_input_bundle,
+    save_sponge_input_bundle as _core_save_sponge_input_bundle,
     set_lj_combining_rule,
     set_box_padding,
     configure_residue_template_connect_atom,
@@ -78,6 +80,20 @@ from .io_compat import (
     get_assignment_from_pubchem,
     get_assignment_from_smiles,
     get_assignment_from_xyz,
+)
+from . import metal_assignment
+from .io_bundle import (
+    ProtocolCVRestraint,
+    ProtocolCollectiveVariable,
+    ProtocolDistanceConstraints,
+    ProtocolHardWall,
+    ProtocolMetadynamics,
+    ProtocolPositionalRestraint,
+    ProtocolSITS,
+    ProtocolSoftWall,
+    ProtocolSteering,
+    SpongeProtocol,
+    save_sponge_input_bundle,
 )
 
 _CoreMolecule = Molecule
@@ -152,7 +168,7 @@ from .process import (
 from .legacy_types import _LegacyResidueTypeHandle
 from .template_ops import load_mol2
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 pi = np.pi
 kb = 0.00198716
 bar = 1.439506089041446e-5
@@ -186,6 +202,16 @@ def load_pdb(*args, **kwargs):
     register_amber_parmdat_file(str(package_data_path("amber", "parm10.dat")))
     register_amber_frcmod_file(str(package_data_path("amber", "ff14SB.frcmod")))
     return _core_load_pdb(*args, **kwargs)
+
+
+def load_mmcif(*args, **kwargs):
+    from .forcefield import package_data_path
+
+    set_lj_combining_rule("lorentz_berthelot")
+    register_amber_nb14_scale("X", "X", 0.5, 0.833333)
+    register_amber_parmdat_file(str(package_data_path("amber", "parm10.dat")))
+    register_amber_frcmod_file(str(package_data_path("amber", "ff14SB.frcmod")))
+    return _core_load_mmcif(*args, **kwargs)
 
 
 install_legacy_bootstrap(globals())
@@ -237,6 +263,7 @@ __all__ = [
     "source",
     "add_ions",
     "load_pdb",
+    "load_mmcif",
     "load_mol2",
     "load_molpsf",
     "load_ffitp",
@@ -265,6 +292,16 @@ __all__ = [
     "save_sponge_input",
     "save_sponge_input_raw",
     "save_sponge_input_bundle",
+    "SpongeProtocol",
+    "ProtocolCollectiveVariable",
+    "ProtocolDistanceConstraints",
+    "ProtocolHardWall",
+    "ProtocolPositionalRestraint",
+    "ProtocolCVRestraint",
+    "ProtocolMetadynamics",
+    "ProtocolSITS",
+    "ProtocolSoftWall",
+    "ProtocolSteering",
     "save_pdb",
     "save_gro",
     "save_mol2",
@@ -301,8 +338,10 @@ __all__ = [
     "registered_template_names",
     "get_template_molecule",
     "implemented_gaff_assign_types",
+    "implemented_gaff2_assign_types",
     "merge_dual_topology",
     "merge_force_field",
+    "metal_assignment",
     "Add_Ions",
     "Add_Molecule",
     "Add_Solvent_Box",

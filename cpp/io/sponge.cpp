@@ -19,6 +19,39 @@
 namespace xpongecpp {
 namespace {
 
+class IndexDisjointSet {
+public:
+    explicit IndexDisjointSet(std::size_t count) : parent_(count), size_(count, 1) {
+        for (std::size_t index = 0; index < count; ++index) {
+            parent_[index] = index;
+        }
+    }
+
+    std::size_t find(std::size_t index) {
+        if (parent_[index] != index) {
+            parent_[index] = find(parent_[index]);
+        }
+        return parent_[index];
+    }
+
+    void unite(std::size_t lhs, std::size_t rhs) {
+        lhs = find(lhs);
+        rhs = find(rhs);
+        if (lhs == rhs) {
+            return;
+        }
+        if (size_[lhs] < size_[rhs]) {
+            std::swap(lhs, rhs);
+        }
+        parent_[rhs] = lhs;
+        size_[lhs] += size_[rhs];
+    }
+
+private:
+    std::vector<std::size_t> parent_;
+    std::vector<std::size_t> size_;
+};
+
 std::filesystem::path output_path(const std::filesystem::path& dirname, const std::string& prefix,
                                   const std::string& key) {
     return dirname / (prefix + "_" + key + ".txt");
@@ -82,9 +115,11 @@ E = c0 + c1 * cphi + c2 * cphi2 + c3 * cphi3 + c4 * cphi4 + c5 * cphi5;
 )";
 }
 
-std::pair<double, double> amber_lj_ab(const std::string& lj_type1, const std::string& lj_type2) {
-    const auto lj1 = find_amber_lj_parameter(lj_type1);
-    const auto lj2 = find_amber_lj_parameter(lj_type2);
+std::pair<double, double> amber_lj_ab(
+    const Molecule& molecule, const std::string& lj_type1,
+    const std::string& lj_type2) {
+    const auto lj1 = resolve_molecule_lj_parameter(molecule, lj_type1);
+    const auto lj2 = resolve_molecule_lj_parameter(molecule, lj_type2);
     if (!lj1) {
         throw std::runtime_error("missing Amber LJ parameter for type: " + lj_type1);
     }
@@ -102,7 +137,8 @@ std::pair<double, double> amber_lj_ab(const std::string& lj_type1, const std::st
     return {epsilon * r6 * r6, epsilon * 2.0 * r6};
 }
 
-std::pair<std::vector<double>, std::vector<double>> find_ab_lj(const std::vector<std::string>& lj_types, bool full) {
+std::pair<std::vector<double>, std::vector<double>> find_ab_lj(
+    const Molecule& molecule, const std::vector<std::string>& lj_types, bool full) {
     std::vector<double> coefficients_a;
     std::vector<double> coefficients_b;
     const std::size_t total = full ? lj_types.size() * lj_types.size() : lj_types.size() * (lj_types.size() + 1) / 2;
@@ -111,7 +147,7 @@ std::pair<std::vector<double>, std::vector<double>> find_ab_lj(const std::vector
     for (std::size_t i = 0; i < lj_types.size(); ++i) {
         const auto j_max = full ? lj_types.size() : i + 1;
         for (std::size_t j = 0; j < j_max; ++j) {
-            const auto [a, b] = amber_lj_ab(lj_types[i], lj_types[j]);
+            const auto [a, b] = amber_lj_ab(molecule, lj_types[i], lj_types[j]);
             coefficients_a.push_back(a);
             coefficients_b.push_back(b);
         }
@@ -173,11 +209,88 @@ std::vector<std::string> real_lj_types(const std::vector<std::string>& lj_types,
     return real;
 }
 
+bool reorder_residues_by_linked_components(Molecule& molecule) {
+    if (molecule.residues.size() < 2 || molecule.residue_links.empty()) {
+        return false;
+    }
+
+    IndexDisjointSet components(molecule.residues.size());
+    for (const auto& link : molecule.residue_links) {
+        if (link.atom1 >= molecule.atoms.size() || link.atom2 >= molecule.atoms.size()) {
+            throw std::invalid_argument("residue link atom index out of range");
+        }
+        components.unite(molecule.atoms[link.atom1].residue, molecule.atoms[link.atom2].residue);
+    }
+
+    std::unordered_map<std::size_t, double> root_to_sort_key;
+    root_to_sort_key.reserve(molecule.residues.size());
+    std::vector<double> residue_sort_keys(molecule.residues.size(), 0.0);
+    double next_sort_key = 0.0;
+    bool already_contiguous = true;
+    double previous_key = -1.0;
+    for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
+        const auto root = components.find(residue_id);
+        const auto [it, inserted] = root_to_sort_key.emplace(root, next_sort_key);
+        if (inserted) {
+            next_sort_key += 1.0;
+        }
+        const double key = it->second;
+        residue_sort_keys[residue_id] = key;
+        if (key < previous_key) {
+            already_contiguous = false;
+        }
+        previous_key = key;
+    }
+    if (already_contiguous) {
+        return false;
+    }
+
+    molecule.replace_residues({}, residue_sort_keys, true);
+    return true;
+}
+
+void check_sponge_atom_components_are_contiguous(const Molecule& molecule, const Topology& topology) {
+    if (molecule.atoms.empty()) {
+        return;
+    }
+
+    IndexDisjointSet components(molecule.atoms.size());
+    for (const auto& bond : topology.bonds) {
+        if (bond.k != 0.0) {
+            components.unite(bond.atom1, bond.atom2);
+        }
+    }
+
+    struct ComponentRange {
+        AtomId min_atom{std::numeric_limits<AtomId>::max()};
+        AtomId max_atom{0};
+        std::size_t count{0};
+    };
+    std::unordered_map<std::size_t, ComponentRange> ranges;
+    ranges.reserve(molecule.atoms.size());
+    for (AtomId atom_id = 0; atom_id < molecule.atoms.size(); ++atom_id) {
+        auto& range = ranges[components.find(atom_id)];
+        range.min_atom = std::min(range.min_atom, atom_id);
+        range.max_atom = std::max(range.max_atom, atom_id);
+        range.count += 1;
+    }
+
+    for (const auto& [root, range] : ranges) {
+        (void)root;
+        if (static_cast<std::size_t>(range.max_atom - range.min_atom + 1) != range.count) {
+            throw std::runtime_error(
+                "Atoms in the same molecule must be continuous for SPONGE input; "
+                "please reorder residues or atoms before export.");
+        }
+    }
+}
+
 }  // namespace
 
-std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& input_molecule,
+std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecule& input_molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname) {
+    reorder_residues_by_linked_components(input_molecule);
     std::optional<Molecule> molecule_with_generated_cmaps;
     if (input_molecule.cmaps.empty() && has_amber_cmap_parameters()) {
         molecule_with_generated_cmaps = input_molecule;
@@ -188,6 +301,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         throw std::invalid_argument("cannot export invalid molecule");
     }
     const auto topology = build_topology(molecule);
+    check_sponge_atom_components_are_contiguous(molecule, topology);
     const std::string actual_prefix = prefix.empty() ? molecule.name : prefix;
     std::filesystem::create_directories(dirname);
     std::unordered_map<std::string, std::filesystem::path> outputs;
@@ -264,17 +378,17 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         std::unordered_map<std::string, std::uint32_t> lj_type_index;
         lj_type_index.reserve(32);
         for (const auto& atom : molecule.atoms) {
-            const auto lj_type = find_amber_lj_type(atom.type);
+            const auto lj_type = resolve_molecule_lj_type(molecule, atom.type);
             if (lj_type_index.find(lj_type) == lj_type_index.end()) {
                 lj_type_index[lj_type] = static_cast<std::uint32_t>(lj_types.size());
                 lj_types.push_back(lj_type);
             }
         }
-        const auto [full_a, full_b] = find_ab_lj(lj_types, true);
+        const auto [full_a, full_b] = find_ab_lj(molecule, lj_types, true);
         const auto checks = lj_check_rows(lj_types, full_a, full_b);
         auto same_type = judge_same_lj_type(lj_types, checks);
         const auto real_types = real_lj_types(lj_types, same_type);
-        const auto [real_a, real_b] = find_ab_lj(real_types, false);
+        const auto [real_a, real_b] = find_ab_lj(molecule, real_types, false);
 
         std::ostringstream out;
         out << molecule.atoms.size() << " " << real_types.size() << "\n\n";
@@ -299,7 +413,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         }
         out << "\n";
         for (const auto& atom : molecule.atoms) {
-            const auto lj_type = find_amber_lj_type(atom.type);
+            const auto lj_type = resolve_molecule_lj_type(molecule, atom.type);
             out << same_type[lj_type_index.at(lj_type)] << "\n";
         }
         return OutputBuffer{"LJ", out.str()};
@@ -862,30 +976,30 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         std::vector<std::string> lj_type_b;
         std::unordered_map<std::string, std::uint32_t> lj_type_b_index;
         for (const auto& atom : molecule.atoms) {
-            const auto lj_type = find_amber_lj_type(atom.type);
+            const auto lj_type = resolve_molecule_lj_type(molecule, atom.type);
             if (lj_type_index.find(lj_type) == lj_type_index.end()) {
                 lj_type_index[lj_type] = static_cast<std::uint32_t>(lj_types.size());
                 lj_types.push_back(lj_type);
             }
             const auto type_b = atom.lj_type_b.empty() ? atom.type : atom.lj_type_b;
-            const auto lj_b = find_amber_lj_type(type_b);
+            const auto lj_b = resolve_molecule_lj_type(molecule, type_b);
             if (lj_type_b_index.find(lj_b) == lj_type_b_index.end()) {
                 lj_type_b_index[lj_b] = static_cast<std::uint32_t>(lj_type_b.size());
                 lj_type_b.push_back(lj_b);
             }
         }
 
-        const auto [full_a, full_b] = find_ab_lj(lj_types, true);
-        const auto [full_ab, full_bb] = find_ab_lj(lj_type_b, true);
+        const auto [full_a, full_b] = find_ab_lj(molecule, lj_types, true);
+        const auto [full_ab, full_bb] = find_ab_lj(molecule, lj_type_b, true);
         const auto checks = lj_check_rows(lj_types, full_a, full_b);
         auto same_type = judge_same_lj_type(lj_types, checks);
         const auto real_types = real_lj_types(lj_types, same_type);
-        const auto [real_a, real_b] = find_ab_lj(real_types, false);
+        const auto [real_a, real_b] = find_ab_lj(molecule, real_types, false);
 
         const auto checks_b = lj_check_rows(lj_type_b, full_ab, full_bb);
         auto same_type_b = judge_same_lj_type(lj_type_b, checks_b);
         const auto real_types_b = real_lj_types(lj_type_b, same_type_b);
-        const auto [real_ab, real_bb] = find_ab_lj(real_types_b, false);
+        const auto [real_ab, real_bb] = find_ab_lj(molecule, real_types_b, false);
 
         const auto path = output_path(dirname, actual_prefix, "LJ_soft_core");
         std::ofstream out(path);
@@ -931,9 +1045,9 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const M
         }
         out << "\n";
         for (const auto& atom : molecule.atoms) {
-            const auto lj_type = find_amber_lj_type(atom.type);
+            const auto lj_type = resolve_molecule_lj_type(molecule, atom.type);
             const auto type_b = atom.lj_type_b.empty() ? atom.type : atom.lj_type_b;
-            const auto lj_b = find_amber_lj_type(type_b);
+            const auto lj_b = resolve_molecule_lj_type(molecule, type_b);
             out << same_type[lj_type_index.at(lj_type)] << " "
                 << same_type_b[lj_type_b_index.at(lj_b)] << "\n";
         }

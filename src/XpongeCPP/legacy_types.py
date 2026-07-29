@@ -19,6 +19,14 @@ from ._core import (
 
 _legacy_template_metadata = {}
 _legacy_residue_links_override = weakref.WeakKeyDictionary()
+_legacy_dynamic_residue_types = {}
+
+
+def _remember_dynamic_residuetype(residue_type):
+    """Remember writable, Python-created residue types by their public name."""
+
+    _legacy_dynamic_residue_types[str(residue_type.name)] = residue_type
+    return residue_type
 
 
 class _LegacyResidueTypeHandle:
@@ -90,6 +98,9 @@ class _LegacyResidueTypeHandle:
 
 
 def _legacy_get_residuetype(name):
+    dynamic = _legacy_dynamic_residue_types.get(str(name))
+    if dynamic is not None:
+        return dynamic
     if not has_template(name):
         raise KeyError(f"ResidueType {name!r} is not registered")
     return _LegacyResidueTypeHandle(name)
@@ -180,6 +191,48 @@ def _legacy_make_residue_like(value, directly_copy=True):
     if hasattr(value, "name") and has_template(value.name):
         return get_template_molecule(value.name).deepcopy()
     raise TypeError("Residue(...) compatibility expects a one-residue template-like object")
+
+
+def _dynamic_residuetype_mol2_text(residue_type):
+    molecule = molecule_from_residuetype(residue_type)
+    residue = molecule.residues[0]
+    serial_by_index = {
+        int(atom.index): serial
+        for serial, atom in enumerate(residue.atoms, start=1)
+    }
+    lines = [
+        "@<TRIPOS>MOLECULE",
+        residue_type.name,
+        f"{len(residue.atoms)} {len(molecule.explicit_bonds)} 1",
+        "SMALL",
+        "USER_CHARGES",
+        "@<TRIPOS>ATOM",
+    ]
+    for serial, atom in enumerate(residue.atoms, start=1):
+        lines.append(
+            f"{serial} {atom.name} {atom.x:.6f} {atom.y:.6f} {atom.z:.6f} "
+            f"{atom.type} 1 {residue_type.name} {atom.charge:.12f}"
+        )
+    lines.append("@<TRIPOS>BOND")
+    for bond_index, (atom1, atom2) in enumerate(
+        molecule.explicit_bonds,
+        start=1,
+    ):
+        lines.append(
+            f"{bond_index} {serial_by_index[int(atom1)]} "
+            f"{serial_by_index[int(atom2)]} 1"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _ensure_dynamic_residuetype_template(name):
+    residue_type = _legacy_dynamic_residue_types.get(str(name))
+    if residue_type is None:
+        return False
+    register_residue_templates_from_mol2_text(
+        _dynamic_residuetype_mol2_text(residue_type)
+    )
+    return True
 
 
 def _legacy_add_residue(self, residue_like):

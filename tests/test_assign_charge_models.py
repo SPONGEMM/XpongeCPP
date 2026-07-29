@@ -19,8 +19,10 @@ from XpongeCPP.assign import resp as resp_module
 from XpongeCPP.assign import resp_core
 from XpongeCPP.qm.capabilities import QMCapabilitySet
 from XpongeCPP.qm.errors import QMCapabilityError
-from XpongeCPP.qm.models import OptimizationResult
+from XpongeCPP.qm.models import ESPResult, OptimizationResult, SCFResult
 from XpongeCPP.qm import scheduler as qm_scheduler
+from XpongeCPP.qm.resp_basis import resolve_default_resp_basis, resolve_resp_basis
+from XpongeCPP.qm.resp_parameters import get_resp_mk_radius, select_resp_basis_family
 
 
 XPONGE_REPO = original_xponge_repo()
@@ -83,6 +85,33 @@ def test_tpacm4_calculate_charge_matches_xponge_methane_and_ethane():
         [-0.205298, -0.205298, 0.068433, 0.068433, 0.068433, 0.068433, 0.068433, 0.068433],
     )
     assert math.isclose(sum(ethane.charges), 0.0, abs_tol=1e-9)
+
+
+def test_resp_parameters_select_standard_basis_and_mk_radius():
+    assert select_resp_basis_family({"C", "H", "O"}) == "6-31G*"
+    assert select_resp_basis_family({"C", "H", "I"}) == "CEP-31G"
+    assert select_resp_basis_family({"C", "H", "U"}) == "SDD"
+    assert get_resp_mk_radius("I") == pytest.approx(1.99)
+    assert get_resp_mk_radius("Be") == pytest.approx(1.7)
+
+
+def test_resp_basis_resolver_maps_iodine_cep31g_to_sbkjc():
+    resolved = resolve_default_resp_basis({"C", "H", "I"})
+
+    assert resolved.label == "CEP-31G"
+    assert resolved.basis == {"H": "dz", "C": "sbkjc", "I": "sbkjc"}
+    assert resolved.ecp == {"C": "sbkjc", "I": "sbkjc"}
+    assert resolved.cart is True
+
+
+def test_resp_basis_resolver_keeps_sdd_separate_from_cep31g():
+    cep = resolve_resp_basis("CEP-31G", {"I"})
+    sdd = resolve_resp_basis("SDD", {"I"})
+
+    assert cep.basis == {"I": "sbkjc"}
+    assert cep.ecp == {"I": "sbkjc"}
+    assert sdd.basis == {"I": "stuttgart"}
+    assert sdd.ecp == {"I": "stuttgart"}
 
 
 def test_tpacm4_calculate_charge_uses_aromatic_and_functional_group_context():
@@ -153,22 +182,25 @@ def test_calculate_charge_reports_optional_dependencies_clearly(monkeypatch):
 
     assignment = _assignment("methane", ["C", "H", "H", "H", "H"], [(0, 1, 1), (0, 2, 1), (0, 3, 1), (0, 4, 1)])
     original_import = builtins.__import__
+    default_qm = qm_scheduler.normalize_backend_name(None)
 
     def fake_import(name, *args, **kwargs):
-        if name.startswith("rdkit") or name.startswith("pyscf"):
+        if name.startswith("rdkit") or name.startswith("pyscf") or name.startswith("psi4"):
             raise ImportError(name)
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
     with pytest.raises(ImportError, match="RDKit"):
         assignment.calculate_charge("gasteiger")
-    with pytest.raises(ImportError, match="PySCF"):
+    expected = "PySCF" if default_qm == "pyscf" else "Psi4"
+    with pytest.raises(ImportError, match=expected):
         assignment.calculate_charge("resp")
 
 
-def test_resp_defaults_to_pyscf_backend(monkeypatch):
+def test_resp_defaults_to_platform_backend(monkeypatch):
     assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
     calls = []
+    default_backend = qm_scheduler.normalize_backend_name(None)
 
     class FakeBackend:
         @staticmethod
@@ -182,13 +214,13 @@ def test_resp_defaults_to_pyscf_backend(monkeypatch):
             }
 
         @staticmethod
-        def compute_esp_on_grid(payload, grids):
+        def compute_esp_on_grid(payload, grids, *, memory_limit=None, chunk_policy="auto", safety_factor=0.8):
             import numpy as np
 
-            calls.append(("esp", len(grids)))
+            calls.append(("esp", len(grids), memory_limit, chunk_policy, safety_factor))
             return np.zeros(len(grids))
 
-    monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FakeBackend)
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, default_backend, FakeBackend)
     monkeypatch.setattr(resp_module.resp_core, "get_mk_grid", lambda *args, **kwargs: __import__("numpy").zeros((2, 3)))
     monkeypatch.setattr(resp_module.resp_core, "fit_resp_from_esp", lambda *args, **kwargs: [0.0, 0.0, 0.0])
 
@@ -196,7 +228,91 @@ def test_resp_defaults_to_pyscf_backend(monkeypatch):
 
     assert charges == [0.0, 0.0, 0.0]
     assert calls[0] == ("build", "sto-3g", 0, 0, False)
-    assert calls[1] == ("esp", 2)
+    assert calls[1] == ("esp", 2, None, "auto", 0.8)
+
+
+def test_resp_default_setup_passes_resolved_basis_ecp_cart_and_mk_radii(monkeypatch):
+    assignment = _assignment("methyl_iodide", ["C", "H", "H", "H", "I"], [(0, 1, 1), (0, 2, 1), (0, 3, 1), (0, 4, 1)])
+    calls = {}
+
+    class FakeBackend:
+        @staticmethod
+        def build_backend_payload(assign, basis, charge, spin, opt, ecp=None, cart=None):
+            import numpy as np
+
+            calls["build"] = (basis, ecp, cart, charge, spin, opt)
+            return {
+                "atom_coordinates_bohr": np.zeros((5, 3)),
+                "nuclear_charges": np.array([6.0, 1.0, 1.0, 1.0, 53.0]),
+            }
+
+        @staticmethod
+        def compute_esp_on_grid(payload, grids, *, memory_limit=None, chunk_policy="auto", safety_factor=0.8):
+            import numpy as np
+
+            return np.zeros(len(grids))
+
+    def fake_grid(assign, atom_coordinates_bohr, area_density=1.0, layer=4, radius=None):
+        import numpy as np
+
+        calls["radius"] = dict(radius)
+        return np.zeros((2, 3))
+
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FakeBackend)
+    monkeypatch.setattr(resp_module.resp_core, "get_mk_grid", fake_grid)
+    monkeypatch.setattr(resp_module.resp_core, "fit_resp_from_esp", lambda *args, **kwargs: [0.0] * 5)
+
+    result = resp_module.resp_fit(assignment, backend="pyscf", charge=0, grid_density=1, grid_cell_layer=1, return_metadata=True)
+
+    assert calls["build"] == (
+        {"C": "sbkjc", "H": "dz", "I": "sbkjc"},
+        {"C": "sbkjc", "I": "sbkjc"},
+        True,
+        0,
+        0,
+        False,
+    )
+    assert calls["radius"]["I"] == pytest.approx(1.99)
+    assert calls["radius"]["C"] == pytest.approx(1.61)
+    assert result["charges"] == [0.0] * 5
+    assert result["metadata"]["basis_family"] == "CEP-31G"
+    assert "StevensKraussBaschJasien1992_CEP" in result["metadata"]["references"]
+
+
+def test_resp_forwards_esp_chunking_options(monkeypatch):
+    assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
+    calls = []
+
+    class FakeBackend:
+        @staticmethod
+        def build_backend_payload(assign, basis, charge, spin, opt):
+            import numpy as np
+
+            return {
+                "atom_coordinates_bohr": np.zeros((3, 3)),
+                "nuclear_charges": np.array([8.0, 1.0, 1.0]),
+            }
+
+        @staticmethod
+        def compute_esp_on_grid(payload, grids, *, memory_limit=None, chunk_policy="auto", safety_factor=0.8):
+            import numpy as np
+
+            calls.append((memory_limit, chunk_policy, safety_factor))
+            return np.zeros(len(grids))
+
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FakeBackend)
+    monkeypatch.setattr(resp_module.resp_core, "get_mk_grid", lambda *args, **kwargs: __import__("numpy").zeros((2, 3)))
+    monkeypatch.setattr(resp_module.resp_core, "fit_resp_from_esp", lambda *args, **kwargs: [0.0, 0.0, 0.0])
+
+    resp_module.resp_fit(
+        assignment,
+        esp_memory_limit="256MB",
+        esp_chunk_policy="grid",
+        esp_safety_factor=0.5,
+        only_esp=True,
+    )
+
+    assert calls == [("256MB", "grid", 0.5)]
 
 
 def test_resp_rejects_unknown_backend():
@@ -240,11 +356,28 @@ def test_resp_explicit_psi4_backend_reports_missing_dependency(monkeypatch):
         resp_module.resp_fit(assignment, backend="psi4")
 
 
+def test_qm_scheduler_windows_psi4_hint_mentions_external_install(monkeypatch):
+    monkeypatch.setattr(qm_scheduler.sys, "platform", "win32")
+
+    with pytest.raises(ImportError, match="official Psi4 installer"):
+        qm_scheduler.backend_import_or_hint("psi4", ImportError("Psi4 is required"))
+
+
 def test_qm_scheduler_exposes_known_backends():
     assert qm_get_backend("pyscf").name == "pyscf"
     assert qm_get_backend("psi4").name == "psi4"
     with pytest.raises(ValueError, match="QM backend should be one of"):
         qm_get_backend("unknown")
+
+
+def test_qm_scheduler_default_backend_matches_platform(monkeypatch):
+    monkeypatch.setattr(qm_scheduler.sys, "platform", "linux")
+    assert qm_scheduler.normalize_backend_name(None) == "pyscf"
+    assert qm_get_backend(None).name == "pyscf"
+
+    monkeypatch.setattr(qm_scheduler.sys, "platform", "win32")
+    assert qm_scheduler.normalize_backend_name(None) == "psi4"
+    assert qm_get_backend(None).name == "psi4"
 
 
 def test_qm_scheduler_runs_pyscf_scf_and_esp_smoke():
@@ -265,6 +398,143 @@ def test_qm_scheduler_runs_pyscf_scf_and_esp_smoke():
     esp_result = qm_compute_esp_on_grid(scf_result, scf_result.coordinates_bohr[:2])
     assert len(esp_result.electronic_esp_au) == 2
     assert set(esp_result.timings) == {"esp"}
+    assert esp_result.diagnostics["mode"] in {"full", "grid_chunk", "shell_grid_chunk"}
+
+
+def test_qm_scheduler_normalizes_esp_request_options(monkeypatch):
+    import numpy as np
+
+    requests = []
+
+    class FakeESPBackend:
+        name = "fakeesp"
+
+        @staticmethod
+        def capabilities():
+            return QMCapabilitySet(supports_scf=False, supports_esp=True)
+
+        @staticmethod
+        def compute_esp(scf_result, request):
+            requests.append(request)
+            return ESPResult(
+                grid_points_bohr=np.asarray(request.grid_points_bohr, dtype=float),
+                electronic_esp_au=np.zeros(len(request.grid_points_bohr), dtype=float),
+            )
+
+    monkeypatch.setitem(qm_scheduler._BACKENDS, "fakeesp", FakeESPBackend)
+    scf_result = SCFResult(
+        backend_name="fakeesp",
+        total_energy=None,
+        converged=True,
+        coordinates_bohr=np.zeros((0, 3), dtype=float),
+        nuclear_charges=np.zeros(0, dtype=float),
+        charge=0,
+        spin=0,
+        atom_symbols=[],
+    )
+
+    result = qm_compute_esp_on_grid(
+        scf_result,
+        np.zeros((3, 3), dtype=float),
+        memory_limit="512MB",
+        chunk_policy="grid",
+        safety_factor=0.5,
+    )
+
+    assert len(result.electronic_esp_au) == 3
+    assert requests[0].memory_limit_bytes == 512 * 1024 * 1024
+    assert requests[0].chunk_policy == "grid"
+    assert requests[0].safety_factor == pytest.approx(0.5)
+
+
+def test_qm_scheduler_runs_pyscf_esp_grid_chunk_mode_smoke():
+    assignment = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    scf_result = qm_run_scf(
+        assignment,
+        backend="pyscf",
+        basis="sto-3g",
+        charge=0,
+        spin=0,
+        optimize_geometry=False,
+    )
+    per_grid_bytes = scf_result.backend_handle["mol"].nao_nr() ** 2 * 8
+    esp_result = qm_compute_esp_on_grid(
+        scf_result,
+        scf_result.coordinates_bohr[:2],
+        memory_limit=per_grid_bytes + 1,
+        chunk_policy="grid",
+        safety_factor=1.0,
+    )
+
+    assert len(esp_result.electronic_esp_au) == 2
+    assert esp_result.diagnostics["mode"] == "grid_chunk"
+    assert esp_result.diagnostics["grid_chunk_size"] == 1
+
+
+def test_pyscf_esp_fake_charge_molecule_inherits_cartesian_basis():
+    import numpy as np
+    from types import SimpleNamespace
+    from XpongeCPP.qm.backends import pyscf_backend
+
+    fake_molecules = []
+
+    class FakeGTO:
+        @staticmethod
+        def fakemol_for_charges(grid_points):
+            fakemol = SimpleNamespace(cart=False, grid_points=np.asarray(grid_points))
+            fake_molecules.append(fakemol)
+            return fakemol
+
+    class FakeDFIncore:
+        @staticmethod
+        def aux_e2(mol, fakemol, shls_slice=None):
+            assert fakemol.cart is True
+            if shls_slice is not None:
+                grid_count = shls_slice[-1] - shls_slice[-2]
+            else:
+                grid_count = len(fakemol.grid_points)
+            return np.ones((1, 1, grid_count))
+
+    fake_df = SimpleNamespace(incore=FakeDFIncore)
+    mol = SimpleNamespace(cart=True)
+    dm = np.ones((1, 1))
+    grids = np.zeros((2, 3))
+
+    full = pyscf_backend._compute_esp_full(np, FakeGTO, fake_df, mol, dm, grids)
+    chunked = pyscf_backend._compute_esp_grid_chunked(np, FakeGTO, fake_df, mol, dm, grids, 1)
+    dual = pyscf_backend._compute_esp_shell_grid_chunked(
+        np, FakeGTO, fake_df, mol, dm, grids, [(0, 1, 0, 1)], 1
+    )
+
+    assert full.tolist() == [1.0, 1.0]
+    assert chunked.tolist() == [1.0, 1.0]
+    assert dual.tolist() == [1.0, 1.0]
+    assert fake_molecules
+    assert all(fakemol.cart is True for fakemol in fake_molecules)
+
+
+def test_qm_scheduler_runs_pyscf_esp_dual_chunk_mode_smoke():
+    assignment = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    scf_result = qm_run_scf(
+        assignment,
+        backend="pyscf",
+        basis="sto-3g",
+        charge=0,
+        spin=0,
+        optimize_geometry=False,
+    )
+    per_grid_bytes = scf_result.backend_handle["mol"].nao_nr() ** 2 * 8
+    esp_result = qm_compute_esp_on_grid(
+        scf_result,
+        scf_result.coordinates_bohr[:2],
+        memory_limit=max(1, per_grid_bytes - 1),
+        chunk_policy="auto",
+        safety_factor=1.0,
+    )
+
+    assert len(esp_result.electronic_esp_au) == 2
+    assert esp_result.diagnostics["mode"] == "shell_grid_chunk"
+    assert esp_result.diagnostics["shell_block_count"] >= 1
 
 
 def test_qm_scheduler_reports_capabilities_for_known_backends():
@@ -272,7 +542,7 @@ def test_qm_scheduler_reports_capabilities_for_known_backends():
     psi4_caps = qm_get_capabilities("psi4")
     assert pyscf_caps.supports_scf and pyscf_caps.supports_esp
     assert pyscf_caps.supports_geometry_optimization
-    assert not pyscf_caps.supports_hessian
+    assert pyscf_caps.supports_hessian
     assert psi4_caps.supports_scf and psi4_caps.supports_esp
     assert psi4_caps.supports_geometry_optimization
     assert not psi4_caps.supports_hessian
@@ -319,10 +589,18 @@ def test_qm_scheduler_supports_non_resp_geometry_optimization_flow(monkeypatch):
     assert assignment.coordinates[0] == pytest.approx([1.0, 2.0, 3.0])
 
 
+def test_qm_scheduler_runs_pyscf_hessian_smoke():
+    assignment = Xponge.get_assignment_from_mol2(str(FORMAMIDE_RESP_MOL2), total_charge="sum")
+    result = qm_compute_hessian(assignment, backend="pyscf", basis="sto-3g", charge=0, spin=0, return_timings=True)
+    assert len(result.atom_symbols) == assignment.atom_count
+    assert result.cartesian_hessian_au.shape == (assignment.atom_count, assignment.atom_count, 3, 3)
+    assert set(result.timings) == {"build", "scf", "hessian", "total"}
+
+
 def test_qm_scheduler_rejects_unsupported_hessian_cleanly():
     assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
     with pytest.raises(QMCapabilityError, match="does not support Hessian"):
-        qm_compute_hessian(assignment, backend="pyscf", basis="sto-3g", charge=0, spin=0)
+        qm_compute_hessian(assignment, backend="psi4", basis="sto-3g", charge=0, spin=0)
 
 
 def test_assign_charge_aliases_and_pubchem_signature_are_xponge_compatible(monkeypatch):
@@ -991,6 +1269,73 @@ def test_resp_debug_view_matches_plain_core():
     )
     _assert_charges_close(debug["final_charges"], plain, tol=1e-8)
     assert set(debug["timings"]) == {"assembly", "stage1", "stage2", "total"}
+
+
+def test_resp_second_stage_restrains_grouped_heavy_atoms_only():
+    cyclohexane = _assignment(
+        "cyclohexane",
+        ["C", "C", "C", "C", "C", "C", "H", "H", "H", "H", "H", "H", "H", "H", "H", "H", "H", "H"],
+        [
+            (0, 1, 1),
+            (1, 2, 1),
+            (2, 3, 1),
+            (3, 4, 1),
+            (4, 5, 1),
+            (5, 0, 1),
+            (0, 6, 1),
+            (0, 7, 1),
+            (1, 8, 1),
+            (1, 9, 1),
+            (2, 10, 1),
+            (2, 11, 1),
+            (3, 12, 1),
+            (3, 13, 1),
+            (4, 14, 1),
+            (4, 15, 1),
+            (5, 16, 1),
+            (5, 17, 1),
+        ],
+    )
+    coordinates_angstrom = [
+        (1.214, 0.701, 0.0),
+        (0.0, 1.402, 0.0),
+        (-1.214, 0.701, 0.0),
+        (-1.214, -0.701, 0.0),
+        (0.0, -1.402, 0.0),
+        (1.214, -0.701, 0.0),
+        (2.157, 1.245, 0.0),
+        (1.214, 0.701, 1.09),
+        (0.0, 2.49, 0.0),
+        (0.0, 1.402, 1.09),
+        (-2.157, 1.245, 0.0),
+        (-1.214, 0.701, 1.09),
+        (-2.157, -1.245, 0.0),
+        (-1.214, -0.701, 1.09),
+        (0.0, -2.49, 0.0),
+        (0.0, -1.402, 1.09),
+        (2.157, -1.245, 0.0),
+        (1.214, -0.701, 1.09),
+    ]
+    bohr_per_angstrom = 1.0 / 0.529177210903
+    atom_coordinates_bohr = [
+        tuple(component * bohr_per_angstrom for component in coordinate) for coordinate in coordinates_angstrom
+    ]
+    grids = resp_core.get_mk_grid(cyclohexane, atom_coordinates_bohr, area_density=0.25, layer=1)
+    debug = resp_core.fit_resp_from_esp_debug(
+        cyclohexane,
+        atom_coordinates_bohr=atom_coordinates_bohr,
+        nuclear_charges=[6.0] * 6 + [1.0] * 12,
+        grid_points_bohr=grids,
+        esp_values_au=[0.0] * len(grids),
+        charge=0,
+        a1=0.0005,
+        a2=0.001,
+        two_stage=True,
+        only_esp=False,
+    )
+
+    assert debug["stage2_restrained_groups"] == [0, 2, 4, 6, 8, 10]
+    assert math.isclose(sum(debug["final_charges"]), 0.0, abs_tol=1e-8)
 
 
 def test_resp_supports_real_mol2_fixture_and_matches_original_xponge():

@@ -31,6 +31,9 @@ class _DihedralForceEntity:
 class _BaseDihedralType:
     _types = {}
 
+    def __new__(cls, name, k, phi0, periodicity):
+        return cls._store(name, k, phi0, periodicity)
+
     @staticmethod
     def _norm(name):
         return str(name).strip().upper()

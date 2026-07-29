@@ -335,9 +335,11 @@ void finalize_topology(H5File &file, std::size_t atom_count,
   write_scalar<std::int64_t>(file, "/topology/atom_count", atom_count);
 }
 
-std::pair<float, float> lj_ab(const std::string &lhs, const std::string &rhs) {
-  const auto a = find_amber_lj_parameter(lhs);
-  const auto b = find_amber_lj_parameter(rhs);
+std::pair<float, float> lj_ab(
+    const Molecule &molecule, const std::string &lhs,
+    const std::string &rhs) {
+  const auto a = resolve_molecule_lj_parameter(molecule, lhs);
+  const auto b = resolve_molecule_lj_parameter(molecule, rhs);
   if (!a || !b)
     throw std::runtime_error("missing Amber LJ parameter for bundled topology");
   const double epsilon = std::sqrt(a->first * b->first);
@@ -413,9 +415,11 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
                       {static_cast<std::int32_t>(item.atom1),
                        static_cast<std::int32_t>(item.atom2)});
     if (materialize_nb14) {
-      const auto lhs = find_amber_lj_type(molecule.atoms[item.atom1].type);
-      const auto rhs = find_amber_lj_type(molecule.atoms[item.atom2].type);
-      const auto [a, b] = lj_ab(lhs, rhs);
+      const auto lhs =
+          resolve_molecule_lj_type(molecule, molecule.atoms[item.atom1].type);
+      const auto rhs =
+          resolve_molecule_lj_type(molecule, molecule.atoms[item.atom2].type);
+      const auto [a, b] = lj_ab(molecule, lhs, rhs);
       nb14_params.insert(nb14_params.end(),
                          {static_cast<float>(item.k_lj * a * 12.0),
                           static_cast<float>(item.k_lj * b * 6.0),
@@ -746,7 +750,7 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
     for (const auto &atom : molecule.atoms) {
       const auto source_type =
           state_b && !atom.lj_type_b.empty() ? atom.lj_type_b : atom.type;
-      const auto name = find_amber_lj_type(source_type);
+      const auto name = resolve_molecule_lj_type(molecule, source_type);
       if (!index.count(name)) {
         index[name] = static_cast<std::int32_t>(names.size());
         names.push_back(name);
@@ -756,7 +760,7 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
     std::vector<float> pair_a, pair_b;
     for (std::size_t i = 0; i < names.size(); ++i)
       for (std::size_t j = 0; j <= i; ++j) {
-        const auto [a, b] = lj_ab(names[i], names[j]);
+        const auto [a, b] = lj_ab(molecule, names[i], names[j]);
         pair_a.push_back(a);
         pair_b.push_back(b);
       }

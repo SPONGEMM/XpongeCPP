@@ -2,6 +2,8 @@
 
 from collections import OrderedDict
 
+from .._core import Assign
+
 
 class AssignRule:
     """Xponge-compatible atom typing rule registry.
@@ -50,4 +52,4 @@ class AssignRule:
     Set_Post_Action = set_post_action
 
 
-__all__ = ["AssignRule"]
+__all__ = ["Assign", "AssignRule"]

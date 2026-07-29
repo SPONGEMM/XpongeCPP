@@ -12,6 +12,13 @@ from conftest import original_xponge_repo
 XPONGE_REPO = original_xponge_repo()
 
 
+def _exported_keys(directory, prefix):
+    return {
+        path.name[len(prefix) + 1 : -4]
+        for path in directory.glob(f"{prefix}_*.txt")
+    }
+
+
 def _run_original_xponge(script):
     if not XPONGE_REPO.exists():
         pytest.skip("local Xponge reference repository is not available")
@@ -396,7 +403,8 @@ MOL 2
 
     assert sorted(mols) == ["MOL"]
     out = Xponge.Save_SPONGE_Input(system, prefix="molitp", dirname=str(tmp_path))
-    assert "nb14_extra" in out
+    assert out is system
+    assert "nb14_extra" in _exported_keys(tmp_path, "molitp")
     lines = (tmp_path / "molitp_nb14_extra.txt").read_text().splitlines()
     assert lines[0] == "2"
     records = [[float(value) for value in line.split()] for line in lines[1:]]
@@ -444,7 +452,13 @@ MOL 3
     mol = Xponge.load_gromacs_topology_file(str(top))
     out = Xponge.Save_SPONGE_Input(mol, prefix="gmx", dirname=str(tmp_path))
 
-    assert {"urey_bradley", "Ryckaert_Bellemans", "nb14_extra", "virtual_atom"}.issubset(out)
+    assert out is mol
+    assert {
+        "urey_bradley",
+        "Ryckaert_Bellemans",
+        "nb14_extra",
+        "virtual_atom",
+    }.issubset(_exported_keys(tmp_path, "gmx"))
     assert (tmp_path / "gmx_urey_bradley.txt").read_text().splitlines()[0] == "1"
     assert (tmp_path / "gmx_Ryckaert_Bellemans.txt").read_text().splitlines()[0] == "1"
     assert (tmp_path / "gmx_nb14_extra.txt").read_text().splitlines()[0] == "1"
@@ -477,7 +491,8 @@ MOL 3
     mol = Xponge.load_opls_itp_file(str(itp))
     out = Xponge.Save_SPONGE_Input(mol, prefix="opls", dirname=str(tmp_path))
 
-    assert "Ryckaert_Bellemans" in out
+    assert out is mol
+    assert "Ryckaert_Bellemans" in _exported_keys(tmp_path, "opls")
     assert (tmp_path / "opls_Ryckaert_Bellemans.txt").read_text().splitlines() == [
         "1",
         "0 1 2 3 0.100000 0.200000 0.300000 0.400000 0.500000 0.600000",
@@ -518,7 +533,10 @@ MOL 3
     assert mol.atom_count == 5
     assert mol.residue_count == 1
     assert mol.validate()
-    assert {"Ryckaert_Bellemans", "nb14_extra", "listed_forces"}.issubset(out)
+    assert out is mol
+    assert {"Ryckaert_Bellemans", "nb14_extra", "listed_forces"}.issubset(
+        _exported_keys(tmp_path, "opls_big")
+    )
     assert (tmp_path / "opls_big_bond.txt").read_text().splitlines()[0] == "4"
     assert (tmp_path / "opls_big_angle.txt").read_text().splitlines()[0] == "3"
     assert (tmp_path / "opls_big_nb14.txt").read_text().splitlines()[0] == "2"
@@ -565,7 +583,10 @@ END
 
     assert mol.residue_count == 1
     assert mol.atom_count == 3
-    assert {"urey_bradley", "nb14_extra"}.issubset(out)
+    assert out is mol
+    assert {"urey_bradley", "nb14_extra"}.issubset(
+        _exported_keys(tmp_path, "charmm")
+    )
     assert (tmp_path / "charmm_urey_bradley.txt").read_text().splitlines()[0] == "1"
     assert (tmp_path / "charmm_nb14_extra.txt").read_text().splitlines()[0] == "2"
 
@@ -606,7 +627,10 @@ END
     assert mol.atom_count == 4
     assert [atom.name for atom in mol.residues[0].atoms] == ["H1", "C1", "C2", "H2"]
     assert mol.validate()
-    assert {"urey_bradley", "nb14_extra"}.issubset(out)
+    assert out is mol
+    assert {"urey_bradley", "nb14_extra"}.issubset(
+        _exported_keys(tmp_path, "charmm_big")
+    )
     assert (tmp_path / "charmm_big_resname.txt").read_text().splitlines() == ["1", "BUT"]
     assert (tmp_path / "charmm_big_bond.txt").read_text().splitlines()[0] == "3"
     assert (tmp_path / "charmm_big_angle.txt").read_text().splitlines()[0] == "2"
@@ -658,7 +682,8 @@ S-S-S 0.0 0.0 0.0 0.0 0.0 0.0 9.9 10.1 11.11 12.12 13.13 0.0 14.14 15.15 16.16 1
     Xponge.load_edip_parameter_file(str(edip), mol)
     out = Xponge.Save_SPONGE_Input(mol, prefix="pair", dirname=str(tmp_path))
 
-    assert {"SW", "EDIP"}.issubset(out)
+    assert out is mol
+    assert {"SW", "EDIP"}.issubset(_exported_keys(tmp_path, "pair"))
     assert (tmp_path / "pair_SW.txt").read_text().splitlines()[0] == "2 1"
     assert (tmp_path / "pair_EDIP.txt").read_text().splitlines()[0] == "2 1"
 
@@ -688,8 +713,11 @@ USER_CHARGES
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="fep", dirname=str(tmp_path))
 
-    assert {"LJ_soft_core", "subsys_division"}.issubset(out)
-    assert "LJ" not in out
+    assert out is mol
+    assert {"LJ_soft_core", "subsys_division"}.issubset(
+        _exported_keys(tmp_path, "fep")
+    )
+    assert "LJ" not in _exported_keys(tmp_path, "fep")
 
 
 def test_martini300_module_supports_loader_driven_small_molecule_export_workflow(tmp_path):
@@ -716,7 +744,8 @@ CHEX 1
     assert system.validate()
     assert (tmp_path / "martini_chex_resname.txt").read_text().splitlines() == ["1", "CHEX"]
     assert (tmp_path / "martini_chex_bond.txt").read_text().splitlines()[0] == "1"
-    assert "LJ" in out
+    assert out is system
+    assert "LJ" in _exported_keys(tmp_path, "martini_chex")
 
 
 def test_martini300_constraints_topology_reports_current_connectivity_limitation_explicitly(tmp_path):
@@ -903,7 +932,8 @@ def test_charmm36_template_peptide_exports_representative_common_files(tmp_path)
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="charmm36_peptide", dirname=str(tmp_path))
 
-    assert sorted(out) == [
+    assert out is mol
+    assert sorted(_exported_keys(tmp_path, "charmm36_peptide")) == [
         "LJ",
         "angle",
         "atom_name",
@@ -932,7 +962,8 @@ def test_oplsaam_template_peptide_exports_representative_common_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="oplsaam_peptide", dirname=str(tmp_path))
 
-    assert sorted(out) == [
+    assert out is mol
+    assert sorted(_exported_keys(tmp_path, "oplsaam_peptide")) == [
         "LJ",
         "angle",
         "atom_name",
@@ -974,7 +1005,8 @@ DMSO 1
 
     out = Xponge.Save_SPONGE_Input(system, prefix="martini_dmso", dirname=str(tmp_path))
 
-    assert sorted(out) == [
+    assert out is system
+    assert sorted(_exported_keys(tmp_path, "martini_dmso")) == [
         "LJ",
         "angle",
         "atom_name",

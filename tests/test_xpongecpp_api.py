@@ -14,6 +14,162 @@ END
 """
 
 
+MMCIF_TERMINAL_TEXT = """\
+data_test
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.auth_atom_id
+_atom_site.label_comp_id
+_atom_site.auth_comp_id
+_atom_site.label_asym_id
+_atom_site.auth_asym_id
+_atom_site.label_seq_id
+_atom_site.auth_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.label_alt_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+ATOM 1 N N N VAL VAL A A 1 1 ? . 0.000 0.000 0.000 1.00 0.00 1
+ATOM 2 C CA CA VAL VAL A A 1 1 ? . 1.450 0.000 0.000 1.00 0.00 1
+ATOM 3 C C C VAL VAL A A 1 1 ? . 2.000 1.420 0.000 1.00 0.00 1
+ATOM 4 O O O VAL VAL A A 1 1 ? . 1.300 2.360 0.000 1.00 0.00 1
+ATOM 5 N N N TRP TRP A A 2 2 ? . 3.250 1.550 0.000 1.00 0.00 1
+ATOM 6 C CA CA TRP TRP A A 2 2 ? . 3.900 2.850 0.000 1.00 0.00 1
+ATOM 7 C C C TRP TRP A A 2 2 ? . 5.300 2.720 0.000 1.00 0.00 1
+ATOM 8 O O O TRP TRP A A 2 2 ? . 6.000 3.650 0.000 1.00 0.00 1
+"""
+
+
+MMCIF_LINK_TEXT = """\
+data_link
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.auth_atom_id
+_atom_site.label_comp_id
+_atom_site.auth_comp_id
+_atom_site.label_asym_id
+_atom_site.auth_asym_id
+_atom_site.label_seq_id
+_atom_site.auth_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.label_alt_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+HETATM 1 C C1 C1 MMA MMA A A 1 1 ? . 0.000 0.000 0.000 1.00 0.00 1
+HETATM 2 N N1 N1 MMB MMB A A 2 2 ? . 1.400 0.000 0.000 1.00 0.00 1
+loop_
+_struct_conn.id
+_struct_conn.conn_type_id
+_struct_conn.ptnr1_label_asym_id
+_struct_conn.ptnr1_label_seq_id
+_struct_conn.ptnr1_label_comp_id
+_struct_conn.ptnr1_label_atom_id
+_struct_conn.ptnr2_label_asym_id
+_struct_conn.ptnr2_label_seq_id
+_struct_conn.ptnr2_label_comp_id
+_struct_conn.ptnr2_label_atom_id
+_struct_conn.pdbx_ptnr1_PDB_ins_code
+_struct_conn.pdbx_ptnr2_PDB_ins_code
+conn1 covale A 1 MMA C1 A 2 MMB N1 ? ?
+"""
+
+
+MMCIF_AUTH_LABEL_COLLISION_TEXT = """\
+data_auth_label_collision
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.auth_atom_id
+_atom_site.label_comp_id
+_atom_site.auth_comp_id
+_atom_site.label_asym_id
+_atom_site.auth_asym_id
+_atom_site.label_seq_id
+_atom_site.auth_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.label_alt_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+ATOM 1 N N N ALA ALA A A 1 -1 ? . 0.000 0.000 0.000 1.00 0.00 1
+ATOM 2 C CA CA ALA ALA A A 1 -1 ? . 1.000 0.000 0.000 1.00 0.00 1
+ATOM 3 C C C ALA ALA A A 1 -1 ? . 2.000 0.000 0.000 1.00 0.00 1
+ATOM 4 O O O ALA ALA A A 1 -1 ? . 3.000 0.000 0.000 1.00 0.00 1
+ATOM 5 N N N GLY GLY A A 2 0 ? . 4.000 0.000 0.000 1.00 0.00 1
+ATOM 6 C CA CA GLY GLY A A 2 0 ? . 5.000 0.000 0.000 1.00 0.00 1
+ATOM 7 C C C GLY GLY A A 2 0 ? . 6.000 0.000 0.000 1.00 0.00 1
+ATOM 8 O O O GLY GLY A A 2 0 ? . 7.000 0.000 0.000 1.00 0.00 1
+ATOM 9 N N N LYS LYS A A 3 1 ? . 8.000 0.000 0.000 1.00 0.00 1
+ATOM 10 C CA CA LYS LYS A A 3 1 ? . 9.000 0.000 0.000 1.00 0.00 1
+ATOM 11 C C C LYS LYS A A 3 1 ? . 10.000 0.000 0.000 1.00 0.00 1
+ATOM 12 O O O LYS LYS A A 3 1 ? . 11.000 0.000 0.000 1.00 0.00 1
+ATOM 13 N N N GLY GLY A A 4 2 ? . 12.000 0.000 0.000 1.00 0.00 1
+ATOM 14 C CA CA GLY GLY A A 4 2 ? . 13.000 0.000 0.000 1.00 0.00 1
+ATOM 15 C C C GLY GLY A A 4 2 ? . 14.000 0.000 0.000 1.00 0.00 1
+ATOM 16 O O O GLY GLY A A 4 2 ? . 15.000 0.000 0.000 1.00 0.00 1
+loop_
+_struct_conn.id
+_struct_conn.conn_type_id
+_struct_conn.ptnr1_label_asym_id
+_struct_conn.ptnr1_label_seq_id
+_struct_conn.ptnr1_label_comp_id
+_struct_conn.ptnr1_label_atom_id
+_struct_conn.ptnr2_label_asym_id
+_struct_conn.ptnr2_label_seq_id
+_struct_conn.ptnr2_label_comp_id
+_struct_conn.ptnr2_label_atom_id
+_struct_conn.pdbx_ptnr1_PDB_ins_code
+_struct_conn.pdbx_ptnr2_PDB_ins_code
+conn1 covale A 1 LYS C A 2 GLY N ? ?
+"""
+
+
+MMCIF_MULTI_MODEL_TEXT = """\
+data_models
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.auth_atom_id
+_atom_site.label_comp_id
+_atom_site.auth_comp_id
+_atom_site.label_asym_id
+_atom_site.auth_asym_id
+_atom_site.label_seq_id
+_atom_site.auth_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.label_alt_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+ATOM 1 N N N GLY GLY A A 1 1 ? . 0.000 0.000 0.000 1.00 0.00 1
+ATOM 2 N N N GLY GLY A A 1 1 ? . 5.000 0.000 0.000 1.00 0.00 2
+"""
+
+
 MOL2_TEXT = """\
 @<TRIPOS>MOLECULE
 WAT
@@ -73,6 +229,23 @@ USER_CHARGES
 """
 
 
+SPLIT_COMPONENT_MOL2_TEXT = """\
+@<TRIPOS>MOLECULE
+SPLIT_COMPONENT
+4 2 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 O1 0.0000 0.0000 0.0000 OW 1 SPL -0.500
+2 O2 4.0000 0.0000 0.0000 OW 1 SPL -0.500
+3 H1 0.9572 0.0000 0.0000 HW 1 SPL 0.500
+4 H2 4.9572 0.0000 0.0000 HW 1 SPL 0.500
+@<TRIPOS>BOND
+1 1 3 1
+2 2 4 1
+"""
+
+
 def _snapshot_export_dir(path: Path) -> dict[str, str]:
     return {item.name: item.read_text() for item in sorted(path.iterdir()) if item.is_file()}
 
@@ -106,6 +279,58 @@ def test_load_pdb_preserves_molecule_residue_atom_layers():
     assert mol.residues[0].name == "NALA"
     assert mol.residues[0].atom_count == 4
     assert mol.residues[0].name2atom("CA").name == "CA"
+
+
+def test_load_mmcif_accepts_explicit_terminal_residue_selectors():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    mol = Xponge.load_mmcif(
+        StringIO(MMCIF_TERMINAL_TEXT),
+        terminal_residues=[
+            {"chain_id": "A", "residue_seq": 1, "n_terminal": True},
+            {"chain_id": "A", "residue_seq": 2, "c_terminal": True},
+        ],
+        infer_terminals=False,
+    )
+
+    assert mol.name == "mmCIF"
+    assert [res.name for res in mol.residues] == ["NVAL", "CTRP"]
+    assert mol.residue_links == [[2, 4]]
+
+
+def test_load_mmcif_reads_internal_links_and_deduplicates_external_links():
+    external_link = {
+        "atom_a": {"chain_id": "A", "residue_seq": 1, "residue_name": "MMA", "atom_name": "C1"},
+        "atom_b": {"chain_id": "A", "residue_seq": 2, "residue_name": "MMB", "atom_name": "N1"},
+    }
+
+    mol = Xponge.load_mmcif(
+        StringIO(MMCIF_LINK_TEXT),
+        ignore_unknown_name=True,
+        infer_terminals=False,
+        residue_links=[external_link],
+    )
+
+    assert [res.name for res in mol.residues] == ["MMA", "MMB"]
+    assert mol.residue_links == [[0, 1]]
+
+
+def test_load_mmcif_prefers_auth_identity_for_struct_conn():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    mol = Xponge.load_mmcif(StringIO(MMCIF_AUTH_LABEL_COLLISION_TEXT), infer_terminals=False)
+
+    assert mol.residue_links == [[2, 4], [6, 8], [10, 12]]
+
+
+def test_load_mmcif_rejects_multi_model_without_explicit_model_id():
+    with pytest.raises(ValueError, match="multiple models"):
+        Xponge.load_mmcif(StringIO(MMCIF_MULTI_MODEL_TEXT))
+
+    mol = Xponge.load_mmcif(StringIO(MMCIF_MULTI_MODEL_TEXT), model_id="2")
+
+    assert mol.atom_count == 1
+    assert mol.atoms[0].x == pytest.approx(5.0)
 
 
 def test_residue_type_is_writable_and_versioned():
@@ -357,7 +582,7 @@ def test_save_sponge_input_writes_core_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="case", dirname=str(tmp_path))
 
-    assert sorted(out) == [
+    expected_outputs = [
         "LJ",
         "angle",
         "atom_name",
@@ -372,8 +597,24 @@ def test_save_sponge_input_writes_core_files(tmp_path):
         "residue",
         "resname",
     ]
+    assert out is mol
+    assert all((tmp_path / f"case_{name}.txt").is_file() for name in expected_outputs)
     assert (tmp_path / "case_coordinate.txt").exists()
     assert (tmp_path / "case_residue.txt").read_text().splitlines()[0] == "4 1"
+
+
+def test_save_sponge_input_translates_explicit_box_origin_without_wrapping(tmp_path):
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    mol = Xponge.load_pdb(StringIO(PDB_TEXT))
+    mol.set_periodic_box(origin=[1.0, 2.0, 3.0], lengths=[20.0, 21.0, 22.0])
+
+    Xponge.Save_SPONGE_Input(mol, prefix="explicit", dirname=str(tmp_path))
+
+    coordinate_lines = (tmp_path / "explicit_coordinate.txt").read_text().splitlines()
+    assert coordinate_lines[1] == "-1.000000 -2.000000 -3.000000"
+    assert coordinate_lines[-1] == "20.000000 21.000000 22.000000 90.000000 90.000000 90.000000"
+    assert [mol.atoms[0].x, mol.atoms[0].y, mol.atoms[0].z] == [0.0, 0.0, 0.0]
 
 
 def test_save_sponge_input_is_byte_identical_across_repeated_exports(tmp_path):
@@ -407,7 +648,7 @@ def test_save_sponge_input_writes_xponge_extra_bonded_force_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="extra", dirname=str(tmp_path))
 
-    assert {"virtual_atom", "improper_dihedral", "cmap", "nb14_extra"}.issubset(out)
+    assert out is mol
     assert (tmp_path / "extra_virtual_atom.txt").read_text().splitlines() == [
         "2 0 1 2 3 0.250000 0.750000",
     ]
@@ -471,9 +712,10 @@ def test_extra_bonded_force_entries_on_removed_solvent_are_dropped_during_ion_re
     out = Xponge.Save_SPONGE_Input(mol, prefix="ion_extra", dirname=str(tmp_path))
 
     assert mol.validate()
-    assert "virtual_atom" not in out
-    assert "improper_dihedral" not in out
-    assert "nb14_extra" not in out
+    assert out is mol
+    assert not (tmp_path / "ion_extra_virtual_atom.txt").exists()
+    assert not (tmp_path / "ion_extra_improper_dihedral.txt").exists()
+    assert not (tmp_path / "ion_extra_nb14_extra.txt").exists()
 
 
 def test_save_sponge_input_writes_xponge_general_bonded_force_files(tmp_path):
@@ -486,7 +728,7 @@ def test_save_sponge_input_writes_xponge_general_bonded_force_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="general", dirname=str(tmp_path))
 
-    assert {"urey_bradley", "Ryckaert_Bellemans", "bond_soft", "listed_forces"}.issubset(out)
+    assert out is mol
     assert (tmp_path / "general_urey_bradley.txt").read_text().splitlines() == [
         "1",
         "0 1 2 1.100000 2.200000 3.300000 4.400000",
@@ -537,7 +779,7 @@ def test_save_sponge_input_writes_xponge_special_state_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="special", dirname=str(tmp_path))
 
-    assert {"gb", "fake_mass", "fake_LJ", "fake_charge", "subsys_division"}.issubset(out)
+    assert out is mol
     assert (tmp_path / "special_gb.txt").read_text().splitlines()[:3] == [
         "5",
         "1.5200 0.8500",
@@ -601,8 +843,9 @@ def test_save_sponge_input_writes_xponge_pairwise_and_softcore_files(tmp_path):
 
     out = Xponge.Save_SPONGE_Input(mol, prefix="pairwise", dirname=str(tmp_path))
 
-    assert {"SW", "EDIP", "LJ_soft_core", "subsys_division"}.issubset(out)
-    assert "LJ" not in out
+    assert out is mol
+    assert (tmp_path / "pairwise_subsys_division.txt").is_file()
+    assert not (tmp_path / "pairwise_LJ.txt").exists()
     assert (tmp_path / "pairwise_SW.txt").read_text().splitlines() == [
         "5 1",
         "# type1 type2 A B epsilon[kcal/mol] p q a gamma sigma[Angstrom] (This is the first required comment line)",
@@ -706,6 +949,28 @@ def test_add_molecule_preserves_source_explicit_bonds(tmp_path):
     assert (tmp_path / "merged_bond.txt").read_text().splitlines()[0] == "6"
 
 
+def test_save_sponge_input_reorders_linked_residue_components_for_export(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
+
+    assert [res.name for res in mol.residues] == ["FAR", "LIG", "WAT"]
+
+    mol.add_residue_link(mol.residues[0].name2atom("O1"), mol.residues[2].name2atom("O"))
+    Xponge.Save_SPONGE_Input(mol, prefix="linked", dirname=str(tmp_path))
+
+    assert [res.name for res in mol.residues] == ["FAR", "WAT", "LIG"]
+    assert mol.residue_links == [[0, 3]]
+    assert (tmp_path / "linked_resname.txt").read_text().splitlines() == ["3", "FAR", "WAT", "LIG"]
+
+
+def test_save_sponge_input_rejects_noncontiguous_atom_components(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(SPLIT_COMPONENT_MOL2_TEXT))
+
+    with pytest.raises(RuntimeError, match="must be continuous for SPONGE input"):
+        Xponge.Save_SPONGE_Input(mol, prefix="split", dirname=str(tmp_path))
+
+
 def test_assign_builds_graph_markers_and_residue_type():
     assign = Xponge.Assign("ASN")
     assign.add_atom("O", 0.0, 0.0, 0.0, name="O")
@@ -718,3 +983,21 @@ def test_assign_builds_graph_markers_and_residue_type():
     restype = assign.to_residuetype("WATX")
     assert restype.atom_count == 3
     assert restype.bond_count == 2
+
+
+def test_pdb_chain_change_splits_equal_residue_numbers_without_ter():
+    """A chain change is a residue boundary even when PDB omits TER."""
+
+    Xponge.register_tip3p()
+    molecule = Xponge.load_pdb(StringIO("""\
+HETATM    1  O   WAT A 148       0.000   0.000   0.000  1.00  0.00           O
+HETATM    2  H1  WAT A 148       0.957   0.000   0.000  1.00  0.00           H
+HETATM    3  H2  WAT A 148      -0.240   0.927   0.000  1.00  0.00           H
+HETATM    4  O   WAT B 148       3.000   0.000   0.000  1.00  0.00           O
+HETATM    5  H1  WAT B 148       3.957   0.000   0.000  1.00  0.00           H
+HETATM    6  H2  WAT B 148       2.760   0.927   0.000  1.00  0.00           H
+"""))
+
+    assert len(molecule.residues) == 2
+    assert [len(residue.atoms) for residue in molecule.residues] == [3, 3]
+    assert [residue.name2atom("O").x for residue in molecule.residues] == [0.0, 3.0]

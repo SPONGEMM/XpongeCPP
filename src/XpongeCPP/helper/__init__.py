@@ -21,7 +21,8 @@ from .._compat.imports import (
     xopen,
     xprint,
 )
-from .._core import Atom, Molecule, Residue, ResidueType
+from .._core import Atom, Molecule, Residue, ResidueType as _CoreResidueType
+from ..legacy_types import _remember_dynamic_residuetype
 from ..gromacs import GlobalSetting
 from .cv import CVSystem
 from .file import file_filter, import_python_script, pdb_filter
@@ -39,6 +40,21 @@ from .math import (
     guess_element_from_mass,
     kabsch,
 )
+
+
+class _ResidueTypeProxy:
+    def __call__(self, *args, **kwargs):
+        if not args and set(kwargs) == {"name"}:
+            value = _CoreResidueType(kwargs["name"])
+        else:
+            value = _CoreResidueType(*args, **kwargs)
+        return _remember_dynamic_residuetype(value)
+
+    def __getattr__(self, name):
+        return getattr(_CoreResidueType, name)
+
+
+ResidueType = _ResidueTypeProxy()
 
 
 class Type(ABC):
@@ -99,6 +115,12 @@ class AtomType(Type):
         self.name = str(name)
         for key, value in kwargs.items():
             setattr(self, key, value)
+        self._parameters.update({key: type(value) for key, value in kwargs.items()})
+        self._types[self.name] = self
+
+    @property
+    def contents(self):
+        return dict(vars(self))
 
     @classmethod
     def get_type(cls, name):
@@ -164,7 +186,7 @@ Entity.register(Residue)
 Entity.register(ResidueLink)
 Entity.register(Molecule)
 AbstractMolecule.register(Residue)
-AbstractMolecule.register(ResidueType)
+AbstractMolecule.register(_CoreResidueType)
 AbstractMolecule.register(Molecule)
 
 __all__ = [

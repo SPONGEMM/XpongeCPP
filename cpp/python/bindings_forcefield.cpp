@@ -1,7 +1,85 @@
 #include "bindings_internal.hpp"
+#include "amber_internal.hpp"
+#include "nonamber_internal.hpp"
+#include "pdb_internal.hpp"
+
+#include <mutex>
 
 namespace xpongecpp {
 namespace {
+
+struct ForceFieldRegistrySnapshot {
+    std::unordered_map<std::string, ResidueType> templates;
+    std::unordered_map<std::string, Molecule> molecule_templates;
+    std::vector<BondParameter> bond_parameters;
+    std::vector<AngleParameter> angle_parameters;
+    std::vector<ProperParameter> proper_parameters;
+    std::vector<ImproperParameter> improper_parameters;
+    std::vector<NB14Parameter> nb14_parameters;
+    std::unordered_map<std::string, AmberCMapParameter> amber_cmap_parameters;
+    std::unordered_map<std::string, std::string> lj_type_by_atom_type;
+    std::unordered_map<std::string, std::pair<double, double>> lj_parameters;
+    std::unordered_map<std::string, double> mass_by_atom_type;
+    LJCombiningRule lj_combining_rule{LJCombiningRule::LorentzBerthelot};
+    std::unordered_map<std::string, AtomTypeInfo> nonamber_atom_types;
+    std::vector<CharmmUreyParameter> charmm_urey_parameters;
+    std::vector<NBfixParameter> nbfix_parameters;
+    std::unordered_map<std::string, std::string> pdb_head_map;
+    std::unordered_map<std::string, std::string> pdb_tail_map;
+    std::unordered_map<std::string, std::string> pdb_save_map;
+    std::unordered_map<std::string, std::string> pdb_alias_map;
+    std::unordered_map<std::string, HisNames> his_map;
+};
+
+ForceFieldRegistrySnapshot capture_forcefield_registries() {
+    std::shared_lock lock(registry_mutex());
+    return {
+        templates(),
+        molecule_templates(),
+        bond_parameters(),
+        angle_parameters(),
+        proper_parameters(),
+        improper_parameters(),
+        nb14_parameters(),
+        amber_cmap_parameters(),
+        lj_type_by_atom_type(),
+        lj_parameters(),
+        mass_by_atom_type(),
+        lj_combining_rule(),
+        atom_type_registry(),
+        charmm_urey_registry(),
+        nbfix_registry(),
+        pdb_head_map(),
+        pdb_tail_map(),
+        pdb_save_map(),
+        pdb_alias_map(),
+        his_map(),
+    };
+}
+
+void restore_forcefield_registries(const ForceFieldRegistrySnapshot& snapshot) {
+    std::unique_lock lock(registry_mutex());
+    templates() = snapshot.templates;
+    molecule_templates() = snapshot.molecule_templates;
+    bond_parameters() = snapshot.bond_parameters;
+    angle_parameters() = snapshot.angle_parameters;
+    proper_parameters() = snapshot.proper_parameters;
+    improper_parameters() = snapshot.improper_parameters;
+    nb14_parameters() = snapshot.nb14_parameters;
+    amber_cmap_parameters() = snapshot.amber_cmap_parameters;
+    lj_type_by_atom_type() = snapshot.lj_type_by_atom_type;
+    lj_parameters() = snapshot.lj_parameters;
+    mass_by_atom_type() = snapshot.mass_by_atom_type;
+    set_lj_combining_rule(snapshot.lj_combining_rule);
+    atom_type_registry() = snapshot.nonamber_atom_types;
+    charmm_urey_registry() = snapshot.charmm_urey_parameters;
+    nbfix_registry() = snapshot.nbfix_parameters;
+    pdb_head_map() = snapshot.pdb_head_map;
+    pdb_tail_map() = snapshot.pdb_tail_map;
+    pdb_save_map() = snapshot.pdb_save_map;
+    pdb_alias_map() = snapshot.pdb_alias_map;
+    his_map() = snapshot.his_map;
+}
 
 LJCombiningRule lj_rule_from_name(std::string name) {
     std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) {
@@ -75,6 +153,21 @@ void add_ions_object(const std::shared_ptr<Molecule>& molecule,
 }  // namespace
 
 void bind_forcefield_module(py::module_& m) {
+    m.def("_snapshot_forcefield_registries", []() {
+        auto* snapshot = new ForceFieldRegistrySnapshot(capture_forcefield_registries());
+        return py::capsule(snapshot, "XpongeCPP.ForceFieldRegistrySnapshot", [](PyObject* capsule) {
+            delete reinterpret_cast<ForceFieldRegistrySnapshot*>(
+                PyCapsule_GetPointer(capsule, "XpongeCPP.ForceFieldRegistrySnapshot"));
+        });
+    });
+    m.def("_restore_forcefield_registries", [](const py::capsule& capsule) {
+        const auto* snapshot = reinterpret_cast<const ForceFieldRegistrySnapshot*>(
+            capsule.get_pointer());
+        if (snapshot == nullptr) {
+            throw py::value_error("invalid force-field registry snapshot");
+        }
+        restore_forcefield_registries(*snapshot);
+    }, py::arg("snapshot"));
     m.def("load_gromacs_topology_file", &load_gromacs_topology_object);
     m.def("load_opls_itp_file", &load_opls_itp_object);
     m.def("load_charmm_parameter_file", [](const std::string& filename) { load_charmm_parameter_file(filename); });

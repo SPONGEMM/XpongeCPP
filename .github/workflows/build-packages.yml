@@ -5,14 +5,20 @@ on:
     branches:
       - main
       - master
-      - "codex/**"
+      - codex/xpongecpp-v1
   pull_request:
   workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  CIBW_BUILD: "cp311-*"
+  CIBW_BUILD: "cp310-* cp311-* cp312-*"
   CIBW_SKIP: "*-musllinux_*"
+  CIBW_TEST_COMMAND: >-
+    python -c "import importlib.util, XpongeCPP, Xponge,
+    XpongeCPP.io_bundle, XpongeCPP.metal_assignment;
+    assert XpongeCPP.__version__ == '0.2.0';
+    assert not hasattr(XpongeCPP, 'MC' + 'PB');
+    assert importlib.util.find_spec('XpongeCPP.' + ('MC' + 'PB').lower()) is None"
   CIBW_BEFORE_ALL_LINUX: >-
     if command -v dnf >/dev/null 2>&1; then dnf install -y hdf5-devel;
     elif command -v yum >/dev/null 2>&1; then yum install -y hdf5-devel;
@@ -21,6 +27,113 @@ env:
   CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair -w {dest_dir} {wheel}"
 
 jobs:
+  sponge-numerical:
+    name: SPONGE CPU numerical parity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout XpongeCPP
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned SPONGE CPU runtime
+        uses: actions/checkout@v4
+        with:
+          repository: SPONGEMM/SPONGE
+          ref: 4c694ebab7032b0ef28d8312115d0f3253800125
+          path: .ci/SPONGE
+
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@v0.9.4
+        with:
+          run-install: false
+
+      - name: Install and build XpongeCPP
+        run: |
+          pixi install
+          pixi run install-dev
+
+      - name: Build pinned SPONGE CPU runtime
+        run: |
+          pixi install --manifest-path .ci/SPONGE/pixi.toml -e dev-cpu
+          pixi run --manifest-path .ci/SPONGE/pixi.toml -e dev-cpu configure
+          pixi run --manifest-path .ci/SPONGE/pixi.toml -e dev-cpu compile
+
+      - name: Run mandatory bundle and 1.7b8 numerical gates
+        shell: bash
+        env:
+          SPONGE_EXECUTABLE: ${{ github.workspace }}/.ci/SPONGE/build-dev-cpu/SPONGE
+        run: |
+          test -x "$SPONGE_EXECUTABLE"
+          pixi run python -m pytest -q \
+            tests/test_bundle_converter.py \
+            tests/test_origin_17b8_numerical_e2e.py
+
+  source-tests:
+    name: Source tests (registry isolation)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install native and Python test dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libhdf5-dev
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run force-field isolation cohort in forward order
+        run: >-
+          python -m pytest -q
+          tests/test_forcefield_registry_isolation.py
+          tests/test_forcefield_families.py
+          tests/test_full_amber_data.py
+          tests/test_glycam_parity.py
+          tests/origin_test_metal_assignment_contracts.py
+          tests/origin_test_metal_assignment_base.py
+          tests/origin_test_metal_assignment_apply.py
+          tests/test_bundle_native.py
+          tests/test_bundle_protocol.py
+          tests/test_bundle_converter.py
+
+      - name: Run force-field isolation cohort in reverse order
+        run: >-
+          python -m pytest -q
+          tests/origin_test_metal_assignment_apply.py
+          tests/origin_test_metal_assignment_base.py
+          tests/origin_test_metal_assignment_contracts.py
+          tests/test_glycam_parity.py
+          tests/test_full_amber_data.py
+          tests/test_forcefield_families.py
+          tests/test_forcefield_registry_isolation.py
+          tests/test_bundle_converter.py
+          tests/test_bundle_protocol.py
+          tests/test_bundle_native.py
+
+      - name: Run Xponge-origin 1.7b8 parity cohorts
+        run: >-
+          python -m pytest -q
+          tests/test_release_020.py
+          tests/test_origin_resp_linear_constraints.py
+          tests/test_origin_io_bundle.py
+          tests/test_origin_io_bundle_reverse.py
+          tests/test_origin_bundle_mdanalysis.py
+          tests/origin_test_metal_assignment_contracts.py
+          tests/origin_test_metal_assignment_artifacts.py
+          tests/origin_test_metal_assignment_base.py
+          tests/origin_test_metal_assignment_base_charge.py
+          tests/origin_test_metal_assignment_resp.py
+          tests/origin_test_metal_assignment_hessian.py
+          tests/origin_test_metal_assignment_apply.py
+
   build-wheel-linux:
     name: Build Linux wheel (${{ matrix.label }})
     runs-on: ${{ matrix.runner }}
@@ -59,22 +172,13 @@ jobs:
       - name: Check wheel metadata
         run: python -m twine check dist/*
 
-      - name: Minimal wheel smoke test
-        shell: bash
-        run: |
-          python -m venv .wheel-smoke
-          .wheel-smoke/bin/python -m pip install --upgrade pip
-          .wheel-smoke/bin/python -m pip install numpy
-          .wheel-smoke/bin/python -m pip install --no-deps dist/*.whl
-          .wheel-smoke/bin/python -c "import XpongeCPP, Xponge; print(XpongeCPP.__version__)"
-
       - name: Full dependency install test (Linux x64 only)
         if: ${{ matrix.full-deps }}
         shell: bash
         run: |
           python -m venv .wheel-full
           .wheel-full/bin/python -m pip install --upgrade pip
-          .wheel-full/bin/python -m pip install dist/*.whl
+          .wheel-full/bin/python -m pip install dist/*cp311*.whl
           .wheel-full/bin/python -c "import XpongeCPP, Xponge; import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special import gb; print(XpongeCPP.__version__)"
 
       - name: Upload wheel artifact
@@ -138,20 +242,6 @@ jobs:
 
       - name: Check wheel metadata
         run: python -m twine check dist/*
-
-      - name: Minimal wheel smoke test
-        shell: bash
-        run: |
-          python -m venv .wheel-smoke
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            PY=.wheel-smoke/Scripts/python.exe
-          else
-            PY=.wheel-smoke/bin/python
-          fi
-          "$PY" -m pip install --upgrade pip
-          "$PY" -m pip install numpy
-          "$PY" -m pip install --no-deps dist/*.whl
-          "$PY" -c "import XpongeCPP, Xponge; print(XpongeCPP.__version__)"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4

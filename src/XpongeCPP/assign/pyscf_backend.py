@@ -7,11 +7,13 @@ from ..qm.scheduler import compute_esp_on_grid as _compute_esp_on_grid
 from ..qm.scheduler import run_scf as _run_scf
 
 
-def build_backend_payload(assign, basis, charge, spin, opt, return_timings=False):
+def build_backend_payload(assign, basis, charge, spin, opt, return_timings=False, ecp=None, cart=None):
     scf_result = _run_scf(
         assign,
         backend="pyscf",
         basis=basis,
+        ecp=ecp,
+        cart=cart,
         charge=charge,
         spin=spin,
         optimize_geometry=opt,
@@ -30,6 +32,12 @@ def build_backend_payload(assign, basis, charge, spin, opt, return_timings=False
     return payload
 
 
-def compute_esp_on_grid(payload, grid_points_bohr):
-    esp_result = _compute_esp_on_grid(payload["scf_result"], grid_points_bohr)
+def compute_esp_on_grid(payload, grid_points_bohr, *, memory_limit=None, chunk_policy="auto", safety_factor=0.8):
+    esp_result = _compute_esp_on_grid(
+        payload["scf_result"],
+        grid_points_bohr,
+        memory_limit=memory_limit,
+        chunk_policy=chunk_policy,
+        safety_factor=safety_factor,
+    )
     return esp_result.electronic_esp_au

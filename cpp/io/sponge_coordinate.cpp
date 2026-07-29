@@ -31,6 +31,9 @@ std::array<double, 6> sponge_coordinate_box_for_export(const Molecule& molecule)
 }
 
 std::array<double, 3> sponge_coordinate_shift_for_export(const Molecule& molecule) {
+    if (molecule.has_box_origin) {
+        return {-molecule.box_origin[0], -molecule.box_origin[1], -molecule.box_origin[2]};
+    }
     if (molecule.has_box || molecule.atoms.empty()) {
         return {0.0, 0.0, 0.0};
     }

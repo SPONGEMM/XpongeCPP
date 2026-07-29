@@ -48,35 +48,9 @@ def _read_text_source(source):
 
 
 def _rdmol_to_assignment(rdmol):
-    assignment = Assign()
-    conf = rdmol.GetConformer()
-    for atom in rdmol.GetAtoms():
-        pos = conf.GetAtomPosition(atom.GetIdx())
-        assignment.add_atom(atom.GetSymbol(), pos.x, pos.y, pos.z)
-        if atom.GetFormalCharge():
-            assignment.set_formal_charge(assignment.atom_count - 1, atom.GetFormalCharge())
-    has_unknown_bond = False
-    from rdkit import Chem
-    for bond in rdmol.GetBonds():
-        bond_type = bond.GetBondType()
-        if bond_type == Chem.BondType.UNSPECIFIED:
-            order = -1
-        elif bond_type == Chem.BondType.SINGLE:
-            order = 1
-        elif bond_type == Chem.BondType.DOUBLE:
-            order = 2
-        elif bond_type == Chem.BondType.TRIPLE:
-            order = 3
-        elif bond_type == Chem.BondType.AROMATIC:
-            order = -1
-            has_unknown_bond = True
-        else:
-            raise NotImplementedError(f"Unknown RDKit bond type {bond_type}")
-        assignment.add_bond(bond.GetBeginAtomIdx(), bond.GetEndAtomIdx(), order)
-    assignment.determine_ring_and_bond_type()
-    if has_unknown_bond:
-        assignment.determine_bond_order()
-    return assignment
+    from .helper.rdkit import rdmol_to_assign
+
+    return rdmol_to_assign(rdmol)
 
 
 def get_assignment_from_pdb(file, only_residue="", bond_tolerance=1.0, total_charge=None):

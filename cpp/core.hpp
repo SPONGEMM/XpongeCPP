@@ -76,6 +76,31 @@ struct Angle {
     double theta{0.0};
 };
 
+struct BondParameterOverride {
+    AtomId atom1{0};
+    AtomId atom2{0};
+    double k{0.0};
+    double length{0.0};
+    std::string source;
+};
+
+struct AngleParameterOverride {
+    AtomId atom1{0};
+    AtomId atom2{0};
+    AtomId atom3{0};
+    double k{0.0};
+    double theta{0.0};
+    std::string source;
+};
+
+struct LJParameterOverride {
+    std::string atom_type;
+    std::string lj_type;
+    double epsilon{0.0};
+    double rmin{0.0};
+    std::string source;
+};
+
 struct Dihedral {
     AtomId atom1{0};
     AtomId atom2{0};
@@ -303,6 +328,42 @@ struct PdbLoadOptions {
     bool ignore_conect{true};
     bool read_cryst1{true};
     std::vector<std::string> unterminal_residues;
+    struct TerminalResidue {
+        char chain_id{' '};
+        int resseq{0};
+        char insertion_code{' '};
+        bool n_terminal{false};
+        bool c_terminal{false};
+    };
+    std::vector<TerminalResidue> terminal_residues;
+    bool infer_terminals{true};
+};
+
+struct MmcifResidueLinkAtom {
+    char chain_id{' '};
+    int resseq{0};
+    char insertion_code{' '};
+    std::string residue_name;
+    std::string atom_name;
+};
+
+struct MmcifResidueLink {
+    MmcifResidueLinkAtom atom1;
+    MmcifResidueLinkAtom atom2;
+};
+
+struct MmcifLoadOptions {
+    bool judge_histone{true};
+    char position_need{'A'};
+    bool ignore_hydrogen{false};
+    bool ignore_unknown_name{false};
+    bool ignore_seqres{true};
+    bool read_cell{true};
+    std::vector<std::string> unterminal_residues;
+    std::vector<PdbLoadOptions::TerminalResidue> terminal_residues;
+    bool infer_terminals{true};
+    std::optional<std::string> model_id;
+    std::vector<MmcifResidueLink> residue_links;
 };
 
 class Molecule {
@@ -314,6 +375,10 @@ public:
     std::vector<Residue> residues;
     std::vector<ResidueLink> explicit_bonds;
     std::vector<ResidueLink> residue_links;
+    std::vector<ResidueLink> coordination_bonds;
+    std::vector<BondParameterOverride> bond_parameter_overrides;
+    std::vector<AngleParameterOverride> angle_parameter_overrides;
+    std::vector<LJParameterOverride> lj_parameter_overrides;
     std::vector<VirtualAtom2> virtual_atoms;
     std::vector<HarmonicImproper> harmonic_impropers;
     std::vector<CMapType> cmap_types;
@@ -327,8 +392,10 @@ public:
     std::unordered_map<std::string, EDIPParameter> edip_parameters;
     std::optional<Topology> topology_override;
     std::array<double, 3> box_length{0.0, 0.0, 0.0};
+    std::array<double, 3> box_origin{0.0, 0.0, 0.0};
     std::array<double, 3> box_angle{90.0, 90.0, 90.0};
     bool has_box{false};
+    bool has_box_origin{false};
     bool has_gb_parameters{false};
     bool write_min_bonded_parameters{false};
     bool write_subsys_division{false};
@@ -344,7 +411,19 @@ public:
     void append_residue_from_type(const ResidueType& type, double dx, double dy, double dz);
     void add_molecule(const Molecule& other);
     void add_molecule_linked(const Molecule& other, bool link);
+    void add_coordination_bond(AtomId atom1, AtomId atom2);
     void add_residue_link(AtomId atom1, AtomId atom2);
+    void set_bond_parameter_override(
+        AtomId atom1, AtomId atom2, double k, double length,
+        const std::string& source);
+    void set_angle_parameter_override(
+        AtomId atom1, AtomId atom2, AtomId atom3, double k, double theta,
+        const std::string& source);
+    void set_lj_parameter_override(
+        const std::string& atom_type, const std::string& lj_type,
+        double epsilon, double rmin, const std::string& source);
+    void replace_from(const Molecule& other);
+    bool has_topology_override() const noexcept;
     void add_virtual_atom2(AtomId virtual_atom, AtomId atom0, AtomId atom1, AtomId atom2, double k1, double k2);
     void add_improper_dihedral(AtomId atom0, AtomId atom1, AtomId atom2, AtomId atom3, double k, double phi0);
     std::uint32_t add_cmap_type(std::uint32_t resolution, const std::vector<double>& parameters);
@@ -366,6 +445,8 @@ public:
                        double q0, double u1, double u2, double u3, double u4);
     void set_ignore_missing_atoms(bool enabled = true) noexcept;
     void set_box_padding(double padding, bool center);
+    void set_periodic_box(const std::array<double, 3>& origin, const std::array<double, 3>& lengths,
+                          const std::array<double, 3>& angles = {90.0, 90.0, 90.0});
     void replace_residues(const std::unordered_map<ResidueId, Molecule>& replacements,
                           const std::vector<double>& residue_sort_keys = {}, bool sort = true);
     void reorder_atoms_by_template(const Molecule& template_molecule);
@@ -385,6 +466,7 @@ public:
     std::vector<double> charges;
     std::vector<int> formal_charges;
     std::vector<std::unordered_map<std::uint32_t, int>> bonds;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> bond_sequence;
     std::vector<std::unordered_map<std::uint32_t, std::set<std::string>>> bond_markers;
     std::vector<std::unordered_map<std::string, int>> atom_markers;
     std::vector<std::string> atom_types;
@@ -432,6 +514,8 @@ public:
 
 Molecule load_pdb_text(const std::string& text);
 Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options);
+Molecule load_mmcif_text(const std::string& text);
+Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& options);
 Molecule load_mol2_text(const std::string& text);
 Assign get_assignment_from_mol2_text(const std::string& text,
                                      std::optional<int> total_charge = std::nullopt,
@@ -442,6 +526,7 @@ Assign get_assignment_from_residuetype(const ResidueType& residue_type);
 std::string assignment_to_mol2_text(const Assign& assignment, const std::string& residue_name);
 std::string assignment_to_pdb_text(const Assign& assignment, const std::string& residue_name);
 std::vector<std::string> implemented_gaff_assign_types();
+std::vector<std::string> implemented_gaff2_assign_types();
 std::vector<std::array<double, 3>> generate_resp_mk_grid(
     const std::vector<std::string>& atoms,
     const std::vector<std::array<double, 3>>& atom_coordinates_bohr,
@@ -453,6 +538,7 @@ struct RespFitDebugResult {
     std::vector<double> esp_charges;
     std::vector<double> stage1_charges;
     std::vector<double> final_charges;
+    std::vector<int> stage2_restrained_groups;
     std::unordered_map<std::string, double> timings;
 };
 std::vector<double> fit_resp_from_esp_cpp(
@@ -481,13 +567,19 @@ RespFitDebugResult fit_resp_from_esp_cpp_debug(
     bool two_stage = true,
     bool only_esp = false
 );
+std::vector<double> solve_resp_constrained_quadratic_cpp(
+    const std::vector<std::vector<double>>& quadratic_matrix,
+    const std::vector<double>& linear_term,
+    const std::vector<std::vector<double>>& constraint_matrix,
+    const std::vector<double>& constraint_targets
+);
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, double distance, double tolerance,
                      std::int64_t n_solvent, std::uint64_t seed = 0);
 void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::array<double, 6>& distance,
                      double tolerance, std::int64_t n_solvent, std::uint64_t seed = 0);
 void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts,
               std::uint64_t seed = 0, const std::string& solvent_residue = "WAT");
-std::unordered_map<std::string, std::filesystem::path> save_sponge_input(const Molecule& molecule,
+std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecule& molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname);
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input_bundle(
@@ -551,10 +643,16 @@ std::vector<DihedralTerm> find_amber_proper_terms(const std::array<std::string, 
 std::optional<DihedralTerm> find_amber_improper_term(const std::array<std::string, 4>& atom_types);
 std::optional<AmberImproperMatch> find_amber_improper_match(const std::array<std::string, 4>& atom_types);
 std::optional<NB14Scale> find_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4);
+std::optional<NB14Scale> find_amber_nb14_dihedral_scale(
+    const std::array<std::string, 4>& atom_types);
 std::optional<BondTerm> find_amber_bond_term(const std::string& atom_type1, const std::string& atom_type2);
 std::optional<AngleTerm> find_amber_angle_term(const std::array<std::string, 3>& atom_types);
 std::string find_amber_lj_type(const std::string& atom_type);
 std::optional<std::pair<double, double>> find_amber_lj_parameter(const std::string& lj_type);
+std::string resolve_molecule_lj_type(
+    const Molecule& molecule, const std::string& atom_type);
+std::optional<std::pair<double, double>> resolve_molecule_lj_parameter(
+    const Molecule& molecule, const std::string& lj_type);
 std::optional<double> find_amber_atom_type_mass(const std::string& atom_type);
 std::optional<double> find_external_atom_type_mass(const std::string& atom_type);
 std::pair<Molecule, Molecule> merge_dual_topology(const Molecule& molecule, ResidueId residue_index,
