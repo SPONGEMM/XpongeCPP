@@ -1,9 +1,4 @@
-"""Default RESP electrostatic-potential parameters.
-
-The public API intentionally exposes these as Xponge RESP defaults. The table is
-kept numeric and minimal: element identity, vdW/MK radii, inclusion flag, and the
-RESP basis-family id used by the resolver.
-"""
+"""Default RESP electrostatic-potential parameters."""
 
 from __future__ import annotations
 
@@ -155,14 +150,7 @@ _LEGACY_SYMBOLS = {
     "Uuh": "Lv",
 }
 
-RESP_PARAMETERS_BY_SYMBOL = {
-    row[1]: RespParameter(*row)
-    for row in _PARAMETER_ROWS
-}
-RESP_PARAMETERS_BY_Z = {
-    row[0]: RespParameter(*row)
-    for row in _PARAMETER_ROWS
-}
+RESP_PARAMETERS_BY_SYMBOL = {row[1]: RespParameter(*row) for row in _PARAMETER_ROWS}
 
 
 def normalize_element_symbol(symbol: str) -> str:
@@ -188,16 +176,19 @@ def get_resp_mk_radius(symbol: str) -> float:
     return float(DEFAULT_MK_RADIUS)
 
 
-def get_resp_mk_radii(symbols) -> list[float]:
-    return [get_resp_mk_radius(symbol) for symbol in symbols]
-
-
 def get_resp_radius_overrides(symbols) -> dict[str, float]:
     return {normalize_element_symbol(symbol): get_resp_mk_radius(symbol) for symbol in set(symbols)}
 
 
 def select_resp_basis_family(symbols) -> str:
-    basis_id = max(get_resp_parameter(symbol).basis_set for symbol in symbols)
+    parameters = tuple(get_resp_parameter(symbol) for symbol in symbols)
+    basis_id = max(parameter.basis_set for parameter in parameters)
+    # The historical table assigns first-row transition metals to the same
+    # numeric family as organic elements.  That would silently choose an
+    # all-electron 6-31G* setup for Fe/Zn.  Use the explicit SDD/ECP family for
+    # the K-Zn block instead; mixed models then resolve one coherent family.
+    if any(19 <= parameter.atomic_number <= 30 for parameter in parameters):
+        basis_id = max(basis_id, 3)
     try:
         return BASIS_ID_TO_FAMILY[basis_id]
     except KeyError as exc:

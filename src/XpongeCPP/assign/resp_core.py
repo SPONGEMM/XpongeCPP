@@ -247,10 +247,20 @@ def _second_stage_groups(assign):
             for neighbor in assign.bonds[atom]
             if assign.atoms[int(neighbor)] == "H"
         )
-        coordination = len(assign.bonds[atom])
-        if coordination == 4 and hydrogens:
+        atom_judge = getattr(assign, "Atom_Judge", None)
+        is_c4 = (
+            bool(atom_judge(atom, "C4"))
+            if callable(atom_judge)
+            else len(assign.bonds[atom]) == 4
+        )
+        is_c3 = (
+            bool(atom_judge(atom, "C3"))
+            if callable(atom_judge)
+            else len(assign.bonds[atom]) == 3
+        )
+        if is_c4 and hydrogens:
             groups.extend(([atom], hydrogens))
-        elif coordination == 3 and len(hydrogens) == 2:
+        elif is_c3 and len(hydrogens) == 2:
             groups.extend(([atom], hydrogens))
     return groups
 

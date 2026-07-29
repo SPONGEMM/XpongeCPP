@@ -152,19 +152,21 @@ def test_bundle_to_legacy_checks_all_conflicts_before_writing(tmp_path):
     assert not (output_dir / "system_charge.txt").exists()
 
 
-def test_bundle_to_legacy_rejects_unsupported_typed_force(tmp_path):
+def test_bundle_to_legacy_exports_supported_typed_bond_soft_force(tmp_path):
     _h5py = pytest.importorskip("h5py")
     bundle_dir = tmp_path / "bundle"
     molecule = _peptide()
     molecule.add_bond_soft(1, 0, 12.5, 1.25, 1)
     Xponge.save_sponge_input_bundle(molecule, "soft", bundle_dir)
 
-    with pytest.raises(BundleCapabilityError, match="/forcefield/bond_soft"):
-        convert_bundle_to_legacy(
-            bundle_dir,
-            tmp_path / "converted",
-            prefix="soft",
-        )
+    converted = tmp_path / "converted"
+    convert_bundle_to_legacy(
+        bundle_dir,
+        converted,
+        prefix="soft",
+    )
+    values = (converted / "soft_bond_soft.txt").read_text().split()
+    assert values == ["1", "0", "1", "12.5", "1.25", "1"]
 
 
 def test_bundle_to_legacy_class_and_legacy_import_path(tmp_path):

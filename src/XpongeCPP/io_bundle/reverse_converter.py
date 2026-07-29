@@ -1,36 +1,31 @@
-"""Convert validated SPONGE bundles into direct/legacy input files."""
+"""Bundled SPONGE input to direct/legacy input conversion."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Callable
 
-import numpy as np
-
-from .case import BundleCase, bundle_case_from_prefix, scan_bundle_case
+from .bundle_case import BundleCase, bundle_case_from_prefix, scan_bundle_case
+from .bundle_reader import BundleReader
+from .contracts import (
+    CONTRACTS,
+    IOContract,
+    contracts_by_legacy_key,
+    reversible_contracts,
+    validate_contract_registry,
+)
 from .errors import (
     BundleCapabilityError,
     BundleExportError,
+    BundlePathError,
     BundleValidationError,
 )
+from .exporters import EXPORTERS, ExportContext, validate_exporter_registry
+from .legacy_case import render_mdin_without_keys
 from .legacy_materializer import LegacyMaterializer, LegacyPayload
 from .manifest import ManifestEntry, ReverseConversionManifest
-from .reader import BundleReader
 
 
-_TOPOLOGY = "topology.spgt.h5"
-_RESTART = "restart.spgr.h5"
-_UNSUPPORTED_ROOTS = (
-    "/forcefield/virtual_atom",
-    "/forcefield/urey_bradley",
-    "/forcefield/bond_soft",
-    "/forcefield/custom_force",
-    "/forcefield/gb",
-    "/forcefield/subsys_division",
-    "/forcefield/cmap",
-    "/forcefield/lj_soft_core",
-)
 _H5_INPUT_KEYS = {
     "input_h5_topology_path",
     "input_h5_protocol_path",
@@ -42,51 +37,8 @@ _H5_INPUT_KEYS = {
 }
 
 
-def _text_values(values) -> list[str]:
-    result = []
-    for value in np.asarray(values).reshape(-1):
-        if isinstance(value, (bytes, np.bytes_)):
-            result.append(bytes(value).decode("utf-8"))
-        else:
-            result.append(str(value))
-    return result
-
-
-def _fixed_rows(rows, precision: int = 6) -> str:
-    return "".join(
-        " ".join(
-            str(int(value))
-            if isinstance(value, (int, np.integer))
-            else f"{float(value):.{precision}f}"
-            for value in row
-        )
-        + "\n"
-        for row in rows
-    )
-
-
-def _box_dimensions(edges) -> np.ndarray:
-    cell = np.asarray(edges, dtype=np.float64).reshape(3, 3)
-    lengths = np.linalg.norm(cell, axis=1)
-    if np.any(lengths <= 0):
-        raise BundleExportError("bundle box edges must have positive lengths")
-
-    def angle(lhs, rhs, lhs_length, rhs_length):
-        cosine = np.dot(lhs, rhs) / (lhs_length * rhs_length)
-        return np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))
-
-    return np.asarray(
-        [
-            *lengths,
-            angle(cell[1], cell[2], lengths[1], lengths[2]),
-            angle(cell[0], cell[2], lengths[0], lengths[2]),
-            angle(cell[0], cell[1], lengths[0], lengths[1]),
-        ]
-    )
-
-
 class BundleToLegacyConverter:
-    """Materialize the lossless core of a native XpongeCPP input bundle."""
+    """Materialize direct/legacy SPONGE input files from bundled artifacts."""
 
     def __init__(
         self,
@@ -101,406 +53,411 @@ class BundleToLegacyConverter:
         self.output_dir = Path(output_dir).resolve()
         self.prefix = prefix or "input"
         self.strict = strict
-        self.materializer = LegacyMaterializer(
-            self.output_dir, overwrite=overwrite
-        )
+        self.materializer = LegacyMaterializer(self.output_dir, overwrite=overwrite)
         self.manifest = ReverseConversionManifest(
-            bundle_root=str(case.root),
+            bundle_root=str(self.case.root),
             output_root=str(self.output_dir),
-            mode=case.mode,
+            mode=self.case.mode,
         )
-        self._bindings: dict[str, str] = {}
+        self._contracts_by_key = contracts_by_legacy_key()
+        self._materialized_keys: set[str] = set()
+        self._materialized_groups: set[str] = set()
 
     def convert(self, *, dry_run: bool = False) -> ReverseConversionManifest:
-        """Plan, validate, and optionally write direct SPONGE inputs."""
+        """Run reverse conversion and return its manifest."""
 
+        validate_contract_registry()
+        validate_exporter_registry()
         with BundleReader(self.case, strict=self.strict) as reader:
             self.manifest.warnings.extend(reader.warnings)
-            self._validate_capabilities(reader)
-            exporters: tuple[tuple[str, Callable[[BundleReader], str]], ...] = (
-                ("residue", self._export_residue),
-                ("resname", self._export_resname),
-                ("atom_name", self._export_atom_name),
-                ("atom_type_name", self._export_atom_type_name),
-                ("mass", self._export_mass),
-                ("charge", self._export_charge),
-                ("coordinate", self._export_coordinate),
-                ("LJ", self._export_lj),
-                ("bond", self._export_bond),
-                ("angle", self._export_angle),
-                ("dihedral", self._export_dihedral),
-                ("exclude", self._export_exclude),
-                ("nb14", self._export_nb14),
+            sidecars = {
+                bundle_file: reader.read_legacy_sidecars(bundle_file)
+                for bundle_file in (
+                    "topology.spgt.h5",
+                    "protocol.spgp.h5",
+                    "restart.spgr.h5",
+                    "trajectory.spg.h5md",
+                )
+                if reader.has_bundle_file(bundle_file)
+            }
+            context = ExportContext(
+                mode=self.case.mode,
+                prefix=self.prefix,
+                particle_stream=self.case.particle_stream,
             )
-            if reader.contains(_TOPOLOGY, "/forcefield/improper/atoms"):
-                exporters += (("improper_dihedral", self._export_improper),)
-            for key, exporter in exporters:
-                self._plan(key, exporter(reader), self._source_for(key))
-            self._restore_sidecars(reader)
+            contracts = sorted(
+                reversible_contracts(self.case.mode),
+                key=lambda contract: {
+                    "typed_required": 0,
+                    "typed_or_sidecar": 1,
+                    "embedded_text": 2,
+                    "sidecar_only": 3,
+                    "scalar": 4,
+                }.get(contract.reverse_policy, 5),
+            )
+            for contract in contracts:
+                self._materialize_contract(contract, reader, sidecars, context)
+            self._materialize_dynamic_sidecars()
+            self._materialize_xponge_metadata(reader)
 
-        self._plan_mdin()
+        mdin_target = self._plan_legacy_mdin()
+        self.manifest.generated_mdin = str(mdin_target)
+        self.manifest.add(
+            ManifestEntry(
+                contract_id="run_mdin.legacy_generated",
+                status="mdin_binding_generated",
+                source_path=str(self.case.mdin_path),
+                target_path=str(mdin_target),
+                bundle_file="run.mdin",
+                direction="input",
+                component="run_policy",
+                payload_kind="file",
+                source_kind="bundled_mdin",
+            )
+        )
+
         if not dry_run:
-            manifest_path = self.output_dir / "manifest.bundle_to_legacy.json"
-            manifest_payload = json.dumps(
-                self.manifest.to_dict(), indent=2, sort_keys=True
-            ) + "\n"
-            self.materializer.plan(
-                LegacyPayload("__manifest__", manifest_payload),
-                manifest_path.name,
+            manifest_target = self.output_dir / "manifest.bundle_to_legacy.json"
+            self.materializer.plan_payload(
+                LegacyPayload(
+                    key="__manifest__",
+                    data=json.dumps(self.manifest.to_dict(), indent=2, sort_keys=True) + "\n",
+                    source_kind="manifest",
+                ),
+                manifest_target.name,
             )
             self.materializer.write_all()
         else:
             self.materializer.validate_targets()
         return self.manifest
 
-    def _problem(self, message: str) -> None:
-        if self.strict:
-            raise BundleCapabilityError(message)
-        self.manifest.warnings.append(message)
-
-    def _validate_capabilities(self, reader: BundleReader) -> None:
-        for root in _UNSUPPORTED_ROOTS:
-            if reader.contains(_TOPOLOGY, root):
-                if root == "/forcefield/lj_soft_core":
-                    raise BundleCapabilityError(
-                        "legacy conversion does not yet support typed data at "
-                        f"{root}"
-                    )
-                self._problem(
-                    f"legacy conversion does not yet support typed data at {root}"
-                )
-        params = np.asarray(reader.read(_TOPOLOGY, "/forcefield/nb14/params"))
-        if params.ndim != 2 or params.shape[1] != 2:
-            raise BundleCapabilityError(
-                "legacy nb14 conversion requires params shape (N, 2); "
-                f"got {params.shape}"
-            )
-        if reader.has_bundle_file("protocol.spgp.h5"):
-            for key in ("cv_count", "restraint_count"):
-                path = f"/protocol/{key}"
-                if reader.contains("protocol.spgp.h5", path):
-                    value = int(
-                        reader.read_scalar("protocol.spgp.h5", path)
-                    )
-                    if value:
-                        self._problem(
-                            f"legacy conversion does not yet support {key}={value}"
-                        )
-        try:
-            charge_unit = reader.read_attribute(
-                _TOPOLOGY, "/atoms/charge", "unit"
-            )
-        except BundleValidationError:
-            self._problem("/atoms/charge must declare unit='Amber'")
-        else:
-            if charge_unit != "Amber":
-                self._problem(
-                    f"/atoms/charge unit is {charge_unit!r}, expected 'Amber'"
-                )
-
-    def _source_for(self, key: str) -> str:
-        if key == "coordinate":
-            return str(self.case.restart_path)
-        return str(self.case.topology_path)
-
-    def _plan(
-        self, key: str, payload: str | bytes, source_path: str
-    ) -> Path:
-        filename = f"{self.prefix}_{key}.txt"
-        target = self.materializer.plan(LegacyPayload(key, payload), filename)
-        self._bindings[f"{key}_in_file"] = filename
-        self.manifest.add(
-            ManifestEntry(
-                key=key,
-                source_path=source_path,
-                target_path=str(target),
-            )
-        )
-        return target
-
-    def _restore_sidecars(self, reader: BundleReader) -> None:
-        for bundle_file in (_TOPOLOGY, "protocol.spgp.h5", _RESTART):
-            if not reader.has_bundle_file(bundle_file):
-                continue
-            for key, source in reader.read_legacy_sidecars(bundle_file).items():
-                if f"{key}_in_file" in self._bindings:
-                    continue
-                target = self._plan(
-                    key,
-                    source.read_bytes(),
-                    str(source),
-                )
-                self.manifest.entries[-1] = ManifestEntry(
-                    key=key,
-                    source_path=str(source),
-                    target_path=str(target),
-                    status="sidecar_restored",
-                )
-
-    def _plan_mdin(self) -> None:
-        lines = []
-        for key, value in self.case.commands.items():
-            if key not in _H5_INPUT_KEYS and not key.endswith("_in_file"):
-                lines.append(f'{key} = "{value}"')
-        for key, value in sorted(self._bindings.items()):
-            lines.append(f'{key} = "{value}"')
-        payload = "\n".join(lines) + "\n"
-        target = self.materializer.plan(
-            LegacyPayload("run_mdin", payload), "mdin.legacy.spg.toml"
-        )
-        self.manifest.generated_mdin = str(target)
-        self.manifest.add(
-            ManifestEntry(
-                key="run_mdin",
-                source_path=str(self.case.mdin_path or self.case.root),
-                target_path=str(target),
-                status="mdin_binding_generated",
-            )
-        )
-
-    def _read_required(self, reader: BundleReader, path: str):
-        if not reader.contains(_TOPOLOGY, path):
-            raise BundleValidationError(f"{_TOPOLOGY} is missing {path}")
-        return reader.read(_TOPOLOGY, path)
-
-    def _export_residue(self, reader: BundleReader) -> str:
-        atom_count = int(reader.read_scalar(_TOPOLOGY, "/topology/atom_count"))
-        offsets = np.asarray(
-            self._read_required(reader, "/residues/atom_offset"), dtype=np.int64
-        )
-        if offsets.ndim != 1 or len(offsets) < 1 or offsets[0] != 0:
-            raise BundleExportError("invalid /residues/atom_offset")
-        counts = np.diff(offsets)
-        if offsets[-1] != atom_count or np.any(counts < 0):
-            raise BundleExportError(
-                "/residues/atom_offset does not cover all atoms"
-            )
-        return (
-            f"{atom_count} {len(counts)}\n"
-            + "".join(f"{int(value)}\n" for value in counts)
-        )
-
-    def _export_text_vector(
-        self, reader: BundleReader, path: str, expected: int
-    ) -> str:
-        values = _text_values(self._read_required(reader, path))
-        if len(values) != expected:
-            raise BundleExportError(
-                f"{path} has length {len(values)}, expected {expected}"
-            )
-        return f"{expected}\n" + "".join(f"{value}\n" for value in values)
-
-    def _export_resname(self, reader: BundleReader) -> str:
-        offsets = self._read_required(reader, "/residues/atom_offset")
-        return self._export_text_vector(
-            reader, "/parameters/xponge/residues/name", len(offsets) - 1
-        )
-
-    def _export_atom_name(self, reader: BundleReader) -> str:
-        count = int(reader.read_scalar(_TOPOLOGY, "/topology/atom_count"))
-        return self._export_text_vector(
-            reader, "/parameters/xponge/atoms/name", count
-        )
-
-    def _export_atom_type_name(self, reader: BundleReader) -> str:
-        count = int(reader.read_scalar(_TOPOLOGY, "/topology/atom_count"))
-        return self._export_text_vector(
-            reader, "/parameters/xponge/atoms/type_name", count
-        )
-
-    def _export_mass(self, reader: BundleReader) -> str:
-        values = np.asarray(self._read_required(reader, "/atoms/mass")).reshape(-1)
-        return f"{len(values)}\n" + "".join(
-            f"{float(value):.3f}\n" for value in values
-        )
-
-    def _export_charge(self, reader: BundleReader) -> str:
-        values = np.asarray(
-            self._read_required(reader, "/atoms/charge")
-        ).reshape(-1)
-        return f"{len(values)}\n" + "".join(
-            f"{float(value):.6f}\n" for value in values
-        )
-
-    def _export_coordinate(self, reader: BundleReader) -> str:
-        positions = np.asarray(
-            reader.read(_RESTART, "/particles/all/position/value")
-        )
-        edges = np.asarray(
-            reader.read(_RESTART, "/particles/all/box/edges/value")
-        )
-        if positions.ndim != 3 or positions.shape[-1] != 3:
-            raise BundleExportError(
-                f"restart positions have invalid shape {positions.shape}"
-            )
-        if edges.ndim != 3 or edges.shape[1:] != (3, 3):
-            raise BundleExportError(
-                f"restart box edges have invalid shape {edges.shape}"
-            )
-        frame = positions[-1]
-        box = _box_dimensions(edges[-1])
-        return (
-            f"{len(frame)}\n"
-            + _fixed_rows(frame)
-            + " ".join(f"{value:.6f}" for value in box)
-            + "\n"
-        )
-
-    def _export_lj(self, reader: BundleReader) -> str:
-        type_count = int(
-            reader.read_scalar(_TOPOLOGY, "/forcefield/lj/atom_type_count")
-        )
-        pair_a = np.asarray(
-            self._read_required(reader, "/forcefield/lj/pair_A_12")
-        ).reshape(-1)
-        pair_b = np.asarray(
-            self._read_required(reader, "/forcefield/lj/pair_B_6")
-        ).reshape(-1)
-        atom_types = np.asarray(
-            self._read_required(reader, "/forcefield/lj/type"), dtype=np.int64
-        ).reshape(-1)
-        pair_count = type_count * (type_count + 1) // 2
-        if len(pair_a) != pair_count or len(pair_b) != pair_count:
-            raise BundleExportError("LJ triangular table has invalid length")
-        rows_a, rows_b = [], []
-        cursor = 0
-        for width in range(1, type_count + 1):
-            rows_a.append(pair_a[cursor : cursor + width])
-            rows_b.append(pair_b[cursor : cursor + width])
-            cursor += width
-        render = lambda rows: "".join(  # noqa: E731
-            " ".join(f"{float(value):.6e}" for value in row) + " \n"
-            for row in rows
-        )
-        return (
-            f"{len(atom_types)} {type_count}\n\n"
-            + render(rows_a)
-            + "\n"
-            + render(rows_b)
-            + "\n"
-            + "".join(f"{int(value)}\n" for value in atom_types)
-        )
-
-    def _export_interaction(
+    def _materialize_contract(
         self,
+        contract: IOContract,
         reader: BundleReader,
-        root: str,
-        scalar_paths: tuple[str, ...],
-    ) -> str:
-        atoms = np.asarray(self._read_required(reader, f"{root}/atoms"))
-        scalars = [
-            np.asarray(self._read_required(reader, f"{root}/{name}")).reshape(-1)
-            for name in scalar_paths
-        ]
-        if atoms.ndim != 2 or any(len(values) != len(atoms) for values in scalars):
-            raise BundleExportError(f"{root} interaction arrays have mismatched shapes")
-        rows = [
-            tuple(int(value) for value in atom_row)
-            + tuple(
-                int(values[index])
-                if name == "periodicity"
-                else float(values[index])
-                for name, values in zip(scalar_paths, scalars)
+        sidecars: dict[str, dict[str, Path]],
+        context: ExportContext,
+    ) -> None:
+        if contract.payload_kind != "file" or contract.bundle_file in {"run.mdin", "*.legacy"}:
+            return
+        key = contract.legacy_keys[0]
+        if key in self._materialized_keys:
+            return
+        if contract.materialization_group in self._materialized_groups:
+            return
+        if not reader.has_bundle_file(contract.bundle_file):
+            return
+
+        required_paths = contract.required_bundle_paths
+        if contract.bundle_file == "trajectory.spg.h5md" and context.particle_stream != "all":
+            required_paths = tuple(
+                path.replace("/particles/all/", f"/particles/{context.particle_stream}/")
+                for path in required_paths
             )
-            for index, atom_row in enumerate(atoms)
-        ]
-        rows.sort()
-        return f"{len(rows)}\n" + _fixed_rows(rows)
-
-    def _export_bond(self, reader: BundleReader) -> str:
-        return self._export_interaction(
-            reader, "/forcefield/bond", ("k", "r0")
+        typed_present = bool(required_paths) and all(
+            reader.contains(contract.bundle_file, path) for path in required_paths
         )
+        payloads: list[LegacyPayload] | None = None
+        status = "typed_exported"
+        source_path = str(self.case.path_for_bundle_file(contract.bundle_file))
 
-    def _export_angle(self, reader: BundleReader) -> str:
-        return self._export_interaction(
-            reader, "/forcefield/angle", ("k", "theta0")
-        )
+        exporter = EXPORTERS.get(contract.exporter_id or "")
+        if typed_present and exporter is not None:
+            try:
+                payloads = exporter(contract, reader, context)
+            except (ValueError, TypeError, IndexError) as exc:
+                raise BundleExportError(
+                    f"failed to export {contract.contract_id} from "
+                    f"{contract.bundle_file}:{contract.bundle_path}"
+                ) from exc
+        else:
+            fallback = self._fallback_payload(contract, reader, sidecars)
+            if fallback is not None:
+                payloads = [fallback]
+                status = {
+                    "sidecar": "sidecar_restored",
+                    "embedded": "embedded_exported",
+                    "compatibility": "compatibility_restored",
+                }[fallback.source_kind]
+                source_path = fallback.source_path or source_path
+            elif typed_present:
+                message = f"no reverse exporter or fallback is available for {contract.contract_id}"
+                if self.strict:
+                    raise BundleCapabilityError(message)
+                self.manifest.add(
+                    ManifestEntry(
+                        contract_id=contract.contract_id,
+                        status="unsupported",
+                        source_key=key,
+                        source_path=source_path,
+                        bundle_file=contract.bundle_file,
+                        bundle_path=contract.bundle_path,
+                        direction="input",
+                        component=contract.component,
+                        payload_kind=contract.payload_kind,
+                        message=message,
+                    )
+                )
+                return
+            else:
+                return
 
-    def _export_dihedral(self, reader: BundleReader) -> str:
-        return self._export_interaction(
-            reader,
-            "/forcefield/dihedral",
-            ("periodicity", "k", "phi0"),
-        )
-
-    def _export_improper(self, reader: BundleReader) -> str:
-        return self._export_interaction(
-            reader, "/forcefield/improper", ("pk", "phi0")
-        )
-
-    def _export_exclude(self, reader: BundleReader) -> str:
-        offsets = np.asarray(
-            self._read_required(reader, "/topology/exclusions/offset"),
-            dtype=np.int64,
-        )
-        values = np.asarray(
-            self._read_required(reader, "/topology/exclusions/list"),
-            dtype=np.int64,
-        ).reshape(-1)
-        atom_count = int(reader.read_scalar(_TOPOLOGY, "/topology/atom_count"))
-        if offsets.shape != (atom_count + 1,) or offsets[0] != 0:
-            raise BundleExportError("exclusion offsets have invalid shape")
-        if offsets[-1] != len(values) or np.any(np.diff(offsets) < 0):
-            raise BundleExportError("exclusion offsets do not cover the list")
-        lines = [f"{atom_count} {len(values)}"]
-        for index in range(atom_count):
-            row = values[offsets[index] : offsets[index + 1]]
-            lines.append(
-                f"{len(row)} " + " ".join(str(int(value)) for value in row)
+        if not payloads:
+            return
+        for payload in payloads:
+            payload_contract = self._canonical_contract_for_key(payload.key, contract)
+            filename = payload.filename or self._filename_for_contract(payload_contract)
+            target = self.materializer.plan_payload(payload, filename)
+            self._materialized_keys.add(payload.key)
+            entry_contract_id = (
+                payload_contract.contract_id
+                if payload.key in payload_contract.legacy_keys
+                else contract.contract_id
             )
-        return "\n".join(lines) + "\n"
+            if payload.key not in payload_contract.legacy_keys:
+                entry_contract_id += ".data." + payload.key.removesuffix("_in_file")
+            self.manifest.add(
+                ManifestEntry(
+                    contract_id=entry_contract_id,
+                    status=status,
+                    source_key=payload.key,
+                    source_path=source_path,
+                    target_path=str(target),
+                    bundle_file=contract.bundle_file,
+                    bundle_path=contract.bundle_path,
+                    direction="input",
+                    component=contract.component,
+                    payload_kind="file",
+                    override_policy=contract.override_policy,
+                    comparison_rule=contract.comparison_rule,
+                    source_kind=payload.source_kind,
+                )
+            )
+        if contract.materialization_group is not None:
+            self._materialized_groups.add(contract.materialization_group)
 
-    def _export_nb14(self, reader: BundleReader) -> str:
-        atoms = np.asarray(
-            self._read_required(reader, "/forcefield/nb14/atoms")
+    def _fallback_payload(
+        self,
+        contract: IOContract,
+        reader: BundleReader,
+        sidecars: dict[str, dict[str, Path]],
+    ) -> LegacyPayload | None:
+        key = contract.legacy_keys[0]
+        if contract.reverse_policy in {"embedded_text", "sidecar_only"} and reader.contains(
+            contract.bundle_file, contract.bundle_path
+        ):
+            return LegacyPayload(
+                key=key,
+                data=reader.read_text(contract.bundle_file, contract.bundle_path),
+                source_kind="embedded",
+            )
+
+        sidecar_path = sidecars.get(contract.bundle_file, {}).get(key)
+        if sidecar_path is not None:
+            data = sidecar_path.read_bytes()
+            try:
+                rendered: str | bytes = data.decode("utf-8")
+                binary = False
+            except UnicodeDecodeError:
+                rendered = data
+                binary = True
+            return LegacyPayload(
+                key=key,
+                data=rendered,
+                binary=binary,
+                source_kind="sidecar",
+                source_path=str(sidecar_path),
+            )
+
+        compatibility_root = "/compatibility/legacy_import/" + _safe_h5_name(key)
+        raw_text_path = compatibility_root + "/raw_text"
+        raw_bytes_path = compatibility_root + "/raw_bytes"
+        if reader.contains(contract.bundle_file, raw_text_path):
+            return LegacyPayload(
+                key=key,
+                data=reader.read_text(contract.bundle_file, raw_text_path),
+                source_kind="compatibility",
+            )
+        if reader.contains(contract.bundle_file, raw_bytes_path):
+            values = reader.read(contract.bundle_file, raw_bytes_path)
+            return LegacyPayload(
+                key=key,
+                data=bytes(values.astype("uint8").reshape(-1)),
+                binary=True,
+                source_kind="compatibility",
+            )
+        return None
+
+    def _canonical_contract_for_key(self, key: str, fallback: IOContract) -> IOContract:
+        for contract in self._contracts_by_key.get(key, ()):
+            if contract.reverse_policy not in {"alias", "sidecar_only", "not_reversible"}:
+                return contract
+        return fallback
+
+    def _materialize_dynamic_sidecars(self) -> None:
+        root = self.case.root.resolve()
+        for key, raw_path in self.case.commands.items():
+            if not key.endswith("_in_file") or not raw_path.startswith("legacy_sidecars/"):
+                continue
+            if key in self._materialized_keys:
+                continue
+            source_path = (root / raw_path).resolve()
+            try:
+                source_path.relative_to(root)
+            except ValueError as exc:
+                raise BundlePathError(
+                    f"dynamic legacy sidecar for {key} escapes bundle root: {raw_path}"
+                ) from exc
+            if not source_path.is_file():
+                message = f"dynamic legacy sidecar for {key} does not exist: {source_path}"
+                if self.strict:
+                    raise BundleValidationError(message)
+                self.manifest.warnings.append(message)
+                continue
+            data = source_path.read_bytes()
+            try:
+                rendered: str | bytes = data.decode("utf-8")
+                binary = False
+            except UnicodeDecodeError:
+                rendered = data
+                binary = True
+            filename = f"{self.prefix}_{key.removesuffix('_in_file')}.txt"
+            target = self.materializer.plan_payload(
+                LegacyPayload(
+                    key=key,
+                    data=rendered,
+                    binary=binary,
+                    source_kind="sidecar",
+                    source_path=str(source_path),
+                ),
+                filename,
+            )
+            self._materialized_keys.add(key)
+            self.manifest.add(
+                ManifestEntry(
+                    contract_id=f"topology.dynamic_sidecar.{key}",
+                    status="sidecar_restored",
+                    source_key=key,
+                    source_path=str(source_path),
+                    target_path=str(target),
+                    bundle_file="topology.spgt.h5",
+                    direction="input",
+                    component="topology",
+                    payload_kind="file",
+                    source_kind="sidecar",
+                )
+            )
+
+    def _materialize_xponge_metadata(self, reader: BundleReader) -> None:
+        for key, path in (
+            ("resname", "/parameters/xponge/residues/name"),
+            ("atom_name", "/parameters/xponge/atoms/name"),
+            ("atom_type_name", "/parameters/xponge/atoms/type_name"),
+        ):
+            if not reader.contains("topology.spgt.h5", path):
+                continue
+            values = reader.read("topology.spgt.h5", path).reshape(-1)
+            rendered_values = [
+                value.decode("utf-8") if isinstance(value, bytes) else str(value)
+                for value in values
+            ]
+            payload = LegacyPayload(
+                key=key,
+                data=f"{len(rendered_values)}\n" + "\n".join(rendered_values) + "\n",
+                source_kind="typed",
+                bind_in_mdin=False,
+            )
+            target = self.materializer.plan_payload(payload, f"{self.prefix}_{key}.txt")
+            self.manifest.add(
+                ManifestEntry(
+                    contract_id=f"topology.xponge_metadata.{key}",
+                    status="typed_exported",
+                    source_key=key,
+                    source_path=str(self.case.topology_path),
+                    target_path=str(target),
+                    bundle_file="topology.spgt.h5",
+                    bundle_path=path,
+                    direction="input",
+                    component="topology_metadata",
+                    payload_kind="file",
+                    source_kind="typed",
+                )
+            )
+
+    def _filename_for_contract(self, contract: IOContract) -> str:
+        stem = contract.legacy_filename_stem or contract.legacy_keys[0].removesuffix("_in_file")
+        return f"{self.prefix}_{stem}.txt"
+
+    def _plan_legacy_mdin(self) -> Path:
+        bindings = {
+            payload.key: path.relative_to(self.output_dir).as_posix()
+            for path, payload in self.materializer.planned.items()
+            if not payload.key.startswith("__") and payload.bind_in_mdin
+        }
+        omit_keys = set(_H5_INPUT_KEYS)
+        omit_keys.update(
+            key
+            for contract in CONTRACTS
+            if contract.direction == "input" and contract.payload_kind == "file"
+            for key in contract.legacy_keys
         )
-        params = np.asarray(
-            self._read_required(reader, "/forcefield/nb14/params")
+        omit_keys.update(
+            key
+            for key, value in self.case.commands.items()
+            if key.endswith("_in_file") and value.startswith("legacy_sidecars/")
         )
-        if atoms.ndim != 2 or atoms.shape[1] != 2:
-            raise BundleExportError(
-                f"/forcefield/nb14/atoms has invalid shape {atoms.shape}"
+
+        root_lines = []
+        section_lines: dict[str, list[str]] = {}
+        for key, filename in sorted(bindings.items()):
+            known_contracts = self._contracts_by_key.get(key)
+            contract = (
+                self._canonical_contract_for_key(key, known_contracts[0])
+                if known_contracts
+                else None
             )
-        if params.shape != (len(atoms), 2):
-            raise BundleExportError(
-                f"/forcefield/nb14/params has invalid shape {params.shape}"
-            )
-        rows = [
-            (
-                int(atom_row[0]),
-                int(atom_row[1]),
-                float(param_row[0]),
-                float(param_row[1]),
-            )
-            for atom_row, param_row in zip(atoms, params)
-        ]
-        return f"{len(rows)}\n" + _fixed_rows(rows)
+            line_key = key
+            if contract is not None and contract.legacy_section:
+                prefix = contract.legacy_section + "_"
+                line_key = key[len(prefix) :] if key.startswith(prefix) else key
+                section_lines.setdefault(contract.legacy_section, []).append(
+                    f'{line_key} = "{filename}"'
+                )
+            else:
+                root_lines.append(f'{line_key} = "{filename}"')
+        for section, lines in sorted(section_lines.items()):
+            root_lines.append(f"[{section}]")
+            root_lines.extend(lines)
+
+        rendered = render_mdin_without_keys(self.case.mdin_text, omit_keys, root_lines)
+        return self.materializer.plan_payload(
+            LegacyPayload(
+                key="__mdin__",
+                data=rendered,
+                source_kind="bundled_mdin",
+            ),
+            "mdin.legacy.spg.toml",
+        )
 
 
 def convert_bundle_to_legacy(
     bundle_root: str | Path,
     output_dir: str | Path,
     *,
-    mdin: str | Path | None = "mdin.bundled.spg.toml",
+    mdin: str | Path = "mdin.bundled.spg.toml",
     prefix: str | None = None,
     strict: bool = True,
     overwrite: bool = False,
     dry_run: bool = False,
 ) -> ReverseConversionManifest:
-    """Convert a scanned bundle or a native ``prefix`` bundle to legacy files."""
+    """Convert a bundled SPONGE input case to direct/legacy files."""
 
-    root = Path(bundle_root).resolve()
-    mdin_path = root / mdin if mdin is not None else None
-    if mdin_path is not None and mdin_path.is_file():
-        case = scan_bundle_case(root, mdin_path, strict=strict)
-    elif prefix is not None:
-        case = bundle_case_from_prefix(root, prefix, strict=strict)
-    else:
-        raise FileNotFoundError(
-            "bundled mdin was not found; pass prefix=... for a native "
-            "XpongeCPP bundle"
-        )
+    try:
+        case = scan_bundle_case(bundle_root, mdin=mdin, strict=strict)
+    except FileNotFoundError:
+        if prefix is None:
+            raise
+        case = bundle_case_from_prefix(bundle_root, prefix, strict=strict)
     return BundleToLegacyConverter(
         case,
         output_dir,
@@ -510,4 +467,6 @@ def convert_bundle_to_legacy(
     ).convert(dry_run=dry_run)
 
 
-__all__ = ["BundleToLegacyConverter", "convert_bundle_to_legacy"]
+def _safe_h5_name(name: str) -> str:
+    safe = "".join(char if char.isalnum() or char == "_" else "_" for char in name)
+    return safe or "unnamed"

@@ -15,6 +15,7 @@ from ..legacy_types import (
     _legacy_get_residue_links,
     _legacy_get_residue_links_copy,
     _legacy_make_residue_like,
+    _remember_dynamic_residuetype,
     _legacy_set_residue_links,
 )
 from .._core import molecule_from_residuetype
@@ -30,12 +31,23 @@ _core_residuetype_add_atom = ResidueType.add_atom
 
 def _legacy_residuetype_add_atom(self, name, atom_type, x, y, z, charge=0.0, mass=0.0):
     if hasattr(atom_type, "name"):
+        if hasattr(atom_type, "charge") and charge == 0.0:
+            charge = float(atom_type.charge)
+        if hasattr(atom_type, "mass") and mass == 0.0:
+            mass = float(atom_type.mass)
         atom_type = atom_type.name
     return _core_residuetype_add_atom(self, name, str(atom_type), x, y, z, charge, mass)
 
 
 def _legacy_residuetype_atoms(self):
     return molecule_from_residuetype(self).residues[0].atoms
+
+
+def _legacy_residuetype_name2atom(self, name):
+    for atom in self.atoms:
+        if atom.name == name:
+            return atom
+    raise KeyError(name)
 
 
 class _LegacyCallableTypeProxy:
@@ -54,9 +66,14 @@ class _LegacyCallableTypeProxy:
     def __call__(self, *args, **kwargs):
         if kwargs:
             if not args and set(kwargs) == {self._keyword_name}:
-                return self._target(kwargs[self._keyword_name])
-            return self._target(*args, **kwargs)
-        return self._target(*args)
+                value = self._target(kwargs[self._keyword_name])
+            else:
+                value = self._target(*args, **kwargs)
+        else:
+            value = self._target(*args)
+        if self._target is ResidueType:
+            return _remember_dynamic_residuetype(value)
+        return value
 
     def __getattr__(self, item):
         return getattr(self._target, item)
@@ -113,6 +130,7 @@ def install_legacy_runtime_patches(namespace: dict | None = None):
     ResidueType.addAtom = _legacy_residuetype_add_atom
     ResidueType.Add_Atom = _legacy_residuetype_add_atom
     ResidueType.atoms = property(_legacy_residuetype_atoms)
+    ResidueType.name2atom = _legacy_residuetype_name2atom
 
     Molecule.add_residue = _legacy_add_residue
     Molecule.Add_Residue = _legacy_add_residue

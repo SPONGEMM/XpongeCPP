@@ -19,6 +19,15 @@ class LJType:
     combining_method_B = None
     _types = {}
 
+    def __new__(cls, name, epsilon, rmin):
+        """Create and register a legacy-style LJ type.
+
+        Xponge-origin type constructors are registry constructors.  Keeping
+        that behavior is required by the local metal patch application code,
+        which creates deterministic, patch-scoped LJ aliases on demand.
+        """
+        return cls._store(name, epsilon, rmin)
+
     @staticmethod
     def _norm(name):
         return str(name).strip().upper()

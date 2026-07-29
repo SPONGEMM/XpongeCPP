@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 import runpy
 import subprocess
@@ -17,6 +16,7 @@ from XpongeCPP.io_bundle import (
     convert_legacy_to_bundle,
     scan_bundle_case,
 )
+from io_bundle_fixtures import find_sponge_executable
 
 
 def _peptide():
@@ -248,14 +248,13 @@ def test_legacy_converter_is_available_from_legacy_package():
     assert LegacyImport is LegacyToBundleConverter
 
 
-@pytest.mark.skipif(
-    not os.environ.get("SPONGE_EXECUTABLE"),
-    reason="set SPONGE_EXECUTABLE to run the numerical round-trip gate",
-)
 def test_round_tripped_legacy_inputs_match_sponge_zeroth_frame(tmp_path):
-    executable = Path(os.environ["SPONGE_EXECUTABLE"]).resolve()
-    if not executable.is_file():
-        pytest.fail(f"SPONGE_EXECUTABLE does not exist: {executable}")
+    executable = find_sponge_executable()
+    if executable is None:
+        pytest.skip(
+            "SPONGE was not configured, found on PATH, or built in the "
+            "sibling SPONGE checkout"
+        )
     raw_dir = _legacy_case(tmp_path)
     converted_root = tmp_path / "converted"
     convert_legacy_to_bundle(raw_dir, converted_root)

@@ -1,33 +1,50 @@
-"""Machine-readable manifests for bundle conversion."""
+"""
+Manifest model for SPONGE legacy-to-bundle conversion.
+"""
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
+import json
+from pathlib import Path
 from typing import Any
 
 
-@dataclass(frozen=True)
+@dataclass
 class ManifestEntry:
-    """One converted payload in either direction."""
+    """One converted or unsupported I/O contract."""
 
-    key: str | None = None
+    contract_id: str
+    status: str
+    source_key: str | None = None
     source_path: str | None = None
-    target_path: str | None = None
-    status: str = "typed_exported"
     bundle_file: str | None = None
     bundle_path: str | None = None
+    direction: str | None = None
+    component: str | None = None
+    payload_kind: str | None = None
+    override_policy: str | None = None
+    comparison_rule: str | None = None
+    message: str | None = None
+    target_path: str | None = None
+    source_kind: str | None = None
+    warnings: list[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            key: value
-            for key, value in asdict(self).items()
-            if value is not None
+        data = {
+            key: value for key, value in self.__dict__.items() if value is not None
         }
+        data["key"] = (
+            self.source_key.removesuffix("_in_file")
+            if self.source_key is not None
+            else self.contract_id.rsplit(".", 1)[-1]
+        )
+        return data
 
 
 @dataclass
 class ConversionManifest:
-    """Summary returned by legacy-to-bundle conversion."""
+    """Machine-readable conversion manifest."""
 
     schema: str = "xponge.legacy_to_bundle.manifest"
     schema_version: int = 1
@@ -51,10 +68,13 @@ class ConversionManifest:
             data["bundled_mdin"] = self.bundled_mdin
         return data
 
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
 
 @dataclass
 class ReverseConversionManifest:
-    """Summary returned by bundle-to-legacy conversion."""
+    """Machine-readable bundle-to-legacy conversion manifest."""
 
     schema: str = "xponge.bundle_to_legacy.manifest"
     schema_version: int = 1
@@ -82,3 +102,9 @@ class ReverseConversionManifest:
         if self.warnings:
             data["warnings"] = list(self.warnings)
         return data
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(
+            json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )

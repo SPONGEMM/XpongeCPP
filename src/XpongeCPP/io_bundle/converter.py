@@ -1,759 +1,858 @@
-"""Convert ordinary direct/legacy SPONGE inputs into v2 bundles."""
+"""
+Legacy SPONGE input group to bundled H5 input group converter.
+"""
 
 from __future__ import annotations
 
-import json
-import os
+import hashlib
 from pathlib import Path
 import shutil
-import tempfile
-from uuid import uuid4
 
 import numpy as np
 
-from .bundle_builder import (
-    canonical_dataset_hash,
-    write_dataset,
+from .._core import load_coordinate
+
+from .bundle_builder import BundleBuilder, BundleIO, BundleMetadata, BundlePaths
+from .contracts import (
+    CONTRACTS,
+    LEGACY_KEY_ALIASES,
+    PROTOCOL_RESTART_SIDECAR_KEYS,
+    IOContract,
+    contracts_by_legacy_key,
+)
+from .h5_writer import (
+    ensure_dataset,
+    ensure_group,
+    ensure_hard_link,
+    set_attrs,
+    write_bytes,
     write_string,
+    write_string_array,
 )
 from .errors import (
     BundleCapabilityError,
     BundleConflictError,
     BundleValidationError,
 )
-from .legacy_case import (
-    LegacyCase,
-    render_mdin_without_keys,
-    scan_legacy_case,
-)
+from .legacy_case import LegacyCase, render_mdin_without_keys, scan_legacy_case
 from .manifest import ConversionManifest, ManifestEntry
-
-
-_REQUIRED_KEYS = (
-    "residue",
-    "resname",
-    "atom_name",
-    "atom_type_name",
-    "mass",
-    "charge",
-    "coordinate",
-    "LJ",
-    "bond",
-    "angle",
-    "dihedral",
-    "exclude",
-    "nb14",
+from .state_parsers import parse_protocol_or_restart_file
+from .topology_parsers import (
+    listed_force_schemas,
+    pairwise_force_schema,
+    parse_listed_force_data_file,
+    parse_pairwise_force_data_file,
+    parse_topology_file,
 )
-_OPTIONAL_KEYS = ("improper_dihedral",)
-_INPUT_KEYS = {
-    f"{key}_in_file" for key in (*_REQUIRED_KEYS, *_OPTIONAL_KEYS)
+from .trajectory_parsers import box_to_edges, parse_trajectory_file
+
+
+_XPONGE_METADATA_SIDECARS = {
+    "resname": "/parameters/xponge/residues/name",
+    "atom_name": "/parameters/xponge/atoms/name",
+    "atom_type_name": "/parameters/xponge/atoms/type_name",
 }
-_BUNDLE_BINDINGS = (
-    'input_h5_topology_path = "topology.spgt.h5"',
-    'input_h5_protocol_path = "protocol.spgp.h5"',
-    'input_h5_restart_path = "restart.spgr.h5"',
-    'input_h5_restart_load = "structural"',
-)
 
 
-def _tokens(path: Path) -> list[str]:
-    try:
-        return path.read_text(encoding="utf-8").split()
-    except UnicodeDecodeError as exc:
-        raise BundleValidationError(
-            f"legacy input must be UTF-8 text: {path}"
-        ) from exc
-
-
-def _integer(token: str, path: Path, label: str) -> int:
-    try:
-        value = int(token)
-    except ValueError as exc:
-        raise BundleValidationError(
-            f"{path} has invalid integer for {label}: {token!r}"
-        ) from exc
-    return value
-
-
-def _floating(token: str, path: Path, label: str) -> float:
-    try:
-        value = float(token)
-    except ValueError as exc:
-        raise BundleValidationError(
-            f"{path} has invalid float for {label}: {token!r}"
-        ) from exc
-    if not np.isfinite(value):
-        raise BundleValidationError(
-            f"{path} has non-finite value for {label}: {token!r}"
-        )
-    return value
-
-
-def _counted_vector(
-    path: Path, *, dtype, label: str
-) -> np.ndarray:
-    tokens = _tokens(path)
-    if not tokens:
-        raise BundleValidationError(f"{path} is empty")
-    count = _integer(tokens[0], path, f"{label} count")
-    if count < 0 or len(tokens) != count + 1:
-        raise BundleValidationError(
-            f"{path} declares {count} {label} values but has "
-            f"{len(tokens) - 1}"
-        )
-    parser = _integer if np.issubdtype(np.dtype(dtype), np.integer) else _floating
-    return np.asarray(
-        [
-            parser(token, path, f"{label}[{index}]")
-            for index, token in enumerate(tokens[1:])
-        ],
-        dtype=dtype,
-    )
-
-
-def _counted_text(path: Path, label: str) -> np.ndarray:
-    tokens = _tokens(path)
-    if not tokens:
-        raise BundleValidationError(f"{path} is empty")
-    count = _integer(tokens[0], path, f"{label} count")
-    values = tokens[1:]
-    if count < 0 or len(values) != count:
-        raise BundleValidationError(
-            f"{path} declares {count} {label} values but has {len(values)}"
-        )
-    return np.asarray(values, dtype=object)
-
-
-def _interaction(
-    path: Path,
-    *,
-    atom_columns: int,
-    parameter_columns: tuple[tuple[str, np.dtype], ...],
-) -> dict[str, np.ndarray]:
-    tokens = _tokens(path)
-    if not tokens:
-        raise BundleValidationError(f"{path} is empty")
-    count = _integer(tokens[0], path, "interaction count")
-    width = atom_columns + len(parameter_columns)
-    values = tokens[1:]
-    if count < 0 or len(values) != count * width:
-        raise BundleValidationError(
-            f"{path} declares {count} rows of width {width}, "
-            f"got {len(values)} values"
-        )
-    rows = [values[index : index + width] for index in range(0, len(values), width)]
-    atoms = np.asarray(
-        [
-            [
-                _integer(value, path, f"atom column {column}")
-                for column, value in enumerate(row[:atom_columns])
-            ]
-            for row in rows
-        ],
-        dtype=np.int32,
-    ).reshape(count, atom_columns)
-    result = {"atoms": atoms}
-    for offset, (name, dtype) in enumerate(parameter_columns):
-        parser = _integer if np.issubdtype(dtype, np.integer) else _floating
-        result[name] = np.asarray(
-            [
-                parser(row[atom_columns + offset], path, name)
-                for row in rows
-            ],
-            dtype=dtype,
-        )
-    result["count"] = np.asarray(count, dtype=np.int64)
-    return result
-
-
-def _box_edges(dimensions: np.ndarray) -> np.ndarray:
-    a, b, c, alpha_deg, beta_deg, gamma_deg = dimensions
-    alpha, beta, gamma = np.radians([alpha_deg, beta_deg, gamma_deg])
-    sin_gamma = np.sin(gamma)
-    if abs(sin_gamma) < 1e-7:
-        raise BundleValidationError("legacy box gamma produces a singular cell")
-    edge_y_x = b * np.cos(gamma)
-    edge_y_y = b * sin_gamma
-    edge_z_x = c * np.cos(beta)
-    edge_z_y = c * (
-        np.cos(alpha) - np.cos(beta) * np.cos(gamma)
-    ) / sin_gamma
-    z_squared = c * c - edge_z_x * edge_z_x - edge_z_y * edge_z_y
-    if z_squared < -1e-5:
-        raise BundleValidationError("legacy box angles produce an invalid cell")
-    return np.asarray(
-        [
-            [a, 0.0, 0.0],
-            [edge_y_x, edge_y_y, 0.0],
-            [edge_z_x, edge_z_y, np.sqrt(max(0.0, z_squared))],
-        ],
-        dtype=np.float32,
-    )
+class ConversionError(RuntimeError):
+    """Raised when a legacy case cannot be converted."""
 
 
 class LegacyToBundleConverter:
-    """Convert the ordinary XpongeCPP raw-output subset into a v2 bundle."""
+    """Convert a legacy SPONGE case directory into bundled input files."""
 
     def __init__(self, case: LegacyCase, output_dir: str | Path):
         self.case = case
         self.output_dir = Path(output_dir).resolve()
         self.bundle_dir = self.output_dir / "bundle"
-        self.manifest = ConversionManifest(
-            case_root=str(case.root), mode=case.mode
+        self._builder = BundleBuilder(
+            BundlePaths.canonical(self.bundle_dir),
+            io=BundleIO(
+                ensure_dataset=ensure_dataset,
+                ensure_group=ensure_group,
+                ensure_hard_link=ensure_hard_link,
+                set_attrs=set_attrs,
+                write_string=write_string,
+                write_bytes=write_bytes,
+                write_string_array=write_string_array,
+            ),
+            track_dataset_hashes=True,
         )
-        self._sources: dict[str, Path] = {}
+        self.manifest = ConversionManifest(case_root=str(self.case.root), mode=self.case.mode)
+        self._contract_index = contracts_by_legacy_key()
+        self._handled_contract_ids: set[str] = set()
+        self._handled_keys: set[str] = set()
+        self._bundled_mdin_omit_keys: set[str] = set()
+        self._bundled_mdin_extra_lines: list[str] = []
+        self._bundle_files_touched: set[str] = set()
+        self._legacy_sidecars_by_bundle: dict[str, list[tuple[str, str]]] = {}
+        self._source_paths_by_key: dict[str, Path] = {}
+        self._atom_count: int | None = None
+        self._restart_has_structural_state = False
+        self._restart_has_dynamic_state = False
+        self._restart_has_protocol_state = False
 
     def convert(self, *, dry_run: bool = False) -> ConversionManifest:
-        """Validate the whole legacy case, then publish its bundle."""
+        """Run the conversion and return the generated manifest."""
 
-        if self.case.mode not in {"normal", "minimization", "md"}:
-            raise BundleCapabilityError(
-                f"legacy-to-bundle conversion does not support mode "
-                f"{self.case.mode!r}"
-            )
-        self._resolve_sources()
-        topology, atom_count = self._parse_topology()
-        restart = self._parse_restart(atom_count)
-        self._record_manifest()
-        final_mdin = self.bundle_dir / "mdin.bundled.spg.toml"
-        self.manifest.bundled_mdin = str(final_mdin)
-        if dry_run:
-            self._validate_targets()
-            return self.manifest
-
-        self._validate_targets()
-        self.output_dir.parent.mkdir(parents=True, exist_ok=True)
-        staging = Path(
-            tempfile.mkdtemp(
-                prefix=f".{self.output_dir.name}.",
-                dir=self.output_dir.parent,
-            )
-        )
-        try:
-            stage_bundle = staging / "bundle"
-            stage_bundle.mkdir()
-            self._write_bundle(stage_bundle, topology, restart, atom_count)
-            mdin = render_mdin_without_keys(
-                self.case.mdin_text,
-                _INPUT_KEYS | {"default_in_file_prefix"},
-                list(_BUNDLE_BINDINGS),
-            )
-            (stage_bundle / "mdin.bundled.spg.toml").write_text(
-                mdin, encoding="utf-8"
-            )
-            (staging / "manifest.json").write_text(
-                json.dumps(
-                    self.manifest.to_dict(), indent=2, sort_keys=True
+        if not dry_run:
+            self.bundle_dir.mkdir(parents=True, exist_ok=True)
+        self._convert_restart_structural_state(dry_run=dry_run)
+        self._convert_text_sidecars(dry_run=dry_run)
+        self._import_compatibility_payloads(dry_run=dry_run)
+        self._convert_xponge_metadata_sidecars(dry_run=dry_run)
+        self._convert_protocol_restart_sidecars(dry_run=dry_run)
+        self._convert_custom_force_dynamic_payloads(dry_run=dry_run)
+        for key, value in self.case.commands.items():
+            if (
+                key.endswith("_in_file")
+                and key not in self._contract_index
+                and key not in self._handled_keys
+                and key
+                not in {
+                    "resname_in_file",
+                    "atom_name_in_file",
+                    "atom_type_name_in_file",
+                }
+                and self.case.resolve_value_path(value).exists()
+            ):
+                raise BundleCapabilityError(
+                    f"no bundle contract is registered for {key}"
                 )
-                + "\n",
-                encoding="utf-8",
-            )
-            os.replace(staging, self.output_dir)
-        except Exception:
-            shutil.rmtree(staging, ignore_errors=True)
-            raise
+        self._ensure_required_h5_input_bindings()
+        self._write_legacy_sidecar_tables(dry_run=dry_run)
+        self._write_bundle_metadata(dry_run=dry_run)
+        self._record_scalar_contracts()
+        self._record_default_legacy_outputs()
+        self._record_unsupported_present_contracts()
+        self._write_bundled_mdin(dry_run=dry_run)
+        if not dry_run:
+            self.manifest.write(self.output_dir / "manifest.json")
         return self.manifest
 
-    def _validate_targets(self) -> None:
-        if self.output_dir.exists():
-            raise BundleConflictError(
-                f"bundle output directory already exists: {self.output_dir}"
+    def _find_contract(self, contract_id: str) -> IOContract:
+        for contract in CONTRACTS:
+            if contract.contract_id == contract_id:
+                return contract
+        raise ConversionError(f"unknown converter contract: {contract_id}")
+
+    def _contract_applies(self, contract: IOContract) -> bool:
+        mode_class = "rerun" if self.case.mode == "rerun" else "normal"
+        return mode_class in contract.modes
+
+    def _add_converted(self, contract: IOContract, source_key: str, source_path: Path) -> None:
+        self._handled_contract_ids.add(contract.contract_id)
+        self._handled_keys.add(source_key)
+        self._bundle_files_touched.add(contract.bundle_file)
+        if contract.direction == "input" and contract.payload_kind == "file":
+            self._bundled_mdin_omit_keys.add(source_key)
+        self.manifest.add(
+            ManifestEntry(
+                contract_id=contract.contract_id,
+                status="converted",
+                source_key=source_key,
+                source_path=str(source_path),
+                bundle_file=contract.bundle_file,
+                bundle_path=contract.bundle_path,
+                direction=contract.direction,
+                component=contract.component,
+                payload_kind=contract.payload_kind,
+                override_policy=contract.override_policy,
+                comparison_rule=contract.comparison_rule,
             )
-
-    def _resolve_sources(self) -> None:
-        for key in _REQUIRED_KEYS:
-            command_key = f"{key}_in_file"
-            path = self.case.resolve_legacy_input_path(command_key)
-            if path is None or not path.is_file():
-                raise BundleValidationError(
-                    f"legacy case is missing required {command_key}"
-                )
-            self._sources[key] = path.resolve()
-        for key in _OPTIONAL_KEYS:
-            path = self.case.resolve_legacy_input_path(f"{key}_in_file")
-            if path is not None:
-                if not path.is_file():
-                    raise BundleValidationError(
-                        f"legacy input does not exist: {path}"
-                    )
-                self._sources[key] = path.resolve()
-
-        unsupported = []
-        for command_key in self.case.commands:
-            if (
-                command_key.endswith("_in_file")
-                and command_key not in _INPUT_KEYS
-                and self.case.resolve_legacy_input_path(command_key) is not None
-            ):
-                unsupported.append(command_key)
-        if unsupported:
-            raise BundleCapabilityError(
-                "legacy-to-bundle conversion does not yet support: "
-                + ", ".join(sorted(unsupported))
-            )
-
-    def _parse_topology(self) -> tuple[dict[str, np.ndarray], int]:
-        datasets: dict[str, np.ndarray] = {}
-        residue_tokens = _tokens(self._sources["residue"])
-        if len(residue_tokens) < 2:
-            raise BundleValidationError("residue input is missing its header")
-        atom_count = _integer(
-            residue_tokens[0], self._sources["residue"], "atom count"
         )
-        residue_count = _integer(
-            residue_tokens[1], self._sources["residue"], "residue count"
-        )
-        counts = np.asarray(
-            [
-                _integer(value, self._sources["residue"], "residue atom count")
-                for value in residue_tokens[2:]
-            ],
-            dtype=np.int64,
-        )
-        if counts.shape != (residue_count,) or np.any(counts < 0):
-            raise BundleValidationError(
-                "residue input count does not match its residue rows"
-            )
-        if int(counts.sum()) != atom_count:
-            raise BundleValidationError(
-                "residue atom counts do not sum to the declared atom count"
-            )
-        offsets = np.concatenate(
-            [np.asarray([0], dtype=np.int64), np.cumsum(counts)]
-        )
-        residue_index = np.repeat(
-            np.arange(residue_count, dtype=np.int32), counts
-        )
-        datasets["/residues/atom_offset"] = offsets
-        datasets["/atoms/residue_index"] = residue_index
 
-        mass = _counted_vector(
-            self._sources["mass"], dtype=np.float32, label="mass"
-        )
-        charge = _counted_vector(
-            self._sources["charge"], dtype=np.float32, label="charge"
-        )
-        if len(mass) != atom_count or len(charge) != atom_count:
-            raise BundleValidationError(
-                "mass and charge counts must match the residue atom count"
-            )
-        datasets["/atoms/mass"] = mass
-        datasets["/atoms/charge"] = charge
-
-        text_specs = (
-            ("resname", "/parameters/xponge/residues/name", residue_count),
-            ("atom_name", "/parameters/xponge/atoms/name", atom_count),
-            (
-                "atom_type_name",
-                "/parameters/xponge/atoms/type_name",
-                atom_count,
-            ),
-        )
-        for key, dataset_path, expected in text_specs:
-            values = _counted_text(self._sources[key], key)
-            if len(values) != expected:
-                raise BundleValidationError(
-                    f"{key} count is {len(values)}, expected {expected}"
-                )
-            datasets[dataset_path] = values
-
-        interactions = (
-            (
-                "bond",
-                "/forcefield/bond",
-                2,
-                (("k", np.dtype("float32")), ("r0", np.dtype("float32"))),
-            ),
-            (
-                "angle",
-                "/forcefield/angle",
-                3,
-                (
-                    ("k", np.dtype("float32")),
-                    ("theta0", np.dtype("float32")),
-                ),
-            ),
-            (
-                "dihedral",
-                "/forcefield/dihedral",
-                4,
-                (
-                    ("periodicity", np.dtype("int32")),
-                    ("k", np.dtype("float32")),
-                    ("phi0", np.dtype("float32")),
-                ),
-            ),
-        )
-        for key, root, atom_columns, parameter_columns in interactions:
-            parsed = _interaction(
-                self._sources[key],
-                atom_columns=atom_columns,
-                parameter_columns=parameter_columns,
-            )
-            for name, values in parsed.items():
-                datasets[f"{root}/{name}"] = values
-
-        if "improper_dihedral" in self._sources:
-            parsed = _interaction(
-                self._sources["improper_dihedral"],
-                atom_columns=4,
-                parameter_columns=(
-                    ("pk", np.dtype("float32")),
-                    ("phi0", np.dtype("float32")),
-                ),
-            )
-            for name, values in parsed.items():
-                datasets[f"/forcefield/improper/{name}"] = values
-
-        self._parse_nb14(datasets)
-        self._parse_exclusions(datasets, atom_count)
-        self._parse_lj(datasets, atom_count)
-        self._validate_atom_indices(datasets, atom_count)
-        return datasets, atom_count
-
-    def _parse_nb14(self, datasets: dict[str, np.ndarray]) -> None:
-        parsed = _interaction(
-            self._sources["nb14"],
-            atom_columns=2,
-            parameter_columns=(
-                ("k_lj", np.dtype("float32")),
-                ("k_ee", np.dtype("float32")),
-            ),
-        )
-        datasets["/forcefield/nb14/atoms"] = parsed["atoms"]
-        datasets["/forcefield/nb14/params"] = np.column_stack(
-            [parsed["k_lj"], parsed["k_ee"]]
-        ).astype(np.float32, copy=False)
-        datasets["/forcefield/nb14/count"] = parsed["count"]
-
-    def _parse_exclusions(
-        self, datasets: dict[str, np.ndarray], atom_count: int
+    def _add_manifest_entry(
+        self,
+        contract: IOContract,
+        status: str,
+        *,
+        source_key: str,
+        source_path: Path | None = None,
+        message: str | None = None,
     ) -> None:
-        path = self._sources["exclude"]
-        tokens = _tokens(path)
-        if len(tokens) < 2:
-            raise BundleValidationError("exclude input is missing its header")
-        declared_atoms = _integer(tokens[0], path, "exclude atom count")
-        declared_values = _integer(tokens[1], path, "exclude value count")
-        if declared_atoms != atom_count:
-            raise BundleValidationError(
-                f"exclude atom count is {declared_atoms}, expected {atom_count}"
+        self._handled_contract_ids.add(contract.contract_id)
+        self._handled_keys.add(source_key)
+        if contract.bundle_file not in ("run.mdin", "*.legacy"):
+            self._bundle_files_touched.add(contract.bundle_file)
+        if contract.direction == "input" and contract.payload_kind == "file":
+            self._bundled_mdin_omit_keys.add(source_key)
+        self.manifest.add(
+            ManifestEntry(
+                contract_id=contract.contract_id,
+                status=status,
+                source_key=source_key,
+                source_path=str(source_path) if source_path is not None else None,
+                bundle_file=contract.bundle_file,
+                bundle_path=contract.bundle_path,
+                direction=contract.direction,
+                component=contract.component,
+                payload_kind=contract.payload_kind,
+                override_policy=contract.override_policy,
+                comparison_rule=contract.comparison_rule,
+                message=message,
             )
-        cursor = 2
-        offsets = [0]
-        values: list[int] = []
-        for atom_index in range(atom_count):
-            if cursor >= len(tokens):
-                raise BundleValidationError(
-                    f"exclude input ends before atom {atom_index}"
+        )
+
+    def _convert_restart_structural_state(self, *, dry_run: bool) -> None:
+        coordinate_path = self.case.resolve_legacy_input_path("coordinate_in_file")
+        if coordinate_path is None:
+            return
+        if not coordinate_path.exists():
+            raise ConversionError(f"coordinate_in_file does not exist: {coordinate_path}")
+
+        coordinate, box = load_coordinate(str(coordinate_path))
+        coordinate = np.asarray(coordinate, dtype=np.float32)
+        box = np.asarray(box, dtype=np.float32)
+        self._atom_count = int(coordinate.shape[0])
+        box_edges = _box_to_edges(box)
+
+        if not dry_run:
+            builder = self._builder
+            builder.add_dataset(
+                "restart.spgr.h5",
+                "/particles/all/position/value",
+                coordinate[np.newaxis, :, :],
+            )
+            builder.add_dataset(
+                "restart.spgr.h5",
+                "/particles/all/box/edges/value",
+                box_edges[np.newaxis, :, :],
+            )
+            builder.add_dataset(
+                "restart.spgr.h5",
+                "/particles/all/step",
+                np.asarray([0], dtype=np.int64),
+            )
+            builder.add_dataset(
+                "restart.spgr.h5",
+                "/particles/all/time",
+                np.asarray([0.0], dtype=np.float64),
+            )
+        self._restart_has_structural_state = True
+
+        self._add_converted(self._find_contract("restart.coordinate"), "coordinate_in_file", coordinate_path)
+        self._add_converted(self._find_contract("restart.box"), "coordinate_in_file", coordinate_path)
+
+        velocity_path = self.case.resolve_legacy_input_path("velocity_in_file")
+        if velocity_path is not None:
+            if not velocity_path.exists():
+                raise ConversionError(f"velocity_in_file does not exist: {velocity_path}")
+            velocity = _read_vector_file(velocity_path, expected_count=coordinate.shape[0])
+            if not dry_run:
+                self._builder.add_dataset(
+                    "restart.spgr.h5",
+                    "/particles/all/velocity/value",
+                    velocity[np.newaxis, :, :],
                 )
-            row_count = _integer(tokens[cursor], path, "exclude row count")
-            cursor += 1
-            row = tokens[cursor : cursor + row_count]
-            if len(row) != row_count:
-                raise BundleValidationError("exclude row is truncated")
-            values.extend(
-                _integer(value, path, "excluded atom") for value in row
-            )
-            cursor += row_count
-            offsets.append(len(values))
-        if cursor != len(tokens) or len(values) != declared_values:
-            raise BundleValidationError(
-                "exclude payload does not match its declared total"
-            )
-        datasets["/topology/exclusions/offset"] = np.asarray(
-            offsets, dtype=np.int64
-        )
-        datasets["/topology/exclusions/list"] = np.asarray(
-            values, dtype=np.int32
-        )
+            self._add_converted(self._find_contract("restart.velocity"), "velocity_in_file", velocity_path)
 
-    def _parse_lj(
-        self, datasets: dict[str, np.ndarray], atom_count: int
-    ) -> None:
-        path = self._sources["LJ"]
-        tokens = _tokens(path)
-        if len(tokens) < 2:
-            raise BundleValidationError("LJ input is missing its header")
-        declared_atoms = _integer(tokens[0], path, "LJ atom count")
-        type_count = _integer(tokens[1], path, "LJ type count")
-        pair_count = type_count * (type_count + 1) // 2
-        expected = 2 + pair_count * 2 + atom_count
-        if declared_atoms != atom_count or len(tokens) != expected:
-            raise BundleValidationError(
-                "LJ payload dimensions do not match its header"
-            )
-        cursor = 2
-        pair_a = np.asarray(
-            [
-                _floating(value, path, "LJ A")
-                for value in tokens[cursor : cursor + pair_count]
-            ],
-            dtype=np.float32,
-        )
-        cursor += pair_count
-        pair_b = np.asarray(
-            [
-                _floating(value, path, "LJ B")
-                for value in tokens[cursor : cursor + pair_count]
-            ],
-            dtype=np.float32,
-        )
-        cursor += pair_count
-        atom_type = np.asarray(
-            [
-                _integer(value, path, "LJ atom type")
-                for value in tokens[cursor:]
-            ],
-            dtype=np.int32,
-        )
-        if np.any(atom_type < 0) or np.any(atom_type >= type_count):
-            raise BundleValidationError("LJ atom type is outside its table")
-        datasets["/forcefield/lj/atom_type_count"] = np.asarray(
-            type_count, dtype=np.int32
-        )
-        datasets["/forcefield/lj/pair_A_12"] = pair_a
-        datasets["/forcefield/lj/pair_B_6"] = pair_b
-        datasets["/forcefield/lj/type"] = atom_type
-
-    def _validate_atom_indices(
-        self, datasets: dict[str, np.ndarray], atom_count: int
-    ) -> None:
-        for path, values in datasets.items():
-            if not path.endswith("/atoms"):
+    def _convert_text_sidecars(self, *, dry_run: bool) -> None:
+        for key, contracts in self._contract_index.items():
+            source_path = self.case.resolve_legacy_input_path(key)
+            if source_path is None:
                 continue
-            if np.any(values < 0) or np.any(values >= atom_count):
-                raise BundleValidationError(
-                    f"{path} contains an out-of-range atom index"
+            for contract in contracts:
+                if not self._contract_applies(contract):
+                    continue
+                if contract.status != "supported" or not contract.bundle_path.startswith("/parameters"):
+                    continue
+                if _has_typed_state_parser(key, source_path):
+                    continue
+                if contract.contract_id in self._handled_contract_ids:
+                    continue
+                if not source_path.exists():
+                    raise ConversionError(f"{key} does not exist: {source_path}")
+                text = source_path.read_text(encoding="utf-8")
+                bundle_path = self.bundle_dir / contract.bundle_file
+                if not dry_run:
+                    write_string(bundle_path, contract.bundle_path, text)
+                self._stage_legacy_sidecar(contract, key, source_path, dry_run=dry_run)
+                self._add_converted(contract, key, source_path)
+
+    def _import_compatibility_payloads(self, *, dry_run: bool) -> None:
+        for key, contracts in self._contract_index.items():
+            source_path = self.case.resolve_legacy_input_path(key)
+            if source_path is None:
+                continue
+            for contract in contracts:
+                if not self._contract_applies(contract):
+                    continue
+                if contract.contract_id in self._handled_contract_ids:
+                    continue
+                if contract.status != "compatibility_import":
+                    continue
+                if not source_path.exists():
+                    raise ConversionError(f"{key} does not exist: {source_path}")
+                try:
+                    typed_datasets = _parse_typed_payload(
+                        contract,
+                        key,
+                        source_path,
+                        atom_count=self._infer_atom_count() if contract.component == "trajectory" else None,
+                    )
+                except (ValueError, TypeError, IndexError) as exc:
+                    stem = key.removesuffix("_in_file")
+                    first_token = source_path.read_text(
+                        encoding="utf-8", errors="ignore"
+                    ).split()
+                    declared = first_token[0] if first_token else "unknown"
+                    raise BundleValidationError(
+                        f"{source_path} declares {declared} {stem} values "
+                        f"but the payload is invalid: {exc}"
+                    ) from exc
+                if typed_datasets is not None:
+                    if not dry_run:
+                        self._builder.add_datasets(contract.bundle_file, typed_datasets)
+                    if contract.bundle_file == "restart.spgr.h5":
+                        self._track_restart_state_component(key)
+                    if self._typed_payload_requires_legacy_sidecar(key):
+                        self._stage_legacy_sidecar(contract, key, source_path, dry_run=dry_run)
+                    self._add_manifest_entry(
+                        contract,
+                        "typed_converted",
+                        source_key=key,
+                        source_path=source_path,
+                        message=f"legacy {contract.component} payload materialized as typed HDF5 datasets",
+                    )
+                    continue
+                import_path = _compatibility_payload_path(key)
+                bundle_path = self.bundle_dir / contract.bundle_file
+                if not dry_run:
+                    if _looks_text_file(source_path):
+                        write_string(bundle_path, import_path + "/raw_text", source_path.read_text(encoding="utf-8"))
+                    else:
+                        write_bytes(bundle_path, import_path + "/raw_bytes", source_path.read_bytes())
+                    write_string(bundle_path, import_path + "/source_path", str(source_path))
+                    write_string(bundle_path, import_path + "/canonical_path", contract.bundle_path)
+                self._stage_legacy_sidecar(contract, key, source_path, dry_run=dry_run)
+                self._add_manifest_entry(
+                    contract,
+                    "compatibility_imported",
+                    source_key=key,
+                    source_path=source_path,
+                    message=(
+                        "legacy payload preserved under /compatibility/legacy_import; "
+                        "native typed materialization for this contract is still required"
+                    ),
+                    )
+
+    def _convert_xponge_metadata_sidecars(self, *, dry_run: bool) -> None:
+        """Import optional names emitted by ``save_sponge_input``."""
+
+        prefix = self.case.commands.get("default_in_file_prefix")
+        prefix_path = self.case.resolve_value_path(prefix) if prefix else None
+        for key, bundle_path in _XPONGE_METADATA_SIDECARS.items():
+            source_path = self.case.resolve_legacy_input_path(f"{key}_in_file")
+            if source_path is None and prefix_path is not None:
+                source_path = Path(f"{prefix_path}_{key}.txt")
+            if source_path is None:
+                continue
+            if not source_path.exists():
+                continue
+            values = _read_counted_strings(source_path)
+            if key in {"atom_name", "atom_type_name"}:
+                atom_count = self._infer_atom_count()
+                if len(values) != atom_count:
+                    raise ConversionError(
+                        f"{source_path} contains {len(values)} names, expected {atom_count} atoms"
+                    )
+            if not dry_run:
+                self._builder.add_dataset(
+                    "topology.spgt.h5",
+                    bundle_path,
+                    np.asarray(values, dtype=object),
                 )
-        exclusions = datasets["/topology/exclusions/list"]
-        if np.any(exclusions < 0) or np.any(exclusions >= atom_count):
-            raise BundleValidationError(
-                "exclusion list contains an out-of-range atom index"
-            )
-
-    def _parse_restart(
-        self, atom_count: int
-    ) -> dict[str, np.ndarray]:
-        path = self._sources["coordinate"]
-        tokens = _tokens(path)
-        expected = 1 + atom_count * 3 + 6
-        if len(tokens) != expected:
-            raise BundleValidationError(
-                f"{path} has {len(tokens)} fields, expected {expected}"
-            )
-        declared_atoms = _integer(tokens[0], path, "coordinate atom count")
-        if declared_atoms != atom_count:
-            raise BundleValidationError(
-                f"coordinate atom count is {declared_atoms}, "
-                f"expected {atom_count}"
-            )
-        values = np.asarray(
-            [
-                _floating(token, path, "coordinate")
-                for token in tokens[1:]
-            ],
-            dtype=np.float64,
-        )
-        positions = values[: atom_count * 3].reshape(1, atom_count, 3)
-        edges = _box_edges(values[atom_count * 3 :]).reshape(1, 3, 3)
-        return {
-            "/particles/all/position/value": positions.astype(np.float32),
-            "/particles/all/box/edges/value": edges,
-            "/particles/all/step": np.asarray([0], dtype=np.int64),
-            "/particles/all/time": np.asarray([0.0], dtype=np.float64),
-        }
-
-    def _record_manifest(self) -> None:
-        bundle_file_by_key = {
-            "coordinate": "restart.spgr.h5",
-        }
-        for key, source in sorted(self._sources.items()):
-            bundle_file = bundle_file_by_key.get(key, "topology.spgt.h5")
+            self._bundle_files_touched.add("topology.spgt.h5")
             self.manifest.add(
                 ManifestEntry(
-                    key=key,
-                    source_path=str(source),
-                    target_path=str(self.bundle_dir / bundle_file),
-                    status="typed_converted",
-                    bundle_file=bundle_file,
+                    contract_id=f"topology.metadata.{key}",
+                    status="metadata_converted",
+                    source_key=key,
+                    source_path=str(source_path),
+                    bundle_file="topology.spgt.h5",
+                    bundle_path=bundle_path,
+                    direction="input",
+                    component="topology",
+                    payload_kind="metadata",
+                    override_policy="forbidden",
+                    comparison_rule="exact",
+                    message=(
+                        "Xponge legacy analysis metadata materialized as "
+                        "typed HDF5 strings"
+                    ),
                 )
             )
 
-    def _write_bundle(
-        self,
-        root: Path,
-        topology: dict[str, np.ndarray],
-        restart: dict[str, np.ndarray],
-        atom_count: int,
-    ) -> None:
-        import h5py
+    def _convert_protocol_restart_sidecars(self, *, dry_run: bool) -> None:
+        for key in _PROTOCOL_RESTART_SIDECAR_KEYS:
+            source_path = self.case.resolve_legacy_input_path(key)
+            if source_path is None:
+                continue
+            if not source_path.exists():
+                raise ConversionError(f"{key} does not exist: {source_path}")
+            if not dry_run:
+                self._builder.add_string(
+                    "restart.spgr.h5",
+                    f"/parameters/restart/protocol_sidecars/{key}",
+                    source_path.read_text(encoding="utf-8"),
+                )
+            self._stage_legacy_sidecar_for_bundle("restart.spgr.h5", key, source_path, dry_run=dry_run)
+            self._handled_contract_ids.add(f"restart.protocol_sidecar.{key}")
+            self._handled_keys.add(key)
+            self._bundled_mdin_omit_keys.add(key)
+            self._bundle_files_touched.add("restart.spgr.h5")
+            self._restart_has_protocol_state = True
+            self.manifest.add(
+                ManifestEntry(
+                    contract_id=f"restart.protocol_sidecar.{key}",
+                    status="sidecar_embedded",
+                    source_key=key,
+                    source_path=str(source_path),
+                    bundle_file="restart.spgr.h5",
+                    bundle_path=f"/parameters/restart/protocol_sidecars/{key}",
+                    direction="input",
+                    component="restart",
+                    payload_kind="file",
+                    override_policy="legacy_protocol_sidecar",
+                    comparison_rule="text",
+                    message="legacy protocol sidecar text embedded for SPONGE H5 restart materialization",
+                )
+            )
 
-        identity_uuid = str(uuid4())
-        topology_hash = canonical_dataset_hash(
-            "topology.spgt.h5", topology
+    def _track_restart_state_component(self, key: str) -> None:
+        if key == "nose_hoover_chain_restart_input":
+            self._restart_has_dynamic_state = True
+        elif key in {
+            "SITS_nk_in_file",
+            "meta_potential_in_file",
+            "meta_scatter_in_file",
+            "hill_in_file",
+            "hills_in_file",
+            "metad_hills_in_file",
+        }:
+            self._restart_has_protocol_state = True
+
+    def _convert_custom_force_dynamic_payloads(self, *, dry_run: bool) -> None:
+        self._convert_pairwise_force_dynamic_payload(dry_run=dry_run)
+        self._convert_listed_force_dynamic_payloads(dry_run=dry_run)
+
+    def _convert_pairwise_force_dynamic_payload(self, *, dry_run: bool) -> None:
+        config_path = self.case.resolve_legacy_input_path("pairwise_force_in_file")
+        if config_path is None:
+            return
+        if not config_path.exists():
+            raise ConversionError(f"pairwise_force_in_file does not exist: {config_path}")
+        force_name, parameter_types, parameter_names, ij_count = pairwise_force_schema(config_path)
+        source_key, source_path = self._resolve_dynamic_in_file(force_name)
+        typed_datasets = parse_pairwise_force_data_file(
+            force_name,
+            source_path,
+            parameter_types=parameter_types,
+            parameter_names=parameter_names,
+            ij_parameter_count=ij_count,
         )
-        atom_order_hash = canonical_dataset_hash(
+        self._write_dynamic_custom_force_payload(
+            contract_id=f"topology.pairwise_force_data.{force_name}",
+            source_key=source_key,
+            source_path=source_path,
+            bundle_root=f"/forcefield/custom_force/pairwise/data/{_safe_h5_name(force_name)}",
+            typed_datasets=typed_datasets,
+            dry_run=dry_run,
+        )
+
+    def _convert_listed_force_dynamic_payloads(self, *, dry_run: bool) -> None:
+        config_path = self.case.resolve_legacy_input_path("listed_forces_in_file")
+        if config_path is None:
+            return
+        if not config_path.exists():
+            raise ConversionError(f"listed_forces_in_file does not exist: {config_path}")
+        for force_name, parameter_types, parameter_names in listed_force_schemas(config_path):
+            source_key, source_path = self._resolve_dynamic_in_file(force_name)
+            typed_datasets = parse_listed_force_data_file(
+                force_name,
+                source_path,
+                parameter_types=parameter_types,
+                parameter_names=parameter_names,
+            )
+            self._write_dynamic_custom_force_payload(
+                contract_id=f"topology.listed_force_data.{force_name}",
+                source_key=source_key,
+                source_path=source_path,
+                bundle_root=f"/forcefield/custom_force/listed/data/{_safe_h5_name(force_name)}",
+                typed_datasets=typed_datasets,
+                dry_run=dry_run,
+            )
+
+    def _resolve_dynamic_in_file(self, force_name: str) -> tuple[str, Path]:
+        source_key = f"{force_name}_in_file"
+        source_value = self.case.commands.get(source_key)
+        if source_value:
+            source_path = self.case.resolve_value_path(source_value)
+            if not source_path.exists():
+                raise ConversionError(f"{source_key} does not exist: {source_path}")
+            return source_key, source_path
+
+        default_prefix = self.case.commands.get("default_in_file_prefix")
+        if default_prefix:
+            candidate = self.case.resolve_value_path(f"{default_prefix}_{force_name}.txt")
+            if candidate.exists():
+                return source_key, candidate
+
+        raise ConversionError(
+            f"{source_key} is required by custom force {force_name!r} but was not found"
+        )
+
+    def _write_dynamic_custom_force_payload(
+        self,
+        *,
+        contract_id: str,
+        source_key: str,
+        source_path: Path,
+        bundle_root: str,
+        typed_datasets,
+        dry_run: bool,
+    ) -> None:
+        bundle_file = "topology.spgt.h5"
+        if not dry_run:
+            self._builder.add_datasets(bundle_file, typed_datasets)
+        sidecar_rel = self._stage_dynamic_mdin_sidecar(source_key, source_path, dry_run=dry_run)
+        self._source_paths_by_key[source_key] = source_path
+        self._handled_keys.add(source_key)
+        self._bundled_mdin_omit_keys.add(source_key)
+        self._bundle_files_touched.add(bundle_file)
+        self._bundled_mdin_extra_lines.append(f'{source_key} = "{sidecar_rel.as_posix()}"')
+        self.manifest.add(
+            ManifestEntry(
+                contract_id=contract_id,
+                status="typed_converted",
+                source_key=source_key,
+                source_path=str(source_path),
+                bundle_file=bundle_file,
+                bundle_path=bundle_root,
+                direction="input",
+                component="topology",
+                payload_kind="file",
+                override_policy="legacy_mdin_sidecar",
+                comparison_rule="typed",
+                message=(
+                    "dynamic custom force payload materialized as typed HDF5 datasets "
+                    "and rebound to a bundle-local legacy mdin sidecar"
+                ),
+            )
+        )
+
+    def _stage_dynamic_mdin_sidecar(self, key: str, source_path: Path, *, dry_run: bool) -> Path:
+        sidecar_rel = Path("legacy_sidecars") / key / source_path.name
+        sidecar_abs = self.bundle_dir / sidecar_rel
+        if not dry_run:
+            sidecar_abs.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_path, sidecar_abs)
+        return sidecar_rel
+
+    def _typed_payload_requires_legacy_sidecar(self, key: str) -> bool:
+        canonical_key = LEGACY_KEY_ALIASES.get(key, key)
+        canonical_contracts = self._contract_index.get(canonical_key, ())
+        return not any(
+            contract.status == "compatibility_import"
+            and contract.reverse_policy == "typed_required"
+            for contract in canonical_contracts
+        )
+
+    def _stage_legacy_sidecar(
+        self, contract: IOContract, key: str, source_path: Path, *, dry_run: bool
+    ) -> None:
+        if contract.direction != "input" or contract.bundle_file == "trajectory.spg.h5md":
+            return
+        self._stage_legacy_sidecar_for_bundle(contract.bundle_file, key, source_path, dry_run=dry_run)
+
+    def _stage_legacy_sidecar_for_bundle(
+        self, bundle_file: str, key: str, source_path: Path, *, dry_run: bool
+    ) -> None:
+        sidecar_rel = Path("legacy_sidecars") / key / source_path.name
+        sidecar_abs = self.bundle_dir / sidecar_rel
+        if not dry_run:
+            sidecar_abs.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_path, sidecar_abs)
+        self._source_paths_by_key[key] = source_path
+        sidecars = self._legacy_sidecars_by_bundle.setdefault(bundle_file, [])
+        entry = (key, sidecar_rel.as_posix())
+        if entry not in sidecars:
+            sidecars.append(entry)
+
+    def _ensure_required_h5_input_bindings(self) -> None:
+        h5_input_files = {
             "topology.spgt.h5",
-            topology,
+            "protocol.spgp.h5",
+            "restart.spgr.h5",
+            "trajectory.spg.h5md",
+        }
+        touched = self._bundle_files_touched & h5_input_files
+        if not touched:
+            return
+        if "topology.spgt.h5" not in touched:
+            raise ConversionError(
+                "H5 input bindings require topology.spgt.h5; provide explicit or default-prefixed topology files"
+            )
+        if "protocol.spgp.h5" not in touched:
+            self._bundle_files_touched.add("protocol.spgp.h5")
+            self.manifest.add(
+                ManifestEntry(
+                    contract_id="protocol.required_empty",
+                    status="generated",
+                    bundle_file="protocol.spgp.h5",
+                    bundle_path="/protocol/topology_compatibility",
+                    direction="input",
+                    component="protocol",
+                    payload_kind="metadata",
+                    override_policy="required_binding",
+                    comparison_rule="metadata",
+                    message="generated minimal protocol bundle because SPONGE requires protocol binding for H5 input",
+                )
+            )
+        has_restart = "restart.spgr.h5" in touched
+        has_rerun_trajectory = self.case.mode == "rerun" and "trajectory.spg.h5md" in touched
+        if not has_restart and not has_rerun_trajectory:
+            raise ConversionError(
+                "H5 input bindings require restart.spgr.h5 unless rerun trajectory input is bundled"
+            )
+
+    def _write_legacy_sidecar_tables(self, *, dry_run: bool) -> None:
+        if not dry_run:
+            self._builder.write_legacy_sidecars(self._legacy_sidecars_by_bundle)
+
+    def _write_bundle_metadata(self, *, dry_run: bool) -> None:
+        if dry_run:
+            return
+        topology_hash = self._builder.content_hash(
+            bundle_file="topology.spgt.h5"
+        )
+        atom_order_hash = self._builder.content_hash(
+            bundle_file="topology.spgt.h5",
             path_prefixes=("/atoms/", "/residues/"),
         )
-        forcefield_hash = canonical_dataset_hash(
-            "topology.spgt.h5",
-            topology,
+        forcefield_hash = self._builder.content_hash(
+            bundle_file="topology.spgt.h5",
             path_prefixes=("/forcefield/", "/manybody/", "/qc/"),
         )
-        protocol_hash = canonical_dataset_hash("protocol.spgp.h5", {})
-        state_hash = canonical_dataset_hash(
-            "restart.spgr.h5",
-            restart,
-            path_prefixes=("/particles/", "/parameters/restart/"),
+        protocol_hash = self._builder.content_hash(
+            bundle_file="protocol.spgp.h5"
+        )
+        cv_count, restraint_count, enhanced_methods = self._protocol_metadata_summary()
+        self._builder.finalize(
+            self._bundle_files_touched,
+            BundleMetadata(
+                atom_count=self._infer_atom_count(),
+                topology_hash=topology_hash,
+                atom_order_hash=atom_order_hash,
+                forcefield_hash=forcefield_hash,
+                protocol_hash=protocol_hash,
+                cv_count=cv_count,
+                restraint_count=restraint_count,
+                enhanced_methods=tuple(enhanced_methods),
+            ),
         )
 
-        topology_path = root / "topology.spgt.h5"
-        with h5py.File(topology_path, "w") as handle:
-            for path, value in topology.items():
-                write_dataset(
-                    handle,
-                    path,
-                    value,
-                    string=np.asarray(value).dtype.kind in {"O", "U", "S"},
+    def _protocol_metadata_summary(self) -> tuple[int, int, list[str]]:
+        cv_count = 1 if self.case.resolve_legacy_input_path("cv_in_file") is not None else 0
+        restraint_count = 0
+        for key in (
+            "restrain_in_file",
+            "restrain_atom_id",
+            "restrain_coordinate_in_file",
+            "restrain_weight_in_file",
+            "restrain_cv_in_file",
+        ):
+            if self.case.resolve_legacy_input_path(key) is not None:
+                restraint_count += 1
+        enhanced_methods = []
+        if any(
+            self.case.resolve_legacy_input_path(key) is not None
+            for key in ("SITS_in_file", "SITS_atom_in_file", "SITS_nk_in_file")
+        ):
+            enhanced_methods.append("SITS")
+        if any(
+            self.case.resolve_legacy_input_path(key) is not None
+            for key in (
+                "meta_edge_in_file",
+                "meta_potential_in_file",
+                "meta_scatter_in_file",
+                "hill_in_file",
+                "hills_in_file",
+                "metad_hills_in_file",
+            )
+        ):
+            enhanced_methods.append("metadynamics")
+        if self.case.resolve_legacy_input_path("steer_cv_in_file") is not None:
+            enhanced_methods.append("steer")
+        if self.case.resolve_legacy_input_path("soft_walls_in_file") is not None:
+            enhanced_methods.append("soft_walls")
+        return cv_count, restraint_count, enhanced_methods
+
+    def _content_hash(
+        self,
+        bundle_file: str,
+        *,
+        include_keys: set[str] | None = None,
+        exclude_keys: set[str] | None = None,
+    ) -> str:
+        digest = hashlib.sha256()
+        digest.update(bundle_file.encode("utf-8"))
+        sidecars = sorted(self._legacy_sidecars_by_bundle.get(bundle_file, ()))
+        for key, rel_path in sidecars:
+            if include_keys is not None and key not in include_keys:
+                continue
+            if exclude_keys is not None and key in exclude_keys:
+                continue
+            digest.update(b"\0")
+            digest.update(key.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(rel_path.encode("utf-8"))
+            source_path = self._source_paths_by_key.get(key)
+            if source_path is not None and source_path.exists():
+                digest.update(b"\0")
+                digest.update(source_path.read_bytes())
+        return "sha256:" + digest.hexdigest()
+
+    def _record_scalar_contracts(self) -> None:
+        for key, contracts in self._contract_index.items():
+            if key not in self.case.commands:
+                continue
+            for contract in contracts:
+                if not self._contract_applies(contract):
+                    continue
+                if contract.contract_id in self._handled_contract_ids:
+                    continue
+                if contract.status == "run_mdin":
+                    if key == "default_in_file_prefix" and self._has_h5_input_bundle():
+                        self._bundled_mdin_omit_keys.add(key)
+                        self._add_manifest_entry(
+                            contract,
+                            "legacy_input_override_replaced",
+                            source_key=key,
+                            message=(
+                                "legacy default input prefix was removed because bundled H5 sidecars "
+                                "provide explicit input paths"
+                            ),
+                        )
+                    elif key in _input_binding_keys_for_bundle_files(self._bundle_files_touched):
+                        self._bundled_mdin_omit_keys.add(key)
+                        self._add_manifest_entry(
+                            contract,
+                            "legacy_input_override_replaced",
+                            source_key=key,
+                            message="legacy input file was converted and replaces this existing H5 input binding",
+                        )
+                    else:
+                        self._add_manifest_entry(contract, "preserved_in_mdin", source_key=key)
+                elif contract.status == "output_plan":
+                    self._add_manifest_entry(contract, "output_plan_preserved", source_key=key)
+                elif contract.status == "legacy_output_sidecar":
+                    self._add_manifest_entry(contract, "legacy_output_sidecar_preserved", source_key=key)
+
+    def _record_default_legacy_outputs(self) -> None:
+        prefix = self.case.commands.get("default_out_file_prefix")
+        if not prefix or self._has_h5_output_plan():
+            return
+        for key in _DEFAULT_LEGACY_OUTPUT_KEYS:
+            if key in self.case.commands:
+                continue
+            contract = self._find_contract(f"output.legacy_sidecar.{key}")
+            self.manifest.add(
+                ManifestEntry(
+                    contract_id=contract.contract_id,
+                    status="legacy_output_sidecar_default",
+                    source_key="default_out_file_prefix",
+                    source_path=_default_legacy_output_path(prefix, key),
+                    bundle_file=contract.bundle_file,
+                    bundle_path=contract.bundle_path,
+                    direction=contract.direction,
+                    component=contract.component,
+                    payload_kind=contract.payload_kind,
+                    override_policy=contract.override_policy,
+                    comparison_rule=contract.comparison_rule,
+                    message="legacy output sidecar is enabled by default_out_file_prefix because no H5 output path is set",
                 )
-            handle["/atoms/charge"].attrs["unit"] = "Amber"
-            self._write_schema(
-                handle, "sponge.topology.h5", identity_uuid
-            )
-            write_string(handle, "/topology/atom_order_hash", atom_order_hash)
-            write_string(handle, "/topology/topology_hash", topology_hash)
-            write_string(handle, "/topology/forcefield_hash", forcefield_hash)
-            write_dataset(
-                handle,
-                "/topology/atom_count",
-                np.asarray(atom_count, dtype=np.int64),
             )
 
-        protocol_path = root / "protocol.spgp.h5"
-        with h5py.File(protocol_path, "w") as handle:
-            self._write_schema(
-                handle, "sponge.protocol.h5", identity_uuid
-            )
-            write_string(
-                handle,
-                "/protocol/topology_compatibility/topology_hash",
-                topology_hash,
-            )
-            write_string(handle, "/identity/content_hash", protocol_hash)
-            write_dataset(
-                handle,
-                "/protocol/cv_count",
-                np.asarray(0, dtype=np.int64),
-            )
-            write_dataset(
-                handle,
-                "/protocol/restraint_count",
-                np.asarray(0, dtype=np.int64),
+    def _record_unsupported_present_contracts(self) -> None:
+        for contract in CONTRACTS:
+            if contract.status == "supported":
+                continue
+            for key in contract.legacy_keys:
+                if (
+                    key in self.case.commands
+                    and key not in self._handled_keys
+                    and contract.contract_id not in self._handled_contract_ids
+                    and self._contract_applies(contract)
+                ):
+                    value = self.case.commands[key]
+                    source_path = self.case.resolve_value_path(value) if value else None
+                    self._add_manifest_entry(
+                        contract,
+                        "unsupported",
+                        source_key=key,
+                        source_path=source_path,
+                        message="contract is known but not implemented by this converter yet",
+                    )
+
+    def _write_bundled_mdin(self, *, dry_run: bool) -> None:
+        output_path = self.bundle_dir / "mdin.bundled.spg.toml"
+        omit_keys = self._bundled_mdin_omit_keys | _input_binding_keys_for_bundle_files(self._bundle_files_touched)
+        append_lines = []
+        if "topology.spgt.h5" in self._bundle_files_touched:
+            append_lines.append('input_h5_topology_path = "topology.spgt.h5"')
+        if "protocol.spgp.h5" in self._bundle_files_touched:
+            append_lines.append('input_h5_protocol_path = "protocol.spgp.h5"')
+        if "restart.spgr.h5" in self._bundle_files_touched:
+            append_lines.append('input_h5_restart_path = "restart.spgr.h5"')
+            append_lines.append(f'input_h5_restart_load = "{self._restart_load_policy()}"')
+        if "trajectory.spg.h5md" in self._bundle_files_touched:
+            append_lines.append('input_h5_trajectory_path = "trajectory.spg.h5md"')
+            append_lines.append('input_h5_trajectory_particle_stream = "all"')
+        append_lines.extend(self._bundled_mdin_extra_lines)
+        self.manifest.bundled_mdin = str(output_path)
+        if not dry_run:
+            output_path.write_text(
+                render_mdin_without_keys(self.case.mdin_text, omit_keys, append_lines),
+                encoding="utf-8",
             )
 
-        restart_path = root / "restart.spgr.h5"
-        with h5py.File(restart_path, "w") as handle:
-            for group in (
-                "/h5md",
-                "/h5md/creator",
-                "/run",
-                "/particles/all",
-                "/parameters/restart",
-                "/parameters/restart/rng_state",
-                "/parameters/restart/integrator_state",
-                "/parameters/restart/thermostat",
-                "/parameters/restart/barostat",
-                "/parameters/restart/protocol_sidecars",
-                "/parameters/restart/bias",
-                "/parameters/restart/bias/sits",
-                "/parameters/restart/bias/meta",
-            ):
-                handle.require_group(group)
-            for path, value in restart.items():
-                write_dataset(handle, path, value)
-            handle["/h5md"].attrs["version"] = np.asarray(
-                [1, 1], dtype=np.int32
-            )
-            handle["/h5md/creator"].attrs["name"] = "XpongeCPP"
-            handle["/h5md/creator"].attrs["version"] = "legacy-to-bundle"
-            handle["/particles/all/time"].attrs["unit"] = "ps"
-            handle["/particles/all/position/value"].attrs["unit"] = "Angstrom"
-            handle["/particles/all/box/edges/value"].attrs["unit"] = "Angstrom"
-            box = handle["/particles/all/box"]
-            box.attrs["dimension"] = np.int32(3)
-            box.attrs["boundary"] = np.asarray(
-                ["periodic", "periodic", "periodic"],
-                dtype=h5py.string_dtype("utf-8"),
-            )
-            handle["/particles/all/position/step"] = handle[
-                "/particles/all/step"
-            ]
-            handle["/particles/all/position/time"] = handle[
-                "/particles/all/time"
-            ]
-            handle["/particles/all/box/edges/step"] = handle[
-                "/particles/all/step"
-            ]
-            handle["/particles/all/box/edges/time"] = handle[
-                "/particles/all/time"
-            ]
-            self._write_schema(handle, "sponge.restart.h5", identity_uuid)
-            write_string(handle, "/run/topology_hash", topology_hash)
-            write_string(handle, "/run/atom_order_hash", atom_order_hash)
-            write_string(
-                handle, "/run/producer_protocol_hash", protocol_hash
-            )
-            write_string(handle, "/run/state_hash", state_hash)
-            write_string(
-                handle,
-                "/parameters/sponge/output/status",
-                "finalized",
-            )
-            write_dataset(
-                handle,
-                "/parameters/sponge/output/frame_count",
-                np.asarray([1], dtype=np.int64),
-            )
-            write_dataset(
-                handle,
-                "/parameters/sponge/output/last_complete_step",
-                np.asarray([0], dtype=np.int64),
-            )
-            write_dataset(
-                handle,
-                "/parameters/sponge/output/last_complete_time",
-                np.asarray([0.0], dtype=np.float64),
-            )
-            write_dataset(
-                handle,
-                "/run/current_step",
-                np.asarray([0], dtype=np.int64),
-            )
-            write_dataset(
-                handle,
-                "/run/current_time",
-                np.asarray([0.0], dtype=np.float64),
-            )
-            write_dataset(
-                handle,
-                "/parameters/sponge/output/particle_streams",
-                np.asarray(["all"], dtype=object),
-                string=True,
-            )
-            write_string(handle, "/run/state_type", "restart")
-
-    @staticmethod
-    def _write_schema(handle, schema_name: str, identity_uuid: str) -> None:
-        write_string(handle, "/schema/name", schema_name)
-        write_string(handle, "/schema/version", "sponge.input.v2")
-        write_string(handle, "/parameters/sponge/schema/name", schema_name)
-        write_string(
-            handle, "/parameters/sponge/schema/version", "sponge.input.v2"
+    def _has_h5_input_bundle(self) -> bool:
+        return bool(
+            self._bundle_files_touched
+            & {"topology.spgt.h5", "protocol.spgp.h5", "restart.spgr.h5", "trajectory.spg.h5md"}
         )
-        write_string(handle, "/identity/uuid", identity_uuid)
+
+    def _has_h5_output_plan(self) -> bool:
+        return any(self.case.commands.get(key) for key in _H5_OUTPUT_PATH_KEYS)
+
+    def _restart_load_policy(self) -> str:
+        if self._restart_has_structural_state and (
+            self._restart_has_dynamic_state or self._restart_has_protocol_state
+        ):
+            return "full"
+        if self._restart_has_dynamic_state and self._restart_has_protocol_state:
+            return "full"
+        if self._restart_has_dynamic_state:
+            return "dynamic"
+        if self._restart_has_protocol_state:
+            return "protocol"
+        return "structural"
+
+    def _infer_atom_count(self) -> int:
+        if self._atom_count is not None:
+            return self._atom_count
+        for key in ("mass_in_file", "charge_in_file"):
+            path = self.case.resolve_legacy_input_path(key)
+            if path is None:
+                continue
+            if path.exists():
+                lines = [line.split() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+                if lines:
+                    self._atom_count = int(lines[0][0])
+                    return self._atom_count
+        raise ConversionError("cannot infer atom count needed to convert rerun trajectory inputs")
 
 
 def convert_legacy_to_bundle(
@@ -763,10 +862,141 @@ def convert_legacy_to_bundle(
     mdin: str | Path = "mdin.spg.toml",
     dry_run: bool = False,
 ) -> ConversionManifest:
-    """Convert a direct/legacy SPONGE case into canonical bundle files."""
+    """Convert a legacy case directory and return its manifest."""
 
-    case = scan_legacy_case(case_root, mdin)
+    target = Path(output_dir).resolve()
+    if target.exists():
+        raise BundleConflictError(f"output directory already exists: {target}")
+    case = scan_legacy_case(case_root, mdin=mdin)
     return LegacyToBundleConverter(case, output_dir).convert(dry_run=dry_run)
 
 
-__all__ = ["LegacyToBundleConverter", "convert_legacy_to_bundle"]
+def _read_vector_file(path: Path, *, expected_count: int) -> np.ndarray:
+    lines = [line.split() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if lines and len(lines[0]) == 1:
+        declared = int(lines[0][0])
+        if declared != expected_count:
+            raise ConversionError(f"{path} declares {declared} atoms but coordinate has {expected_count}")
+        lines = lines[1:]
+    values = np.asarray([[float(item) for item in line[:3]] for line in lines], dtype=np.float32)
+    if values.shape != (expected_count, 3):
+        raise ConversionError(f"{path} has shape {values.shape}, expected ({expected_count}, 3)")
+    return values
+
+
+def _read_counted_strings(path: Path) -> list[str]:
+    lines = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not lines:
+        raise ConversionError(f"{path} is empty")
+    declared = int(lines[0])
+    values = lines[1:]
+    if len(values) != declared:
+        raise ConversionError(
+            f"{path} declares {declared} strings but contains {len(values)}"
+        )
+    return values
+
+
+def _box_to_edges(box: np.ndarray) -> np.ndarray:
+    try:
+        return box_to_edges(box)
+    except ValueError as exc:
+        raise ConversionError(str(exc)) from exc
+
+
+def _compatibility_payload_path(key: str) -> str:
+    safe_key = "".join(char if char.isalnum() or char == "_" else "_" for char in key)
+    return f"/compatibility/legacy_import/{safe_key}"
+
+
+_H5_OUTPUT_PATH_KEYS = {
+    "output_h5_trajectory_path",
+    "output_h5_restart_path",
+    "output_h5_observable_path",
+}
+
+
+_PROTOCOL_RESTART_SIDECAR_KEYS = PROTOCOL_RESTART_SIDECAR_KEYS
+
+
+_DEFAULT_LEGACY_OUTPUT_KEYS = (
+    "mdout",
+    "mdinfo",
+    "crd",
+    "box",
+    "rst",
+)
+
+
+_TOPOLOGY_ATOM_ORDER_KEYS = {
+    "mass_in_file",
+    "charge_in_file",
+    "residue_in_file",
+}
+
+
+def _default_legacy_output_path(prefix: str, key: str) -> str:
+    suffixes = {
+        "mdout": ".out",
+        "mdinfo": ".info",
+        "crd": ".dat",
+        "box": ".box",
+        "rst": "",
+    }
+    return prefix + suffixes[key]
+
+
+def _safe_h5_name(name: str) -> str:
+    safe = "".join(char if char.isalnum() or char == "_" else "_" for char in name)
+    return safe or "unnamed"
+
+
+def _input_binding_keys_for_bundle_files(bundle_files: set[str]) -> set[str]:
+    bindings = {
+        "topology.spgt.h5": "input_h5_topology_path",
+        "protocol.spgp.h5": "input_h5_protocol_path",
+        "restart.spgr.h5": "input_h5_restart_path",
+        "trajectory.spg.h5md": "input_h5_trajectory_path",
+    }
+    keys = {key for bundle_file, key in bindings.items() if bundle_file in bundle_files}
+    if "restart.spgr.h5" in bundle_files:
+        keys.add("input_h5_restart_load")
+    if "trajectory.spg.h5md" in bundle_files:
+        keys.add("input_h5_trajectory_particle_stream")
+    return keys
+
+
+def _parse_typed_payload(contract: IOContract, key: str, source_path: Path, *, atom_count: int | None = None):
+    if contract.component == "topology":
+        return parse_topology_file(key, source_path)
+    if contract.component in {"protocol", "restart"}:
+        return parse_protocol_or_restart_file(key, source_path)
+    if contract.component == "trajectory":
+        if atom_count is None:
+            raise ConversionError("atom count is required for trajectory conversion")
+        return parse_trajectory_file(key, source_path, atom_count=atom_count)
+    return None
+
+
+def _has_typed_state_parser(key: str, source_path: Path) -> bool:
+    if not source_path.exists():
+        return False
+    return parse_protocol_or_restart_file(key, source_path) is not None
+
+
+def _looks_text_file(path: Path) -> bool:
+    try:
+        data = path.read_bytes()[:4096]
+    except OSError:
+        return False
+    if b"\0" in data:
+        return False
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True

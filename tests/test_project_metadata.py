@@ -9,6 +9,7 @@ def test_runtime_dependencies_track_xponge_origin_distribution_set():
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert metadata["project"]["dependencies"] == [
         "numpy<2",
+        "h5py>=3.11",
         "geometric>=1.1",
         "matplotlib>=3.10.8",
         "MDAnalysis>=2.9.0",

@@ -83,6 +83,7 @@ def _assign_calculate_charge(self, method, **parameters):
         from ..assign import resp
 
         return_diagnostics = parameters.get("return_diagnostics", False)
+        return_metadata = parameters.get("return_metadata", False)
         fitted = resp.resp_fit(
             self,
             basis=parameters.get("basis", None),
@@ -107,11 +108,17 @@ def _assign_calculate_charge(self, method, **parameters):
             constraint_matrix=parameters.get("constraint_matrix", None),
             constraint_targets=parameters.get("constraint_targets", None),
             return_diagnostics=return_diagnostics,
+            return_metadata=return_metadata,
+            progress_callback=parameters.get("progress_callback", None),
+            scf_strategy=parameters.get("scf_strategy", "direct"),
+            scf_reference=parameters.get("scf_reference", "auto"),
         )
-        charges = fitted["charges"] if return_diagnostics else fitted
+        charges = fitted["charges"] if (return_diagnostics or return_metadata) else fitted
         self.set_charges(charges)
         if return_diagnostics:
             self.charge_fit_diagnostics = fitted["diagnostics"]
+        if return_metadata:
+            self.charge_fit_metadata = fitted["metadata"]
         return None
     raise ValueError("methods should be one of the following: 'RESP', 'GASTEIGER', 'TPACM4' (case-insensitive)")
 
@@ -499,6 +506,12 @@ def install_legacy_assign_patches():
     Assign.Has_Bond_Marker = Assign.has_bond_marker
     Assign.atom_numbers = property(_assign_atom_numbers)
     Assign.atom_types = property(Assign.atom_types.fget, _assign_set_atom_types_compat)
+    Assign.coordinate = property(lambda self: self.coordinates)
+    Assign.charge = property(
+        lambda self: self.charges,
+        lambda self, values: self.set_charges(values),
+    )
+    Assign.formal_charge = property(lambda self: self.formal_charges)
 
 
 __all__ = ["install_legacy_assign_patches"]

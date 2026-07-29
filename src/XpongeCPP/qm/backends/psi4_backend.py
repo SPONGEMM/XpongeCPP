@@ -7,7 +7,16 @@ import time
 from .._esp_memory import estimate_aux_tensor_bytes, iter_chunk_slices
 from ..capabilities import QMCapabilitySet
 from ..errors import QMBackendImportError, QMCapabilityError
-from ..models import ESPGridRequest, ESPResult, HessianResult, OptimizationResult, QMMolecule, QMRunOptions, SCFResult
+from ..models import (
+    ESPGridRequest,
+    ESPResult,
+    HessianResult,
+    OptimizationResult,
+    QMMolecule,
+    QMRunOptions,
+    SCFResult,
+    resolve_scf_reference,
+)
 
 
 name = "psi4"
@@ -19,11 +28,11 @@ def require_numpy_psi4():
     try:
         import numpy as np
     except ImportError as exc:
-        raise QMBackendImportError("NumPy is required for RESP charge calculation") from exc
+        raise QMBackendImportError("NumPy is required for QM calculations") from exc
     try:
         import psi4
     except ImportError as exc:
-        raise QMBackendImportError("Psi4 is required for RESP charge calculation") from exc
+        raise QMBackendImportError("Psi4 is required for QM calculations") from exc
     return np, psi4
 
 
@@ -45,6 +54,15 @@ def _build_geometry_block(molecule: QMMolecule):
     return "\n".join(geometry_lines)
 
 
+def _update_assign_coordinates(assign, coordinates_angstrom):
+    if assign is None:
+        return
+    for i, coord in enumerate(coordinates_angstrom):
+        assign.coordinate[i][0] = float(coord[0])
+        assign.coordinate[i][1] = float(coord[1])
+        assign.coordinate[i][2] = float(coord[2])
+
+
 def run_scf(molecule: QMMolecule, options: QMRunOptions, assign=None, return_timings: bool = False) -> SCFResult:
     np, psi4 = require_numpy_psi4()
     if options.ecp is not None or not isinstance(options.basis, str):
@@ -58,7 +76,7 @@ def run_scf(molecule: QMMolecule, options: QMRunOptions, assign=None, return_tim
     psi4.set_options(
         {
             "basis": options.basis,
-            "reference": options.reference or ("rhf" if int(molecule.spin) == 0 else "uhf"),
+            "reference": resolve_scf_reference(options.reference, molecule.spin),
         }
     )
     timings["build"] = time.perf_counter() - start
@@ -73,9 +91,8 @@ def run_scf(molecule: QMMolecule, options: QMRunOptions, assign=None, return_tim
     out_mol = wavefunction.molecule()
     atom_coordinates_bohr = np.array(out_mol.geometry().np, dtype=float)
     optimized_coordinates = [tuple(float(x) for x in row) for row in atom_coordinates_bohr * ANGSTROM_PER_BOHR]
-    if options.optimize_geometry and assign is not None:
-        for i, coord in enumerate(atom_coordinates_bohr * ANGSTROM_PER_BOHR):
-            assign.set_coordinate(i, float(coord[0]), float(coord[1]), float(coord[2]))
+    if options.optimize_geometry:
+        _update_assign_coordinates(assign, atom_coordinates_bohr * ANGSTROM_PER_BOHR)
     return SCFResult(
         backend_name=name,
         total_energy=float(energy),
@@ -85,6 +102,7 @@ def run_scf(molecule: QMMolecule, options: QMRunOptions, assign=None, return_tim
         charge=molecule.total_charge,
         spin=molecule.spin,
         atom_symbols=list(molecule.atom_symbols),
+        reference=resolve_scf_reference(options.reference, molecule.spin),
         backend_handle={"wavefunction": wavefunction},
         timings=timings,
         optimized_coordinates_angstrom=optimized_coordinates if options.optimize_geometry else None,

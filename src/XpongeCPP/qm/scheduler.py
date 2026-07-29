@@ -8,13 +8,27 @@ from .backends import psi4_backend, pyscf_backend
 from ._esp_memory import normalize_chunk_policy, normalize_safety_factor, parse_memory_limit_bytes
 from .capabilities import QMCapabilitySet
 from .errors import QMBackendImportError, QMBackendSelectionError, QMCapabilityError
-from .models import ESPGridRequest, HessianResult, OptimizationResult, QMMolecule, QMRunOptions
+from .models import (
+    ESPGridRequest,
+    HessianResult,
+    OptimizationResult,
+    QMMolecule,
+    QMRunOptions,
+    resolve_scf_reference,
+)
 
 
 _BACKENDS = {
     "pyscf": pyscf_backend,
     "psi4": psi4_backend,
 }
+
+_SCF_STRATEGIES = frozenset({
+    "direct",
+    "density_fit",
+    "newton",
+    "density_fit_newton",
+})
 
 
 def default_backend_name():
@@ -46,21 +60,45 @@ def get_backend(backend=None):
     return _BACKENDS[normalize_backend_name(backend)]
 
 
+def normalize_scf_strategy(backend, strategy):
+    backend_name = normalize_backend_name(backend)
+    strategy_name = str(strategy).strip().lower()
+    if strategy_name not in _SCF_STRATEGIES:
+        supported = ", ".join(sorted(_SCF_STRATEGIES))
+        raise ValueError(f"SCF strategy should be one of: {supported}")
+    if backend_name != "pyscf" and strategy_name != "direct":
+        raise ValueError(
+            f"SCF strategy {strategy_name!r} requires the PySCF backend"
+        )
+    return strategy_name
+
+
 def get_capabilities(backend=None) -> QMCapabilitySet:
     return get_backend(backend).capabilities()
 
 
 def qmmolecule_from_assign(assign, charge, spin):
     atom_names = []
-    if hasattr(assign, "atom_names"):
+    if hasattr(assign, "names"):
+        atom_names = list(assign.names)
+    elif hasattr(assign, "atom_names"):
         atom_names = list(assign.atom_names)
     formal_charges = []
-    if hasattr(assign, "formal_charges"):
+    if hasattr(assign, "formal_charge"):
+        formal_charges = [int(x) for x in assign.formal_charge]
+    elif hasattr(assign, "formal_charges"):
         formal_charges = [int(x) for x in assign.formal_charges]
-    bonds = [{int(k): int(v) for k, v in bond_map.items()} for bond_map in assign.bonds]
+    raw_bonds = assign.bonds
+    bond_maps = raw_bonds.values() if hasattr(raw_bonds, "values") else raw_bonds
+    bonds = [{int(k): int(v) for k, v in bond_map.items()} for bond_map in bond_maps]
+    coordinates = (
+        assign.coordinate
+        if hasattr(assign, "coordinate")
+        else assign.coordinates
+    )
     return QMMolecule(
         atom_symbols=list(assign.atoms),
-        coordinates_angstrom=[tuple(float(x) for x in coord) for coord in assign.coordinates],
+        coordinates_angstrom=[tuple(float(x) for x in coord) for coord in coordinates],
         total_charge=int(charge),
         spin=int(spin),
         atom_names=atom_names or None,
@@ -81,18 +119,23 @@ def run_scf(
     spin=0,
     optimize_geometry=False,
     return_timings=False,
+    scf_strategy="direct",
+    scf_reference="auto",
 ):
     backend_name = normalize_backend_name(backend)
+    scf_strategy = normalize_scf_strategy(backend_name, scf_strategy)
     backend_module = get_backend(backend_name)
     molecule = qmmolecule_from_assign(assign, charge, spin)
+    resolved_reference = resolve_scf_reference(scf_reference, molecule.spin)
     options = QMRunOptions(
         backend=backend_name,
         basis=basis,
         ecp=ecp,
         cart=cart,
         method="scf",
-        reference=None,
+        reference=resolved_reference,
         optimize_geometry=optimize_geometry,
+        scf_strategy=scf_strategy,
     )
     try:
         if not backend_module.capabilities().supports_scf:
@@ -130,17 +173,19 @@ def optimize_geometry(
     charge=0,
     spin=0,
     return_timings=False,
+    scf_reference="auto",
 ) -> OptimizationResult:
     backend_name = normalize_backend_name(backend)
     backend_module = get_backend(backend_name)
     molecule = qmmolecule_from_assign(assign, charge, spin)
+    resolved_reference = resolve_scf_reference(scf_reference, molecule.spin)
     options = QMRunOptions(
         backend=backend_name,
         basis=basis,
         ecp=ecp,
         cart=cart,
         method="scf",
-        reference=None,
+        reference=resolved_reference,
         optimize_geometry=True,
     )
     try:
@@ -160,19 +205,29 @@ def compute_hessian(
     cart=None,
     charge=0,
     spin=0,
+    threads=None,
+    memory_limit_bytes=None,
+    scf_convergence_tolerance=None,
+    scf_max_cycles=None,
     return_timings=False,
+    scf_reference="auto",
 ) -> HessianResult:
     backend_name = normalize_backend_name(backend)
     backend_module = get_backend(backend_name)
     molecule = qmmolecule_from_assign(assign, charge, spin)
+    resolved_reference = resolve_scf_reference(scf_reference, molecule.spin)
     options = QMRunOptions(
         backend=backend_name,
         basis=basis,
         ecp=ecp,
         cart=cart,
         method="scf",
-        reference=None,
+        reference=resolved_reference,
         optimize_geometry=False,
+        threads=threads,
+        memory_limit_bytes=memory_limit_bytes,
+        scf_convergence_tolerance=scf_convergence_tolerance,
+        scf_max_cycles=scf_max_cycles,
     )
     try:
         if not backend_module.capabilities().supports_hessian:

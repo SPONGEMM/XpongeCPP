@@ -983,3 +983,21 @@ def test_assign_builds_graph_markers_and_residue_type():
     restype = assign.to_residuetype("WATX")
     assert restype.atom_count == 3
     assert restype.bond_count == 2
+
+
+def test_pdb_chain_change_splits_equal_residue_numbers_without_ter():
+    """A chain change is a residue boundary even when PDB omits TER."""
+
+    Xponge.register_tip3p()
+    molecule = Xponge.load_pdb(StringIO("""\
+HETATM    1  O   WAT A 148       0.000   0.000   0.000  1.00  0.00           O
+HETATM    2  H1  WAT A 148       0.957   0.000   0.000  1.00  0.00           H
+HETATM    3  H2  WAT A 148      -0.240   0.927   0.000  1.00  0.00           H
+HETATM    4  O   WAT B 148       3.000   0.000   0.000  1.00  0.00           O
+HETATM    5  H1  WAT B 148       3.957   0.000   0.000  1.00  0.00           H
+HETATM    6  H2  WAT B 148       2.760   0.927   0.000  1.00  0.00           H
+"""))
+
+    assert len(molecule.residues) == 2
+    assert [len(residue.atoms) for residue in molecule.residues] == [3, 3]
+    assert [residue.name2atom("O").x for residue in molecule.residues] == [0.0, 3.0]
