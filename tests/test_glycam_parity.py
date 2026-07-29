@@ -90,10 +90,20 @@ def test_glycam_modified_monosaccharide_templates_load():
         assert Xponge.has_template(resname)
 
 
-def test_glycam_coverage_audit_classifies_extension_layers():
+def test_glycam_coverage_audit_classifies_extension_layers(tmp_path):
     from XpongeCPP.forcefield.amber.glycam_06j.audit import audit_glycam_coverage
 
-    report = audit_glycam_coverage(repo_root=Path(__file__).resolve().parents[1])
+    amber_units = ["MEX", "SO3", "TBT", "CA2", "HYP", "NHYP", "CHYP"]
+    prep_file = tmp_path / "GLYCAM_06j-1.prep"
+    prep_file.write_text("\n".join(f"{name} INT 0" for name in amber_units))
+    lib_file = tmp_path / "empty.lib"
+    lib_file.write_text("")
+
+    report = audit_glycam_coverage(
+        prep_file=prep_file,
+        lib_files=[lib_file],
+        repo_root=Path(__file__).resolve().parents[1],
+    )
     for resname in ["MEX", "SO3", "TBT"]:
         assert resname in report["covered"]
     assert "CA2" in report["covered_elsewhere"]

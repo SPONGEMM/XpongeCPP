@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 
@@ -26,7 +27,14 @@ def _default_repo_root() -> Path:
 
 
 def _default_ambertools_root() -> Path:
-    return Path("/mnt/data8t/Software/AmberTools26/ambertools26_src")
+    for variable in ("AMBERTOOLS_ROOT", "AMBERHOME"):
+        value = os.environ.get(variable)
+        if value:
+            return Path(value)
+    raise FileNotFoundError(
+        "AmberTools data location is unknown; set AMBERTOOLS_ROOT or AMBERHOME, "
+        "or pass prep_file and lib_files explicitly"
+    )
 
 
 def _parse_prep_units(prep_file: Path) -> set[str]:
@@ -90,13 +98,15 @@ def audit_glycam_coverage(
     repo_root: Path | None = None,
 ) -> dict:
     repo_root = repo_root or _default_repo_root()
-    amber_root = _default_ambertools_root()
-    prep_file = prep_file or amber_root / "dat" / "leap" / "prep" / "GLYCAM_06j-1.prep"
-    lib_files = lib_files or [
-        amber_root / "dat" / "leap" / "lib" / "GLYCAM_amino_06j_12SB.lib",
-        amber_root / "dat" / "leap" / "lib" / "GLYCAM_aminont_06j_12SB.lib",
-        amber_root / "dat" / "leap" / "lib" / "GLYCAM_aminoct_06j_12SB.lib",
-    ]
+    if prep_file is None or lib_files is None:
+        amber_root = _default_ambertools_root()
+        prep_file = prep_file or amber_root / "dat" / "leap" / "prep" / "GLYCAM_06j-1.prep"
+        if lib_files is None:
+            lib_files = [
+                amber_root / "dat" / "leap" / "lib" / "GLYCAM_amino_06j_12SB.lib",
+                amber_root / "dat" / "leap" / "lib" / "GLYCAM_aminont_06j_12SB.lib",
+                amber_root / "dat" / "leap" / "lib" / "GLYCAM_aminoct_06j_12SB.lib",
+            ]
 
     amber_units = _parse_prep_units(prep_file)
     for lib_file in lib_files:
