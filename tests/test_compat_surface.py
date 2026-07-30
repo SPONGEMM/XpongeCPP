@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import XpongeCPP as Xponge
 import pytest
 
@@ -132,6 +134,41 @@ def test_xpongecpp_common_legacy_import_paths_resolve():
     assert exclude_base.Exclude(4).n == 4
     assert charge_base is not None
     assert mass_base is not None
+
+
+def test_build_pdb_element_helper_preserves_two_letter_metals():
+    import Xponge.build as build
+
+    assert build._pdb_guess_element(
+        SimpleNamespace(name="ZN", element="Zn", mass=65.38)
+    ).strip() == "Zn"
+    assert build._pdb_guess_element(
+        SimpleNamespace(name="ZN", element="", mass=65.38)
+    ).strip() == "Zn"
+
+
+def test_pdb_reader_applies_nucleic_terminals_and_template_alias_names(tmp_path):
+    import XpongeCPP.forcefield.amber.bsc1  # noqa: F401
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    text = "\n".join(
+        [
+            "ATOM      1  O5'  DC A   1       0.000   0.000   0.000  1.00  0.00           O",
+            "ATOM      2  O5'  DG A   2       1.000   0.000   0.000  1.00  0.00           O",
+            "TER",
+            "HETATM    3  O   HOH B   1       3.000   0.000   0.000  1.00  0.00           O",
+            "END",
+        ]
+    )
+    path = tmp_path / "nucleic-and-water.pdb"
+    path.write_text(text + "\n", encoding="utf-8")
+    molecule = Xponge.load_pdb(path)
+
+    assert [residue.name for residue in molecule.residues] == [
+        "DC5",
+        "DG3",
+        "WAT",
+    ]
 
 
 def test_xponge_package_alias_supports_common_legacy_import_paths():

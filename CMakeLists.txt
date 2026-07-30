@@ -87,6 +87,14 @@ endif()
 target_compile_options(_core PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
 )
+if(UNIX AND NOT APPLE)
+    set_target_properties(_core PROPERTIES
+        BUILD_RPATH_USE_ORIGIN TRUE
+        INSTALL_RPATH "$ORIGIN"
+        INSTALL_RPATH_USE_LINK_PATH FALSE
+        INSTALL_REMOVE_ENVIRONMENT_RPATH TRUE
+    )
+endif()
 
 option(XPONGECPP_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 if (XPONGECPP_SANITIZE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

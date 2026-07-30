@@ -662,6 +662,9 @@ Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_
                            const std::unordered_map<std::string, double>& specific_lambda);
 void register_residue_templates_from_mol2_text(const std::string& text);
 void register_residue_templates_from_mol2_file(const std::filesystem::path& filename);
+void register_new_residue_templates_from_mol2_text(const std::string& text);
+void register_new_residue_templates_from_mol2_file(const std::filesystem::path& filename);
+void register_residue_type_template(const ResidueType& residue_type);
 void register_template_molecule_from_mol2_file(const std::filesystem::path& filename);
 void register_template_virtual_atom2(const std::string& template_name, const std::string& virtual_atom,
                                      const std::string& atom0, const std::string& atom1, const std::string& atom2,

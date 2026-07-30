@@ -225,6 +225,12 @@ void bind_forcefield_module(py::module_& m) {
           py::arg("text"));
     m.def("register_residue_templates_from_mol2_file",
           [](const std::string& filename) { register_residue_templates_from_mol2_file(filename); });
+    m.def("register_new_residue_templates_from_mol2_text",
+          &register_new_residue_templates_from_mol2_text, py::arg("text"));
+    m.def("register_new_residue_templates_from_mol2_file",
+          [](const std::string& filename) { register_new_residue_templates_from_mol2_file(filename); });
+    m.def("register_residue_type_template", &register_residue_type_template,
+          py::arg("residue_type"));
     m.def("register_template_molecule_from_mol2_file",
           [](const std::string& filename) { register_template_molecule_from_mol2_file(filename); });
     m.def("register_template_virtual_atom2", &register_template_virtual_atom2, py::arg("template_name"),

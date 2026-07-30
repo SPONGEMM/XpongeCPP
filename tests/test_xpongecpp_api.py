@@ -88,6 +88,40 @@ conn1 covale A 1 MMA C1 A 2 MMB N1 ? ?
 """
 
 
+MMCIF_WATER_CHEM_COMP_BOND_TEXT = """\
+data_water
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.auth_atom_id
+_atom_site.label_comp_id
+_atom_site.auth_comp_id
+_atom_site.label_asym_id
+_atom_site.auth_asym_id
+_atom_site.label_seq_id
+_atom_site.auth_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.label_alt_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_PDB_model_num
+HETATM 1 O O O WAT WAT A A 1 1 ? . 0.000 0.000 0.000 1.00 0.00 1
+HETATM 2 H H1 H1 WAT WAT A A 1 1 ? . 0.957 0.000 0.000 1.00 0.00 1
+HETATM 3 H H2 H2 WAT WAT A A 1 1 ? . -0.240 0.927 0.000 1.00 0.00 1
+loop_
+_chem_comp_bond.comp_id
+_chem_comp_bond.atom_id_1
+_chem_comp_bond.atom_id_2
+WAT O H1
+WAT O H2
+"""
+
+
 MMCIF_AUTH_LABEL_COLLISION_TEXT = """\
 data_auth_label_collision
 loop_
@@ -315,6 +349,17 @@ def test_load_mmcif_reads_internal_links_and_deduplicates_external_links():
     assert mol.residue_links == [[0, 1]]
 
 
+def test_load_mmcif_preserves_template_pseudobonds_with_chem_comp_bonds():
+    import XpongeCPP.forcefield.amber.tip3p  # noqa: F401
+
+    mol = Xponge.load_mmcif(
+        StringIO(MMCIF_WATER_CHEM_COMP_BOND_TEXT),
+        infer_terminals=False,
+    )
+
+    assert sorted(map(tuple, mol.explicit_bonds)) == [(0, 1), (0, 2), (1, 2)]
+
+
 def test_load_mmcif_prefers_auth_identity_for_struct_conn():
     import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
 
@@ -418,6 +463,112 @@ def test_load_mol2_as_template_registers_legacy_residuetype_lookup():
 
     assert wat.name == "WAT"
     assert Xponge.has_template("WAT")
+
+
+def test_load_mol2_as_template_preserves_existing_caps_and_infers_new_head_tail():
+    Xponge.load_mol2(
+        StringIO(
+            """@<TRIPOS>MOLECULE
+CAPS
+2 0 2
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 KEEP 0.0 0.0 0.0 c3 1 ZCA 0.0
+2 KEEP 4.0 0.0 0.0 c3 2 ZCB 0.0
+@<TRIPOS>BOND
+"""
+        ),
+        as_template=True,
+    )
+    Xponge.configure_residue_template_tail("ZCA", "KEEP")
+    Xponge.configure_residue_template_head("ZCB", "KEEP")
+    Xponge.load_mol2(
+        StringIO(
+            """@<TRIPOS>MOLECULE
+CAPPED_NEW
+5 4 3
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 REPLACEMENT 0.0 0.0 0.0 c 1 ZCA 0.0
+2 HEAD 1.0 0.0 0.0 n 2 ZNEW 0.0
+3 TAIL 2.0 0.0 0.0 c 2 ZNEW 0.0
+4 H 1.0 1.0 0.0 hn 2 ZNEW 0.0
+5 REPLACEMENT 3.0 0.0 0.0 n 3 ZCB 0.0
+@<TRIPOS>BOND
+1 1 2 1
+2 2 3 1
+3 2 4 1
+4 3 5 1
+"""
+        ),
+        as_template=True,
+    )
+
+    left = Xponge.ResidueType.get_type("ZCA")
+    center = Xponge.ResidueType.get_type("ZNEW")
+    right = Xponge.ResidueType.get_type("ZCB")
+
+    assert [atom.name for atom in left.atoms] == ["KEEP"]
+    assert [atom.name for atom in right.atoms] == ["KEEP"]
+    assert {atom.name for atom in center.atoms} == {"HEAD", "TAIL", "H"}
+    molecule = (
+        Xponge.get_template_molecule("ZCA")
+        + Xponge.get_template_molecule("ZNEW")
+        + Xponge.get_template_molecule("ZCB")
+    )
+    assert len(molecule.residue_links) == 2
+    assert {
+        tuple(sorted((molecule.atoms[int(atom1)].name, molecule.atoms[int(atom2)].name)))
+        for atom1, atom2 in molecule.residue_links
+    } == {("HEAD", "KEEP"), ("KEEP", "TAIL")}
+
+
+def test_legacy_residuetype_none_temporarily_disables_native_auto_linking():
+    Xponge.load_mol2(
+        StringIO(
+            """@<TRIPOS>MOLECULE
+AUTO_LINK_TYPES
+2 0 2
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1 TAIL 0.0 0.0 0.0 c3 1 ZTL 0.0
+2 HEAD 2.0 0.0 0.0 n 2 ZHD 0.0
+@<TRIPOS>BOND
+"""
+        ),
+        as_template=True,
+    )
+    left = Xponge.ResidueType.get_type("ZTL")
+    right = Xponge.ResidueType.get_type("ZHD")
+    left.tail = "TAIL"
+    right.head = "HEAD"
+    assert len(
+        (
+            Xponge.get_template_molecule("ZTL")
+            + Xponge.get_template_molecule("ZHD")
+        ).residue_links
+    ) == 1
+
+    saved_tail = left.tail
+    saved_head = right.head
+    left.tail = None
+    right.head = None
+    assert not (
+        Xponge.get_template_molecule("ZTL")
+        + Xponge.get_template_molecule("ZHD")
+    ).residue_links
+
+    left.tail = saved_tail
+    right.head = saved_head
+    assert len(
+        (
+            Xponge.get_template_molecule("ZTL")
+            + Xponge.get_template_molecule("ZHD")
+        ).residue_links
+    ) == 1
 
 
 def test_template_atoms_follow_forcefield_mass_and_element_inference():
@@ -961,6 +1112,35 @@ def test_save_sponge_input_reorders_linked_residue_components_for_export(tmp_pat
     assert [res.name for res in mol.residues] == ["FAR", "WAT", "LIG"]
     assert mol.residue_links == [[0, 3]]
     assert (tmp_path / "linked_resname.txt").read_text().splitlines() == ["3", "FAR", "WAT", "LIG"]
+
+
+def test_save_sponge_input_reorders_coordination_components_for_export(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
+
+    assert [res.name for res in mol.residues] == ["FAR", "LIG", "WAT"]
+
+    mol.add_coordination_bond(
+        mol.residues[0].name2atom("O1").index,
+        mol.residues[2].name2atom("O").index,
+    )
+    mol._set_bond_parameter_override(
+        mol.residues[0].name2atom("O1").index,
+        mol.residues[2].name2atom("O").index,
+        100.0,
+        2.0,
+        "test:coordination",
+    )
+    Xponge.Save_SPONGE_Input(mol, prefix="coordinated", dirname=str(tmp_path))
+
+    assert [res.name for res in mol.residues] == ["FAR", "WAT", "LIG"]
+    assert mol.coordination_bonds == [(0, 3)]
+    assert (tmp_path / "coordinated_resname.txt").read_text().splitlines() == [
+        "3",
+        "FAR",
+        "WAT",
+        "LIG",
+    ]
 
 
 def test_save_sponge_input_rejects_noncontiguous_atom_components(tmp_path):

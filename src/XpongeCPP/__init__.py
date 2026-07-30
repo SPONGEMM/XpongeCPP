@@ -193,7 +193,7 @@ from .process import (
 from .legacy_types import _LegacyResidueTypeHandle
 from .template_ops import load_mol2
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 __mokda_backend__ = "xpongecpp"
 __implementation_version__ = __version__
 pi = np.pi
@@ -234,24 +234,12 @@ def load_parmdat(filename):
 
 
 def load_pdb(*args, **kwargs):
-    from .forcefield import package_data_path
-
-    set_lj_combining_rule("lorentz_berthelot")
-    register_amber_nb14_scale("X", "X", 0.5, 0.833333)
-    register_amber_parmdat_file(str(package_data_path("amber", "parm10.dat")))
-    register_amber_frcmod_file(str(package_data_path("amber", "ff14SB.frcmod")))
     if args and isinstance(args[0], os.PathLike):
         args = (os.fspath(args[0]), *args[1:])
     return _core_load_pdb(*args, **kwargs)
 
 
 def load_mmcif(*args, **kwargs):
-    from .forcefield import package_data_path
-
-    set_lj_combining_rule("lorentz_berthelot")
-    register_amber_nb14_scale("X", "X", 0.5, 0.833333)
-    register_amber_parmdat_file(str(package_data_path("amber", "parm10.dat")))
-    register_amber_frcmod_file(str(package_data_path("amber", "ff14SB.frcmod")))
     if args and isinstance(args[0], os.PathLike):
         args = (os.fspath(args[0]), *args[1:])
     return _core_load_mmcif(*args, **kwargs)

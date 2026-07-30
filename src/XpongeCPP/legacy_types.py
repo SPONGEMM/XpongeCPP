@@ -14,6 +14,7 @@ from ._core import (
     get_template_molecule,
     has_template,
     molecule_from_residuetype,
+    register_residue_type_template,
     registered_template_names,
     register_residue_templates_from_mol2_text,
 )
@@ -47,8 +48,10 @@ class _LegacyResidueTypeHandle:
     @head.setter
     def head(self, value):
         _legacy_template_metadata.setdefault(self._name, {})["head"] = value
-        if value:
-            configure_residue_template_head(self._name, str(value))
+        configure_residue_template_head(
+            self._name,
+            "" if value is None else str(value),
+        )
 
     @property
     def tail(self):
@@ -57,8 +60,10 @@ class _LegacyResidueTypeHandle:
     @tail.setter
     def tail(self, value):
         _legacy_template_metadata.setdefault(self._name, {})["tail"] = value
-        if value:
-            configure_residue_template_tail(self._name, str(value))
+        configure_residue_template_tail(
+            self._name,
+            "" if value is None else str(value),
+        )
 
     @property
     def head_next(self):
@@ -106,7 +111,28 @@ class _LegacyResidueTypeHandle:
 
     @property
     def atoms(self):
+        dynamic = _legacy_dynamic_residue_types.get(self._name)
+        if dynamic is not None:
+            return dynamic.atoms
         return get_template_molecule(self._name).residues[0].atoms
+
+    def name2atom(self, name):
+        for atom in self.atoms:
+            if atom.name == name:
+                return atom
+        raise KeyError(name)
+
+    def add_atom(self, name, atom_type, x, y, z, charge=0.0, mass=0.0):
+        residue_type = _materialize_dynamic_residuetype(self._name)
+        return residue_type.add_atom(
+            name,
+            atom_type,
+            x,
+            y,
+            z,
+            charge=charge,
+            mass=mass,
+        )
 
     def deepcopy(self, name):
         name = str(name)
@@ -155,6 +181,41 @@ def _legacy_get_all_residuetypes():
     names = set(registered_template_names())
     names.update(_legacy_dynamic_residue_types)
     return {name: _legacy_get_residuetype(name) for name in sorted(names)}
+
+
+def _materialize_dynamic_residuetype(name):
+    """Return a writable copy of a registered residue template."""
+
+    name = str(name)
+    dynamic = _legacy_dynamic_residue_types.get(name)
+    if dynamic is not None:
+        return dynamic
+    if not has_template(name):
+        raise KeyError(f"ResidueType {name!r} is not registered")
+
+    template = get_template_molecule(name)
+    if template.residue_count != 1:
+        raise TypeError(
+            "residue template compatibility expects one-residue templates"
+        )
+    residue = template.residues[0]
+    dynamic = _remember_dynamic_residuetype(ResidueType(name))
+    for atom in residue.atoms:
+        dynamic.add_atom(
+            atom.name,
+            atom.type,
+            atom.x,
+            atom.y,
+            atom.z,
+            charge=atom.charge,
+            mass=atom.mass,
+        )
+    for atom1, atom2 in template.explicit_bonds:
+        dynamic.add_connectivity(
+            template.atoms[int(atom1)].name,
+            template.atoms[int(atom2)].name,
+        )
+    return dynamic
 
 
 def _remember_template_connection(
@@ -293,9 +354,12 @@ def _ensure_dynamic_residuetype_template(name):
     residue_type = _legacy_dynamic_residue_types.get(str(name))
     if residue_type is None:
         return False
-    register_residue_templates_from_mol2_text(
-        _dynamic_residuetype_mol2_text(residue_type)
-    )
+    register_residue_type_template(residue_type)
+    metadata = _legacy_template_metadata.get(str(name), {})
+    if metadata.get("head"):
+        configure_residue_template_head(str(name), str(metadata["head"]))
+    if metadata.get("tail"):
+        configure_residue_template_tail(str(name), str(metadata["tail"]))
     return True
 
 

@@ -1,3 +1,34 @@
+# XpongeCPP 0.2.3
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This release completes the Mokda-used same-script compatibility surface and
+adds scientific-output comparison for real systems. It preserves native
+template bonds when an mmCIF residue also supplies explicit covalent bonds,
+including model pseudo-bonds such as the TIP3P H-H distance constraint, while
+still honoring explicit Mokda edit deletions. It also synchronizes temporary
+legacy residue-link overrides with the native registry and canonicalizes CMAP
+grid identities independently of force-field declaration order.
+
+Linux x86_64 release-candidate evidence:
+
+- XpongeCPP source suite: 713 passed, 10 optional skips, 1 expected xfail;
+- installed CPython 3.12 wheel through the managed Mokda runtime: 716 passed,
+  7 optional skips, 1 expected xfail;
+- Xponge-origin 1.7b9 tests through the installed compatibility namespace:
+  36/36 passed;
+- Mokda auto-discovered Xponge consumer matrix: 325 passed, 13 conditional
+  skips, and 12 subtests under both providers;
+- complete Mokda Lipid21/1BL8 tier: 8/8 files passed, with a 1.995 GiB peak
+  and `OOMKillDelta=0`;
+- provider-neutral scientific manifests match for repaired 1EMA, 1KV2+B96,
+  8RYK, 1BNA, 1GYA, and 1BL8; the existing 3GOU/4EWL four-quadrant metal
+  acceptance also passes under both managed providers;
+- provider-neutral 1KV2 benchmark remains 42,600 atoms in both
+  implementations; XpongeCPP median 0.0588 s versus Xponge 12.47 s, and the
+  measured XpongeCPP pre/post change is +2.57%, within the 5% release
+  tolerance.
+
 # XpongeCPP 0.2.2
 
 Compatibility target: Xponge-origin 1.7b9.

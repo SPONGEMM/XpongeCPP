@@ -210,16 +210,37 @@ std::vector<std::string> real_lj_types(const std::vector<std::string>& lj_types,
 }
 
 bool reorder_residues_by_linked_components(Molecule& molecule) {
-    if (molecule.residues.size() < 2 || molecule.residue_links.empty()) {
+    if (molecule.residues.size() < 2 ||
+        (molecule.residue_links.empty() &&
+         molecule.coordination_bonds.empty() &&
+         molecule.explicit_bonds.empty() &&
+         molecule.bond_parameter_overrides.empty())) {
         return false;
     }
 
     IndexDisjointSet components(molecule.residues.size());
-    for (const auto& link : molecule.residue_links) {
-        if (link.atom1 >= molecule.atoms.size() || link.atom2 >= molecule.atoms.size()) {
-            throw std::invalid_argument("residue link atom index out of range");
+    const auto unite_link = [&](AtomId atom1, AtomId atom2) {
+        if (atom1 >= molecule.atoms.size() || atom2 >= molecule.atoms.size()) {
+            throw std::invalid_argument("component link atom index out of range");
         }
-        components.unite(molecule.atoms[link.atom1].residue, molecule.atoms[link.atom2].residue);
+        components.unite(
+            molecule.atoms[atom1].residue,
+            molecule.atoms[atom2].residue
+        );
+    };
+    for (const auto& link : molecule.residue_links) {
+        unite_link(link.atom1, link.atom2);
+    }
+    for (const auto& link : molecule.coordination_bonds) {
+        unite_link(link.atom1, link.atom2);
+    }
+    for (const auto& link : molecule.explicit_bonds) {
+        unite_link(link.atom1, link.atom2);
+    }
+    for (const auto& parameter_override : molecule.bond_parameter_overrides) {
+        if (parameter_override.k != 0.0) {
+            unite_link(parameter_override.atom1, parameter_override.atom2);
+        }
     }
 
     std::unordered_map<std::size_t, double> root_to_sort_key;

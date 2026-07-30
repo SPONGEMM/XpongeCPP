@@ -5,6 +5,7 @@ import unittest
 from uuid import uuid4
 
 import XpongeCPP.forcefield.amber  # noqa: F401 - register native force types
+from XpongeCPP import register_residue_templates_from_mol2_text
 from XpongeCPP.forcefield.base.lj_base import LJType
 from XpongeCPP.helper import AtomType, Molecule, ResidueType
 from XpongeCPP.metal_assignment import (
@@ -79,6 +80,57 @@ def _ordinary_molecule(patch):
 
 
 class MetalAssignmentApplyTests(unittest.TestCase):
+    def test_prepare_residue_templates_materializes_registered_template(self):
+        patch = _local_patch()
+        residue_name = f"PATCH_STATIC_{uuid4().hex[:8]}"
+        register_residue_templates_from_mol2_text(
+            "\n".join((
+                "@<TRIPOS>MOLECULE",
+                residue_name,
+                "2 1 1",
+                "SMALL",
+                "USER_CHARGES",
+                "@<TRIPOS>ATOM",
+                f"1 C1 0.0 0.0 0.0 C 1 {residue_name} -0.1",
+                f"2 C2 1.4 0.0 0.0 C 1 {residue_name} 0.1",
+                "@<TRIPOS>BOND",
+                "1 1 2 1",
+                "",
+            ))
+        )
+        residue_type = ResidueType.get_type(residue_name)
+        metal_id = patch.target_metal_atom_ids[0]
+        metal_identity = next(
+            atom for atom in patch.atoms
+            if atom.external_id == metal_id
+        )
+
+        report = prepare_residue_templates(patch, [{
+            "external_id": metal_id,
+            "residue_name": residue_name,
+            "atom_name": metal_identity.atom_name,
+        }])
+
+        self.assertEqual(report["prepared_atom_ids"], (metal_id,))
+        self.assertEqual(
+            {atom.name for atom in ResidueType.get_type(residue_name).atoms},
+            {"C1", "C2", metal_identity.atom_name},
+        )
+        prepared_metal = ResidueType.get_type(residue_name).name2atom(
+            metal_identity.atom_name
+        )
+        self.assertEqual(prepared_metal.element, metal_identity.element)
+        self.assertAlmostEqual(
+            prepared_metal.mass,
+            patch.parameterization_result.metal_overlay.masses[metal_id],
+        )
+        repeated = prepare_residue_templates(patch, [{
+            "external_id": metal_id,
+            "residue_name": residue_name,
+            "atom_name": metal_identity.atom_name,
+        }])
+        self.assertEqual(repeated["prepared_atom_ids"], ())
+
     def test_prepare_residue_templates_adds_only_missing_embedded_metal(self):
         patch = _local_patch()
         residue_name = f"PATCH_EMBEDDED_{uuid4().hex[:8]}"
@@ -154,6 +206,22 @@ class MetalAssignmentApplyTests(unittest.TestCase):
             output.molecule.atoms[mapping[metal_id]].mass,
             patch.parameterization_result.metal_overlay.masses[metal_id],
         )
+
+    def test_apply_accepts_equivalent_native_atom_handles(self):
+        patch = _local_patch()
+        molecule, _mapping = _ordinary_molecule(patch)
+        mapping = {
+            identity.external_id: atom
+            for identity, atom in zip(
+                patch.atoms,
+                molecule.residues[0].atoms,
+            )
+        }
+
+        output = apply(molecule, patch, mapping)
+
+        self.assertEqual(output.application_report["patch_hash"], patch.patch_hash)
+        self.assertTrue(output.application_report["topology_preserved"])
 
     def test_identity_mismatch_is_rejected_without_mutating_the_input(self):
         patch = _local_patch()

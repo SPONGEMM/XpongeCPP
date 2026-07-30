@@ -12,8 +12,8 @@ from ._core import (
     has_template,
     load_mol2 as _core_load_mol2,
     molecule_from_residuetype,
-    register_residue_templates_from_mol2_file,
-    register_residue_templates_from_mol2_text,
+    register_new_residue_templates_from_mol2_file,
+    register_new_residue_templates_from_mol2_text,
     reorder_atoms_by_template,
     replace_residues,
 )
@@ -24,7 +24,7 @@ def load_mol2(source, ignore_atom_type=False, as_template=False):
     del ignore_atom_type  # First-wave compatibility: current core already tolerates raw MOL2 atom-type strings.
     if isinstance(source, (str, Path)):
         try:
-            register_residue_templates_from_mol2_file(str(source))
+            register_new_residue_templates_from_mol2_file(str(source))
             sync_template_module_globals()
         except ValueError as exc:
             if as_template or "duplicate atom name in ResidueType" not in str(exc):
@@ -33,7 +33,7 @@ def load_mol2(source, ignore_atom_type=False, as_template=False):
     if hasattr(source, "read"):
         text = source.read()
         try:
-            register_residue_templates_from_mol2_text(text)
+            register_new_residue_templates_from_mol2_text(text)
             sync_template_module_globals()
         except ValueError as exc:
             if as_template or "duplicate atom name in ResidueType" not in str(exc):
