@@ -90,6 +90,29 @@ def test_glycam_modified_monosaccharide_templates_load():
         assert Xponge.has_template(resname)
 
 
+def test_glycam_terminal_zero_templates_have_no_synthetic_head(tmp_path):
+    import XpongeCPP.forcefield.amber.glycam_06j.d_furanose  # noqa: F401
+    import XpongeCPP.forcefield.amber.glycam_06j.d_pyranose  # noqa: F401
+    import XpongeCPP.forcefield.amber.glycam_06j.l_furanose  # noqa: F401
+    import XpongeCPP.forcefield.amber.glycam_06j.l_pyranose  # noqa: F401
+
+    representatives = ["0MA", "0aA", "0AD", "0aD"]
+    for resname in representatives:
+        residue_type = Xponge.ResidueType.get_type(resname)
+        atom_names = {atom.name for atom in residue_type.atoms}
+        assert residue_type.head is None
+        assert residue_type.head_next is None
+        assert residue_type.head_link_conditions == []
+        assert "O0" not in atom_names
+        assert "C0" not in atom_names
+
+    output_path = tmp_path / "terminal-zero.pdb"
+    molecule = Xponge.ResidueType.get_type("0MA") + Xponge.ResidueType.get_type("0MA")
+    Xponge.save_pdb(molecule, output_path)
+    assert output_path.is_file()
+    assert "O0" not in output_path.read_text()
+
+
 def test_glycam_coverage_audit_classifies_extension_layers(tmp_path):
     from XpongeCPP.forcefield.amber.glycam_06j.audit import audit_glycam_coverage
 

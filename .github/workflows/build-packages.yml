@@ -16,7 +16,7 @@ env:
   CIBW_TEST_COMMAND: >-
     python -c "import importlib.util, XpongeCPP, Xponge,
     XpongeCPP.io_bundle, XpongeCPP.metal_assignment;
-    assert XpongeCPP.__version__ == '0.2.0';
+    assert XpongeCPP.__version__ == '0.2.1';
     assert not hasattr(XpongeCPP, 'MC' + 'PB');
     assert importlib.util.find_spec('XpongeCPP.' + ('MC' + 'PB').lower()) is None"
   CIBW_BEFORE_ALL_LINUX: >-
@@ -118,10 +118,10 @@ jobs:
           tests/test_bundle_protocol.py
           tests/test_bundle_native.py
 
-      - name: Run Xponge-origin 1.7b8 parity cohorts
+      - name: Run Xponge-origin compatibility parity cohorts
         run: >-
           python -m pytest -q
-          tests/test_release_020.py
+          tests/test_release_021.py
           tests/test_origin_resp_linear_constraints.py
           tests/test_origin_io_bundle.py
           tests/test_origin_io_bundle_reverse.py

@@ -1,3 +1,14 @@
+# XpongeCPP 0.2.1
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This patch release corrects GLYCAM terminal-zero residue metadata across the
+native template registry, bundled Python data, and the pinned reference
+force-field copy. Terminal-zero names such as `0MA`, `0aA`, `0AD`, and `0aD`
+now carry no synthetic `O0`/`C0` head attachment. The release adds parity and
+standalone PDB-export regression coverage for all four pyranose/furanose and
+D/L representative families.
+
 # XpongeCPP 0.2.0
 
 Compatibility target: Xponge-origin 1.7b8.
