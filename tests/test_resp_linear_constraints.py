@@ -46,6 +46,36 @@ def _exact_esp_problem(charges):
     return atom_coordinates, nuclear, grids, electronic_esp
 
 
+def test_cpp_mk_grid_uses_the_xponge_fibonacci_orientation():
+    assignment = _assignment(["H"])
+    center = np.asarray([[0.25, -0.5, 1.0]])
+    grids = np.asarray(
+        resp_core.get_mk_grid(
+            assignment,
+            center,
+            area_density=1.0,
+            layer=1,
+        )
+    )
+
+    radius = 1.2 / 0.52918 * 1.4
+    point_count = int(1.0 * 0.52918**2 * 4.0 * np.pi * radius**2)
+    indices = np.arange(1, point_count + 1)
+    theta = (np.sqrt(5.0) - 1.0) * np.pi * indices
+    z = (2.0 * indices - 1.0) / point_count - 1.0
+    planar_radius = np.sqrt(1.0 - z * z)
+    expected = np.column_stack(
+        (
+            planar_radius * np.cos(theta),
+            planar_radius * np.sin(theta),
+            z,
+        )
+    )
+    expected = expected * radius + center[0]
+
+    assert grids == pytest.approx(expected, abs=1e-12)
+
+
 def test_constrained_resp_recovers_linear_and_equivalence_targets():
     assignment = _assignment(["O", "H", "H"])
     problem = _exact_esp_problem([-0.4, 0.2, 0.2])

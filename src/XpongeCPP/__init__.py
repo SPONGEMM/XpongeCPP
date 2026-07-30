@@ -1,5 +1,6 @@
 """Python compatibility layer for the XpongeCPP C++ core."""
 
+import os
 import numpy as np
 
 from ._core import (
@@ -28,7 +29,7 @@ from ._core import (
     load_gromacs_topology_file,
     load_molpsf,
     load_opls_itp_file,
-    load_parmdat,
+    load_parmdat as _core_load_parmdat,
     load_mmcif as _core_load_mmcif,
     load_pdb as _core_load_pdb,
     load_rst7,
@@ -99,6 +100,29 @@ from .io_bundle import (
 _CoreMolecule = Molecule
 _CoreResidue = Residue
 _CoreResidueType = ResidueType
+
+
+def _get_ignore_missing_atoms(molecule):
+    del molecule
+    return None
+
+
+def _set_ignore_missing_atoms(molecule, enabled):
+    molecule.set_ignore_missing_atoms(bool(enabled))
+
+
+def _get_molecule_charge(molecule):
+    return sum(float(getattr(atom, "charge", 0.0)) for atom in molecule.atoms)
+
+
+if not hasattr(Molecule, "ignore_missing_atoms"):
+    Molecule.ignore_missing_atoms = property(
+        _get_ignore_missing_atoms,
+        _set_ignore_missing_atoms,
+    )
+if not hasattr(Molecule, "charge"):
+    Molecule.charge = property(_get_molecule_charge)
+
 from ._compat.imports import (
     Generate_New_Bonded_Force_Type,
     Generate_New_Pairwise_Force_Type,
@@ -169,6 +193,8 @@ from .legacy_types import _LegacyResidueTypeHandle
 from .template_ops import load_mol2
 
 __version__ = "0.2.0"
+__mokda_backend__ = "xpongecpp"
+__implementation_version__ = __version__
 pi = np.pi
 kb = 0.00198716
 bar = 1.439506089041446e-5
@@ -188,10 +214,22 @@ def register_residue_templates_from_mol2_text(text):
     sync_template_module_globals()
     return result
 
-def load_frcmod(filename):
+def load_frcmod(filename, nbtype="RE", include_nb14=False):
     set_lj_combining_rule("lorentz_berthelot")
     register_amber_nb14_scale("X", "X", 0.5, 0.833333)
-    return _core_load_frcmod(filename)
+    from ._compat.frcmod import parse_frcmod
+
+    return parse_frcmod(
+        os.fspath(filename),
+        nbtype=nbtype,
+        include_nb14=include_nb14,
+    )
+
+
+def load_parmdat(filename):
+    from ._compat.frcmod import parse_parmdat
+
+    return parse_parmdat(os.fspath(filename))
 
 
 def load_pdb(*args, **kwargs):
@@ -201,6 +239,8 @@ def load_pdb(*args, **kwargs):
     register_amber_nb14_scale("X", "X", 0.5, 0.833333)
     register_amber_parmdat_file(str(package_data_path("amber", "parm10.dat")))
     register_amber_frcmod_file(str(package_data_path("amber", "ff14SB.frcmod")))
+    if args and isinstance(args[0], os.PathLike):
+        args = (os.fspath(args[0]), *args[1:])
     return _core_load_pdb(*args, **kwargs)
 
 
@@ -211,6 +251,8 @@ def load_mmcif(*args, **kwargs):
     register_amber_nb14_scale("X", "X", 0.5, 0.833333)
     register_amber_parmdat_file(str(package_data_path("amber", "parm10.dat")))
     register_amber_frcmod_file(str(package_data_path("amber", "ff14SB.frcmod")))
+    if args and isinstance(args[0], os.PathLike):
+        args = (os.fspath(args[0]), *args[1:])
     return _core_load_mmcif(*args, **kwargs)
 
 

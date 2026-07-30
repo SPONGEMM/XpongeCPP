@@ -14,6 +14,7 @@ from ._core import (
     get_template_molecule,
     has_template,
     molecule_from_residuetype,
+    registered_template_names,
     register_residue_templates_from_mol2_text,
 )
 
@@ -60,6 +61,50 @@ class _LegacyResidueTypeHandle:
             configure_residue_template_tail(self._name, str(value))
 
     @property
+    def head_next(self):
+        return _legacy_template_metadata.get(self._name, {}).get("head_next")
+
+    @head_next.setter
+    def head_next(self, value):
+        _legacy_template_metadata.setdefault(self._name, {})["head_next"] = value
+
+    @property
+    def tail_next(self):
+        return _legacy_template_metadata.get(self._name, {}).get("tail_next")
+
+    @tail_next.setter
+    def tail_next(self, value):
+        _legacy_template_metadata.setdefault(self._name, {})["tail_next"] = value
+
+    @property
+    def head_length(self):
+        return _legacy_template_metadata.get(self._name, {}).get("head_length")
+
+    @head_length.setter
+    def head_length(self, value):
+        _legacy_template_metadata.setdefault(self._name, {})["head_length"] = value
+
+    @property
+    def tail_length(self):
+        return _legacy_template_metadata.get(self._name, {}).get("tail_length")
+
+    @tail_length.setter
+    def tail_length(self, value):
+        _legacy_template_metadata.setdefault(self._name, {})["tail_length"] = value
+
+    @property
+    def head_link_conditions(self):
+        return _legacy_template_metadata.setdefault(self._name, {}).setdefault(
+            "head_link_conditions", []
+        )
+
+    @property
+    def tail_link_conditions(self):
+        return _legacy_template_metadata.setdefault(self._name, {}).setdefault(
+            "tail_link_conditions", []
+        )
+
+    @property
     def atoms(self):
         return get_template_molecule(self._name).residues[0].atoms
 
@@ -104,6 +149,28 @@ def _legacy_get_residuetype(name):
     if not has_template(name):
         raise KeyError(f"ResidueType {name!r} is not registered")
     return _LegacyResidueTypeHandle(name)
+
+
+def _legacy_get_all_residuetypes():
+    names = set(registered_template_names())
+    names.update(_legacy_dynamic_residue_types)
+    return {name: _legacy_get_residuetype(name) for name in sorted(names)}
+
+
+def _remember_template_connection(
+    residue_name,
+    position,
+    anchor,
+    next_atom,
+    length,
+    conditions=None,
+):
+    metadata = _legacy_template_metadata.setdefault(str(residue_name), {})
+    metadata[str(position)] = anchor
+    metadata[f"{position}_next"] = next_atom
+    metadata[f"{position}_length"] = length
+    if conditions is not None:
+        metadata[f"{position}_link_conditions"] = list(conditions)
 
 
 def _coerce_atom_index(atom):

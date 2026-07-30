@@ -129,16 +129,16 @@ void update_psf_residue_type(Molecule& molecule, Residue& residue, const std::st
     signatures.push_back({residue.type_name, std::move(new_signature)});
 }
 
-void append_psf_atom(Molecule& molecule, std::unordered_map<std::string, ResidueId>& residue_by_key,
+void append_psf_atom(Molecule& molecule, std::string& current_residue_key,
+                     ResidueId& current_residue_id,
                      const std::string& segid, const std::string& resnr, const std::string& resname,
                      const std::string& atom_name, const std::string& atom_type, double charge, double mass,
                      std::unordered_map<std::string, std::vector<std::pair<std::string, PsfResidueSignature>>>&
                          signatures_by_resname) {
     const auto key = residue_key(segid, resnr, resname);
-    auto it = residue_by_key.find(key);
-    if (it == residue_by_key.end()) {
-        const ResidueId residue_id = static_cast<ResidueId>(molecule.residues.size());
-        it = residue_by_key.emplace(key, residue_id).first;
+    if (key != current_residue_key) {
+        current_residue_key = key;
+        current_residue_id = static_cast<ResidueId>(molecule.residues.size());
         Residue residue;
         residue.name = resname;
         residue.type_name = resname;
@@ -148,12 +148,12 @@ void append_psf_atom(Molecule& molecule, std::unordered_map<std::string, Residue
         residue.atom_begin = static_cast<AtomId>(molecule.atoms.size());
         molecule.residues.push_back(std::move(residue));
     }
-    auto& residue = molecule.residues[it->second];
+    auto& residue = molecule.residues[current_residue_id];
     update_psf_residue_type(molecule, residue, atom_name, atom_type, charge, signatures_by_resname);
     Atom atom;
     atom.name = atom_name;
     atom.type = atom_type;
-    atom.residue = it->second;
+    atom.residue = current_residue_id;
     atom.charge = charge;
     atom.mass = mass;
     atom.element = atom.mass > 0.0 ? guess_element_from_mass(atom.mass) : guess_element(atom_name, "");
@@ -199,6 +199,20 @@ void split_residues_by_connectivity(Molecule& molecule) {
             }
         }
         if (has_linked_atom || residue.atom_count == 0) {
+            push_whole_residue();
+            continue;
+        }
+        bool has_internal_bond = false;
+        for (std::uint32_t local = 0; local < residue.atom_count && !has_internal_bond; ++local) {
+            const AtomId atom = residue.atom_begin + local;
+            for (const AtomId next : graph[atom]) {
+                if (molecule.atoms[next].residue == molecule.atoms[atom].residue) {
+                    has_internal_bond = true;
+                    break;
+                }
+            }
+        }
+        if (!has_internal_bond) {
             push_whole_residue();
             continue;
         }
@@ -296,24 +310,23 @@ std::unordered_map<std::string, Molecule> split_molecules_by_connectivity(const 
 
     std::unordered_map<std::string, Molecule> out;
     std::vector<std::unordered_map<AtomId, AtomId>> atom_maps(static_cast<std::size_t>(component_count + 1));
-    for (int comp = 1; comp <= component_count; ++comp) {
-        out.emplace(molecule.name + "_" + std::to_string(comp), Molecule(molecule.name + "_" + std::to_string(comp)));
-    }
     for (const auto& residue : molecule.residues) {
         if (residue.atom_count == 0) {
             continue;
         }
         const int comp = component[residue.atom_begin];
-        auto& target = out.at(molecule.name + "_" + std::to_string(comp));
+        const std::string component_name = molecule.name + "_" + std::to_string(comp);
+        auto target_it = out.find(component_name);
+        if (target_it == out.end()) {
+            target_it = out.emplace(component_name, Molecule(component_name)).first;
+        }
+        auto& target = target_it->second;
         Residue new_residue = residue;
         new_residue.atom_begin = static_cast<AtomId>(target.atoms.size());
         new_residue.atom_count = 0;
         const ResidueId new_residue_id = static_cast<ResidueId>(target.residues.size());
         for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
             const AtomId old_atom = residue.atom_begin + local;
-            if (component[old_atom] != comp) {
-                continue;
-            }
             Atom atom = molecule.atoms[old_atom];
             atom.residue = new_residue_id;
             atom_maps[comp][old_atom] = static_cast<AtomId>(target.atoms.size());
@@ -342,7 +355,8 @@ PsfData load_molpsf_text(const std::string& text, const std::string& split_by) {
     }
     Molecule molecule("psf");
     std::unordered_map<int, AtomId> atom_by_psf_index;
-    std::unordered_map<std::string, ResidueId> residue_by_key;
+    std::string current_residue_key;
+    ResidueId current_residue_id = std::numeric_limits<ResidueId>::max();
     std::unordered_map<std::string, std::vector<std::pair<std::string, PsfResidueSignature>>> signatures_by_resname;
 
     while (std::getline(input, line)) {
@@ -365,7 +379,8 @@ PsfData load_molpsf_text(const std::string& text, const std::string& split_by) {
                 if (atom_words.size() < 8) {
                     throw std::runtime_error("bad PSF atom line");
                 }
-                append_psf_atom(molecule, residue_by_key, atom_words[1], atom_words[2], atom_words[3],
+                append_psf_atom(molecule, current_residue_key, current_residue_id,
+                                atom_words[1], atom_words[2], atom_words[3],
                                 atom_words[4], atom_words[5], std::stod(atom_words[6]), std::stod(atom_words[7]),
                                 signatures_by_resname);
                 atom_by_psf_index[std::stoi(atom_words[0])] = static_cast<AtomId>(molecule.atoms.size() - 1);

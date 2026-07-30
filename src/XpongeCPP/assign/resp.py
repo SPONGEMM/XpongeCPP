@@ -28,6 +28,18 @@ _RESP_BASE_REFERENCES = (
     "BeslerMerzKollman1990_ESP",
 )
 
+RESP_REFERENCE_TEXT = """Reference for resp.py:
+  Bayly, C.I.; Cieplak, P.; Cornell, W.; Kollman, P.A.
+    A well-behaved electrostatic potential based method using charge restraints.
+    Journal of Physical Chemistry 1993 97, 10269-10280.
+    DOI: 10.1021/j100142a004
+"""
+
+
+def print_references():
+    """Print the RESP method reference explicitly on request."""
+    Xprint(RESP_REFERENCE_TEXT)
+
 
 def _normalize_backend_name(backend):
     try:

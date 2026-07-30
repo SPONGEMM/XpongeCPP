@@ -82,6 +82,9 @@ class LJType:
             elif {"epsilon", "rmin"} <= keyset:
                 epsilon = float(row["epsilon"])
                 rmin = float(row["rmin"])
+            elif {"epsilon[kcal/mol]", "rmin[a]"} <= keyset:
+                epsilon = float(row["epsilon[kcal/mol]"])
+                rmin = float(row["rmin[a]"])
             elif {"epsilon[ev]", "sigma[nm]"} <= keyset:
                 epsilon = float(row["epsilon[ev]"]) * 23.06054783061903
                 sigma = float(row["sigma[nm]"]) * 10.0
