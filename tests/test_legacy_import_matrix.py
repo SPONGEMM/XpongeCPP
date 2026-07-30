@@ -1,4 +1,12 @@
-import importlib
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 CORE_SCOPE_LEGACY_IMPORTS = [
@@ -47,11 +55,45 @@ CORE_SCOPE_LEGACY_IMPORTS = [
 ]
 
 
-def test_core_scope_legacy_import_matrix():
-    failures = []
-    for module_name in CORE_SCOPE_LEGACY_IMPORTS:
-        try:
-            importlib.import_module(module_name)
-        except Exception as exc:  # pragma: no cover - this is the failure path we want reported
-            failures.append((module_name, repr(exc)))
-    assert not failures, f"legacy imports failed: {failures}"
+def _run_import(module_name):
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT / "src")
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import importlib; importlib.import_module({module_name!r})",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+
+def _public_forcefield_imports():
+    package_root = ROOT / "src" / "XpongeCPP" / "forcefield"
+    modules = set()
+    for path in package_root.rglob("*.py"):
+        relative = path.relative_to(ROOT / "src").with_suffix("")
+        parts = list(relative.parts)
+        if parts[-1] == "__init__":
+            parts.pop()
+        if any(part.startswith("_") for part in parts[2:]):
+            continue
+        native = ".".join(parts)
+        modules.add(native)
+        modules.add(native.replace("XpongeCPP", "Xponge", 1))
+    return sorted(modules)
+
+
+@pytest.mark.parametrize("module_name", CORE_SCOPE_LEGACY_IMPORTS)
+def test_core_scope_legacy_import_matrix(module_name):
+    result = _run_import(module_name)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("module_name", _public_forcefield_imports())
+def test_public_forcefield_import_matrix(module_name):
+    result = _run_import(module_name)
+    assert result.returncode == 0, result.stderr
