@@ -1,3 +1,27 @@
+# XpongeCPP 0.2.2
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This compatibility release closes the Mokda-used Xponge surface under the
+same-script `import Xponge` contract. It synchronizes legacy atom-type and
+residue-link state with the native registries, aligns GAFF/GAFF2, PDB/link,
+Lipid17/Lipid21 and non-Amber behavior with the current reference, and ships
+the non-Amber reference force-field data inside wheels. The release also adds
+a fail-closed machine-readable capability manifest and validates both source
+and installed-wheel execution.
+
+Linux x86_64 release-candidate evidence:
+
+- installed CPython 3.12 wheel: 701 passed, 7 optional skips, 1 expected
+  unsupported legacy-frcmod workflow;
+- Xponge-origin 1.7b9 suite through the compatibility namespace: 36/36 passed;
+- Mokda auto-discovered Xponge consumer matrix: 324 passed, 13 conditional
+  skips and 12 subtests;
+- provider-neutral 1KV2 benchmark: 42,600 atoms from both implementations;
+  XpongeCPP median 0.0588 s versus Xponge 12.47 s;
+- pre/post XpongeCPP micro-benchmark change: +2.57% total, within the 5%
+  release tolerance; no assignment hot path was moved back to Python.
+
 # XpongeCPP 0.2.1
 
 Compatibility target: Xponge-origin 1.7b9.

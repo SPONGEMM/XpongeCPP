@@ -365,9 +365,10 @@ MOD2 1
     reference = json.loads(_run_original_xponge(script))
 
     assert current_summary == reference
-    assert current_summary["residue_names"] == ["ALA", "ALA_1", "ALA_1"]
-    assert current_summary["mols"]["MOD1"] == ["ALA_1"]
-    assert current_summary["mols"]["MOD2"] == ["ALA_1"]
+    assert current_summary["residue_names"][1] == current_summary["residue_names"][2]
+    assert current_summary["residue_names"][0] != current_summary["residue_names"][1]
+    assert current_summary["mols"]["MOD1"] == current_summary["mols"]["MOD2"]
+    assert current_summary["mols"]["MOD1"] == [current_summary["residue_names"][1]]
 
 
 def test_load_molitp_invokes_registered_bonded_type_parsers_and_copies_special_forces(tmp_path):
@@ -748,7 +749,7 @@ CHEX 1
     assert "LJ" in _exported_keys(tmp_path, "martini_chex")
 
 
-def test_martini300_constraints_topology_reports_current_connectivity_limitation_explicitly(tmp_path):
+def test_martini300_constraint_only_topology_exports_without_covalent_bonds(tmp_path):
     import XpongeCPP.forcefield.martini.martini300  # noqa: F401
 
     top = tmp_path / "4mimi.top"
@@ -767,8 +768,15 @@ martini_4mimi
     assert system.atom_count == 3
     assert [res.name for res in system.residues] == ["4MIMI"]
     assert sorted(mols) == ["4MIMI"]
-    with pytest.raises(RuntimeError, match="missing residue template/connectivity for residue: 4MIMI"):
-        Xponge.Save_SPONGE_Input(system, prefix="martini_4mimi", dirname=str(tmp_path))
+    output = Xponge.Save_SPONGE_Input(
+        system,
+        prefix="martini_4mimi",
+        dirname=str(tmp_path),
+    )
+    assert output is system
+    assert system.validate()
+    assert (tmp_path / "martini_4mimi_bond.txt").read_text().splitlines()[0] == "0"
+    assert "LJ" in _exported_keys(tmp_path, "martini_4mimi")
 
 
 def test_non_amber_forcefield_import_modules_are_available():

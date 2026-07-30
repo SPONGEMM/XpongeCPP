@@ -280,7 +280,10 @@ void check_sponge_atom_components_are_contiguous(const Molecule& molecule, const
         if (static_cast<std::size_t>(range.max_atom - range.min_atom + 1) != range.count) {
             throw std::runtime_error(
                 "Atoms in the same molecule must be continuous for SPONGE input; "
-                "please reorder residues or atoms before export.");
+                "connected component spans atom indices " + std::to_string(range.min_atom) +
+                ".." + std::to_string(range.max_atom) + " but contains " +
+                std::to_string(range.count) +
+                " atoms. Please reorder residues or atoms before export.");
         }
     }
 }

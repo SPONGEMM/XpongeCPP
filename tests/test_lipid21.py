@@ -18,7 +18,7 @@ TEMPLATE_NAMES = [
 
 def _run(code, *args):
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT / "src")
+    env.pop("PYTHONPATH", None)
     return subprocess.run(
         [sys.executable, "-c", code, *map(str, args)],
         cwd=ROOT,
@@ -69,8 +69,11 @@ def test_all_lipid21_and_extension_templates_export_with_complete_parameters(tmp
         "    molecule = X.get_template_molecule(entry['template'])\n"
         "    assert molecule.atom_count == entry['atom_count']\n"
         "    assert abs(sum(atom.charge for atom in molecule.atoms) - entry['total_charge']) < 1e-7\n"
-        "    output = X.Save_SPONGE_Input(molecule, prefix=entry['template'].replace('-', 'minus'), dirname=sys.argv[3])\n"
-        "    assert {'bond','angle','dihedral','nb14'}.issubset(output)\n",
+        "    prefix = entry['template'].replace('-', 'minus')\n"
+        "    output = X.Save_SPONGE_Input(molecule, prefix=prefix, dirname=sys.argv[3])\n"
+        "    assert output is molecule\n"
+        "    assert all((Path(sys.argv[3]) / f'{prefix}_{suffix}.txt').is_file() "
+        "for suffix in ('bond','angle','dihedral','nb14'))\n",
         AMBER_DATA / "lipid21_manifest.json",
         AMBER_DATA / "lipid_ext_manifest.json",
         tmp_path,

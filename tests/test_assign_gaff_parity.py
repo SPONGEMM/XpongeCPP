@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import site
 import subprocess
 import sys
 from base64 import b64encode
@@ -39,7 +40,7 @@ def _assignment_from_smiles_with_3d(smiles: str):
 def _origin_reference_types_from_smiles(smiles: str, rule: str, indices: list[int]) -> list[str]:
     if not ORIGIN_REPO.exists():
         pytest.skip("local Xponge-origin repo not available")
-    env_site_packages = Path(sys.executable).resolve().parent.parent / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    env_site_packages = Path(site.getsitepackages()[0])
     script = dedent(
         f"""
         import json, sys
@@ -49,8 +50,7 @@ def _origin_reference_types_from_smiles(smiles: str, rule: str, indices: list[in
         from rdkit.Chem import AllChem
         import Xponge
         from Xponge.helper.rdkit import rdmol_to_assign
-        import Xponge.forcefield.amber.gaff
-        import Xponge.forcefield.amber.gaff2
+        import Xponge.forcefield.amber.{rule}
         mol = Chem.MolFromSmiles({smiles!r})
         mol = Chem.AddHs(mol)
         params = AllChem.ETKDGv3()
@@ -74,12 +74,7 @@ def _origin_reference_types_from_smiles(smiles: str, rule: str, indices: list[in
 def _origin_reference_types_from_mol2_text(mol2_text: str, rule: str, indices: list[int]) -> list[str]:
     if not ORIGIN_REPO.exists():
         pytest.skip("local Xponge-origin repo not available")
-    env_site_packages = (
-        Path(sys.executable).resolve().parent.parent
-        / "lib"
-        / f"python{sys.version_info.major}.{sys.version_info.minor}"
-        / "site-packages"
-    )
+    env_site_packages = Path(site.getsitepackages()[0])
     encoded = b64encode(mol2_text.encode("utf-8")).decode("ascii")
     script = dedent(
         f"""
@@ -88,8 +83,7 @@ def _origin_reference_types_from_mol2_text(mol2_text: str, rule: str, indices: l
         sys.path.insert(0, {str(ORIGIN_REPO)!r})
         sys.path.append({str(env_site_packages)!r})
         import Xponge
-        import Xponge.forcefield.amber.gaff
-        import Xponge.forcefield.amber.gaff2
+        import Xponge.forcefield.amber.{rule}
         text = base64.b64decode({encoded!r}).decode("utf-8")
         assign = Xponge.get_assignment_from_mol2(StringIO(text))
         assign.determine_atom_type({rule!r})
@@ -109,17 +103,11 @@ def test_gaff_cross_family_alternating_regression():
     assert _assigned_type_names(assign, [4, 5, 6, 8, 9]) == ["cc", "cc", "cd", "cd", "cf"]
 
 
-def test_public_get_assignment_from_smiles_supports_gaff_and_gaff2():
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
-
+@pytest.mark.parametrize("rule", ["gaff", "gaff2"])
+def test_public_get_assignment_from_smiles_supports_gaff_and_gaff2(rule):
+    __import__(f"XpongeCPP.forcefield.amber.{rule}")
     assign = Xponge.get_assignment_from_smiles("c1ccccc1")
-    assign.determine_atom_type("gaff")
-    assert _assigned_type_names(assign, list(range(6))) == ["ca"] * 6
-    assert _assigned_type_names(assign, list(range(6, 12))) == ["ha"] * 6
-
-    assign = Xponge.get_assignment_from_smiles("c1ccccc1")
-    assign.determine_atom_type("gaff2")
+    assign.determine_atom_type(rule)
     assert _assigned_type_names(assign, list(range(6))) == ["ca"] * 6
     assert _assigned_type_names(assign, list(range(6, 12))) == ["ha"] * 6
 
@@ -182,7 +170,6 @@ def test_gaff2_atom_type_determination():
 
 def test_gaff_assignment_state_and_residuetype_regression():
     import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
 
     mol2_text = dedent(
         """
@@ -317,62 +304,41 @@ def test_gaff_assignment_state_and_residuetype_regression():
     assert [str(atom.type) for atom in restype.atoms[13:17]] == ["cc", "cd", "cd", "cc"]
 
 
-def test_gaff_cp_cq_pure_aromatic_regression():
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
-
+@pytest.mark.parametrize("rule", ["gaff", "gaff2"])
+def test_gaff_cp_cq_pure_aromatic_regression(rule):
+    __import__(f"XpongeCPP.forcefield.amber.{rule}")
     smiles = "c1ccc(-c2nc(-c3ccccc3)c(-c3ccccc3)nc2-c2ccccc2)cc1"
     expected = ["cp", "cp", "cp", "cp", "cp", "cp", "cq", "cq"]
 
     assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff")
-    assert _assigned_type_names(assign, [3, 4, 6, 7, 13, 14, 21, 22]) == expected
-
-    assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff2")
+    assign.determine_atom_type(rule)
     assert _assigned_type_names(assign, [3, 4, 6, 7, 13, 14, 21, 22]) == expected
 
 
-def test_gaff_nitroso_ne_regression():
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
-
+@pytest.mark.parametrize("rule", ["gaff", "gaff2"])
+def test_gaff_nitroso_ne_regression(rule):
+    __import__(f"XpongeCPP.forcefield.amber.{rule}")
     smiles = "CN(C)S(=O)(=O)c1cc2c(N=O)c(O)[nH]c2c2c1CCCC2"
     assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff")
-    assert str(assign.atom_types[10]) == "ne"
-
-    assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff2")
+    assign.determine_atom_type(rule)
     assert str(assign.atom_types[10]) == "ne"
 
 
-def test_gaff_nitroso_sequence_sensitive_n2_regression():
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
-
+@pytest.mark.parametrize("rule", ["gaff", "gaff2"])
+def test_gaff_nitroso_sequence_sensitive_n2_regression(rule):
+    __import__(f"XpongeCPP.forcefield.amber.{rule}")
     smiles = "O=Nc1c(O)[nH]c2c3c(c([N+](=O)[O-])cc12)CCCC3"
     assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff")
-    assert str(assign.atom_types[1]) == "n2"
-
-    assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff2")
+    assign.determine_atom_type(rule)
     assert str(assign.atom_types[1]) == "n2"
 
 
-def test_gaff_carbonyl_ring_c_regression():
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
-
+@pytest.mark.parametrize("rule", ["gaff", "gaff2"])
+def test_gaff_carbonyl_ring_c_regression(rule):
+    __import__(f"XpongeCPP.forcefield.amber.{rule}")
     smiles = "Cc1noc2c(-c3ccccc3)nn(CCCN3CCN(c4cccc(Cl)c4)CC3)c(=O)c12"
     assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff")
-    assert str(assign.atom_types[30]) == "c"
-    assert str(assign.atom_types[32]) == "cc"
-
-    assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff2")
+    assign.determine_atom_type(rule)
     assert str(assign.atom_types[30]) == "c"
     assert str(assign.atom_types[32]) == "cc"
 
@@ -612,10 +578,9 @@ def test_gaff2_sulfoxide_s4_regression():
     assert str(assign.atom_types[3]) == "ca"
 
 
-def test_gaff_macrocycle_matches_origin_reference():
-    import XpongeCPP.forcefield.amber.gaff  # noqa: F401
-    import XpongeCPP.forcefield.amber.gaff2  # noqa: F401
-
+@pytest.mark.parametrize("rule", ["gaff", "gaff2"])
+def test_gaff_macrocycle_matches_origin_reference(rule):
+    __import__(f"XpongeCPP.forcefield.amber.{rule}")
     smiles = (
         "C=CC1=C(C)c2cc3nc(cc4[nH]c(cc5[nH]c(cc1n2)c(C)c5CCC(=O)NC1C(O)OC(CO)C(O)C1O)"
         "c(CCC(=O)NC1C(O)OC(CO)C(O)C1O)c4C)C(C=C)=C3C"
@@ -623,12 +588,8 @@ def test_gaff_macrocycle_matches_origin_reference():
     indices = [6, 8, 10, 14, 18, 20, 21, 23, 40, 57]
 
     assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff")
-    assert _assigned_type_names(assign, indices) == _origin_reference_types_from_smiles(smiles, "gaff", indices)
-
-    assign = _assignment_from_smiles_with_3d(smiles)
-    assign.determine_atom_type("gaff2")
-    assert _assigned_type_names(assign, indices) == _origin_reference_types_from_smiles(smiles, "gaff2", indices)
+    assign.determine_atom_type(rule)
+    assert _assigned_type_names(assign, indices) == _origin_reference_types_from_smiles(smiles, rule, indices)
 
 
 @pytest.mark.parametrize(

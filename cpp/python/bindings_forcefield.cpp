@@ -194,6 +194,14 @@ void bind_forcefield_module(py::module_& m) {
     m.def("register_amber_frcmod_file", [](const std::string& filename) { register_amber_frcmod_file(filename); });
     m.def("register_amber_lj_parameter", &register_amber_lj_parameter, py::arg("atom_type"), py::arg("lj_type"),
           py::arg("epsilon"), py::arg("rmin"));
+    m.def("_find_amber_lj_type", &find_amber_lj_type, py::arg("atom_type"));
+    m.def("_find_amber_lj_parameter", [](const std::string& lj_type) -> py::object {
+        const auto parameter = find_amber_lj_parameter(lj_type);
+        if (!parameter) {
+            return py::none();
+        }
+        return py::make_tuple(parameter->first, parameter->second);
+    }, py::arg("lj_type"));
     m.def("register_amber_bond_parameter", &register_amber_bond_parameter, py::arg("atom_type1"),
           py::arg("atom_type2"), py::arg("k"), py::arg("length"));
     m.def("register_amber_angle_parameter", &register_amber_angle_parameter, py::arg("atom_types"),

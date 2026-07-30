@@ -74,6 +74,7 @@ from ._core import (
     template_atom_count,
 )
 from .assign import AssignRule
+from .capabilities import capability_manifest, capability_status, require_capability
 from .gromacs import GlobalSetting, GromacsTopologyIterator, load_ffitp, load_molitp
 from .io_compat import (
     get_assignment_from_cif,
@@ -192,7 +193,7 @@ from .process import (
 from .legacy_types import _LegacyResidueTypeHandle
 from .template_ops import load_mol2
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 __mokda_backend__ = "xpongecpp"
 __implementation_version__ = __version__
 pi = np.pi
@@ -384,6 +385,9 @@ __all__ = [
     "merge_dual_topology",
     "merge_force_field",
     "metal_assignment",
+    "capability_manifest",
+    "capability_status",
+    "require_capability",
     "Add_Ions",
     "Add_Molecule",
     "Add_Solvent_Box",

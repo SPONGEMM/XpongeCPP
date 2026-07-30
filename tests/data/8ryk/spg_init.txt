@@ -247,53 +247,6 @@ if box_padding is not None:
   if set_box_padding is None:
     raise RuntimeError('Xponge set_box_padding 不可用')
   set_box_padding(padding=box_padding, center=True)
-saved_links = None
-if hasattr(mol_out, 'residue_links'):
-  try:
-    saved_links = list(mol_out.residue_links)
-    mol_out.residue_links = []
-  except Exception:
-    saved_links = None
 save_pdb(mol_out, '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input.pdb')
-if saved_links:
-  try:
-    atom_index = getattr(mol_out, 'atom_index', {})
-    connect_map = {}
-    for link in saved_links:
-      a = getattr(link, 'atom1', None)
-      b = getattr(link, 'atom2', None)
-      if a is None or b is None:
-        continue
-      idx_a = atom_index.get(a)
-      idx_b = atom_index.get(b)
-      if idx_a is None or idx_b is None:
-        continue
-      connect_map.setdefault(idx_a, set()).add(idx_b)
-      connect_map.setdefault(idx_b, set()).add(idx_a)
-    if connect_map:
-      pdb_path = '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input.pdb'
-      with open(pdb_path, 'r', encoding='utf-8', errors='ignore') as handle:
-        lines = handle.read().splitlines()
-      end_line = None
-      if lines and lines[-1].startswith('END'):
-        end_line = lines.pop()
-      conect_lines = []
-      for idx in sorted(connect_map.keys()):
-        targets = sorted(connect_map[idx])
-        for chunk_start in range(0, len(targets), 4):
-          chunk = targets[chunk_start:chunk_start + 4]
-          conect_lines.append('CONECT' + f"{idx + 1:5d}" + ''.join([f"{j + 1:5d}" for j in chunk]))
-      lines.extend(conect_lines)
-      if end_line:
-        lines.append(end_line)
-      with open(pdb_path, 'w', encoding='utf-8') as handle:
-        handle.write('\n'.join(lines) + '\n')
-  except Exception:
-    pass
 if not only_pdb:
-  if saved_links is not None:
-    try:
-      mol_out.residue_links = saved_links
-    except Exception:
-      pass
   save_input(mol_out, '/media/yuh/BCDC9249DC91FDB8/Data/Mokda-FEP/8RYK/sponge/input')

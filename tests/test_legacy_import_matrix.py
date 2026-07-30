@@ -57,7 +57,7 @@ CORE_SCOPE_LEGACY_IMPORTS = [
 
 def _run_import(module_name):
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT / "src")
+    env.pop("PYTHONPATH", None)
     return subprocess.run(
         [
             sys.executable,

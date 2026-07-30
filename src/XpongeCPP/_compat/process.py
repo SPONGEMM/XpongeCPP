@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from .._core import (
     Molecule,
     Residue,
@@ -20,7 +18,6 @@ from .._core import (
     save_sponge_input as _core_save_sponge_input,
     set_box_padding,
 )
-from .runtime import get_legacy_residue_links_override
 
 
 def _single_residue_molecule(value, parameter_name):
@@ -75,63 +72,6 @@ def Set_Box_Padding(molecule, padding=0.5, center=True):
     return set_box_padding(molecule, padding, center)
 
 
-def _normalise_link_pair(atom1, atom2):
-    if hasattr(atom1, "index") or not isinstance(atom1, (int, str)):
-        return _normalise_mol2_bond_pair(atom1, atom2)
-    return _normalise_mol2_bond_pair(int(atom1), int(atom2))
-
-
-def _collect_residue_link_pairs(molecule, residue_links=None):
-    connect_pairs = []
-    seen = set()
-    override = get_legacy_residue_links_override(molecule) or []
-    for atom1, atom2 in override:
-        pair = _normalise_mol2_bond_pair(atom1, atom2)
-        if pair in seen:
-            continue
-        seen.add(pair)
-        connect_pairs.append(pair)
-    if residue_links is None:
-        residue_links = getattr(molecule, "residue_links", None) or []
-    for link in residue_links:
-        if hasattr(link, "atom1") and hasattr(link, "atom2"):
-            pair = _normalise_link_pair(link.atom1, link.atom2)
-        else:
-            pair = _normalise_link_pair(link[0], link[1])
-        if pair in seen:
-            continue
-        seen.add(pair)
-        connect_pairs.append(pair)
-    return connect_pairs
-
-
-def _patch_saved_pdb_residue_links(molecule, filename, residue_links=None):
-    path = Path(filename)
-    if not path.exists():
-        return None
-    with path.open(encoding="utf-8", errors="ignore") as handle:
-        lines = handle.read().splitlines()
-    end_line = None
-    if lines and lines[-1].startswith("END"):
-        end_line = lines.pop()
-    updated_lines = []
-    for line in lines:
-        if line.startswith("HETATM"):
-            updated_lines.append("ATOM  " + line[6:])
-        elif not line.startswith("CONECT"):
-            updated_lines.append(line)
-    lines = updated_lines
-
-    for atom1, atom2 in _collect_residue_link_pairs(molecule, residue_links=residue_links):
-        lines.append(f"CONECT{atom1:5d}{atom2:5d}")
-        lines.append(f"CONECT{atom2:5d}{atom1:5d}")
-    if end_line is not None:
-        lines.append(end_line)
-    with path.open("w", encoding="utf-8") as handle:
-        handle.write("\n".join(lines) + "\n")
-    return None
-
-
 def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
     molecule,
     prefix=None,
@@ -172,12 +112,6 @@ def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
             raise TypeError("save_sponge_input expects a Molecule, Residue, ResidueType, or template-like object")
 
     previous_min_flag = None
-    saved_links = None
-    if hasattr(target, "residue_links"):
-        try:
-            saved_links = list(target.residue_links)
-        except Exception:
-            saved_links = None
     try:
         from ..forcefield.special.min import min_bonded_parameters_enabled
 
@@ -193,8 +127,6 @@ def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
     finally:
         if previous_min_flag is not None:
             target.enable_min_bonded_parameters(False)
-    if prefix is not None:
-        _patch_saved_pdb_residue_links(target, f"{prefix}.pdb", residue_links=saved_links)
     return _save_result_with_mapping(target, source_ids, return_mapping)
 
 
@@ -236,7 +168,6 @@ def save_sponge_input_raw(molecule, prefix=None, dirname="."):
 def Save_PDB(molecule, filename, write_cryst1=True):
     target = str(filename)
     save_pdb(molecule, target, write_cryst1)
-    _patch_saved_pdb_residue_links(molecule, target)
     return None
 
 

@@ -23,7 +23,7 @@ def _exported_keys(directory, prefix):
 
 def _run_isolated(code, *args):
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT / "src")
+    env.pop("PYTHONPATH", None)
     return subprocess.run(
         [sys.executable, "-c", code, *map(str, args)], cwd=ROOT, env=env,
         text=True, capture_output=True, check=True,

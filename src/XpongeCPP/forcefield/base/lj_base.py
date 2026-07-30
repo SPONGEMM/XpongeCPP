@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 
+from ..._core import _find_amber_lj_parameter
+
 
 class _LJEntry:
     def __init__(self, name, epsilon, rmin):
@@ -34,7 +36,18 @@ class LJType:
 
     @classmethod
     def get_type(cls, name):
-        return cls._types[cls._norm(name)]
+        key = cls._norm(name)
+        try:
+            return cls._types[key]
+        except KeyError:
+            left, separator, right = str(name).partition("-")
+            if not separator or left != right:
+                raise
+            parameter = _find_amber_lj_parameter(left)
+            if parameter is None:
+                raise
+            epsilon, rmin = parameter
+            return cls._store(name, epsilon, rmin)
 
     @classmethod
     def Get_Type(cls, name):

@@ -161,6 +161,31 @@ def test_xponge_package_alias_supports_common_legacy_import_paths():
     assert mass_base is not None
 
 
+def test_legacy_atom_and_lj_type_views_follow_native_registry():
+    import Xponge.forcefield.amber.ff14sb  # noqa: F401
+    from Xponge.helper import AtomType
+    from Xponge.forcefield.base.lj_base import LJType
+
+    atom_type = AtomType.get_type("N3")
+    lj_type = LJType.get_type(f"{atom_type.LJtype}-{atom_type.LJtype}")
+
+    assert atom_type.LJtype == "N3"
+    assert lj_type.epsilon == 0.17
+    assert lj_type.rmin == 1.824
+
+
+def test_capability_manifest_is_explicit_and_fail_closed():
+    manifest = Xponge.capability_manifest()
+
+    assert manifest["schema_version"] == 1
+    assert manifest["implementation"] == "xpongecpp"
+    assert manifest["unlisted_status"] == "unsupported"
+    assert manifest["capabilities"]["io.sponge.bundle"]["status"] == "supported"
+    assert Xponge.capability_status("unknown.future.feature") == "unsupported"
+    with pytest.raises(NotImplementedError, match="unknown.future.feature"):
+        Xponge.require_capability("unknown.future.feature")
+
+
 def test_xponge_package_alias_supports_high_frequency_forcefield_and_helper_modules():
     import Xponge.forcefield.amber.bsc1 as bsc1
     import Xponge.forcefield.amber.ol3 as ol3

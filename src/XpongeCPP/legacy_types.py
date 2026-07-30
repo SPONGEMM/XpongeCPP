@@ -193,16 +193,13 @@ class _AtomIndexProxy:
 
 
 _core_molecule_add_residue_link = Molecule.add_residue_link
+_core_molecule_clear_residue_links = Molecule.clear_residue_links
 _core_molecule_residue_links = Molecule.residue_links
 
 
 def _legacy_add_residue_link(self, atom1, atom2):
     pair = [_coerce_atom_index(atom1), _coerce_atom_index(atom2)]
-    override = _legacy_residue_links_override.get(self)
-    if override is not None:
-        if pair not in override:
-            override.append(pair)
-        return None
+    _legacy_residue_links_override.pop(self, None)
     return _core_molecule_add_residue_link(self, pair[0], pair[1])
 
 
@@ -323,7 +320,8 @@ def _legacy_get_residue_links(self):
 
 
 def _legacy_clear_residue_links(self):
-    _legacy_residue_links_override[self] = []
+    _core_molecule_clear_residue_links(self)
+    _legacy_residue_links_override.pop(self, None)
     return self
 
 
@@ -337,7 +335,10 @@ def _legacy_set_residue_links(self, links):
             continue
         seen.add(pair)
         normalized.append([atom1, atom2])
-    _legacy_residue_links_override[self] = normalized
+    _core_molecule_clear_residue_links(self)
+    for atom1, atom2 in normalized:
+        _core_molecule_add_residue_link(self, atom1, atom2)
+    _legacy_residue_links_override.pop(self, None)
     return self
 
 

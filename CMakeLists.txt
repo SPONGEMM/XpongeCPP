@@ -95,3 +95,9 @@ if (XPONGECPP_SANITIZE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 install(TARGETS _core DESTINATION XpongeCPP)
+install(
+    DIRECTORY third_party/xponge_reference_forcefield/
+    DESTINATION XpongeCPP/data/reference_forcefield
+    PATTERN "__pycache__" EXCLUDE
+    PATTERN "*.pyc" EXCLUDE
+)
