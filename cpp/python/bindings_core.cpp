@@ -29,6 +29,12 @@ void replace_residues_object(const std::shared_ptr<Molecule>& molecule,
     molecule->replace_residues(copied_replacements, residue_sort_keys, sort);
 }
 
+std::vector<AtomId> prepare_sponge_atom_order_object(
+    const std::shared_ptr<Molecule>& molecule
+) {
+    return prepare_sponge_atom_order(*molecule);
+}
+
 void reorder_atoms_by_template_object(const std::shared_ptr<Molecule>& molecule,
                                       const std::shared_ptr<Molecule>& template_molecule) {
     molecule->reorder_atoms_by_template(*template_molecule);
@@ -567,6 +573,7 @@ void bind_core_module(py::module_& m) {
     m.def("add_molecule", &add_molecule_object, py::arg("molecule"), py::arg("other"));
     m.def("replace_residues", &replace_residues_object, py::arg("molecule"), py::arg("replacements"),
           py::arg("residue_sort_keys") = std::vector<double>{}, py::arg("sort") = true);
+    m.def("prepare_sponge_atom_order", &prepare_sponge_atom_order_object, py::arg("molecule"));
     m.def("reorder_atoms_by_template", &reorder_atoms_by_template_object, py::arg("molecule"),
           py::arg("template_molecule"));
     m.def("set_box_padding", &set_box_padding_object, py::arg("molecule"), py::arg("padding") = 0.5,

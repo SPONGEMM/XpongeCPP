@@ -1,3 +1,22 @@
+# XpongeCPP 0.2.5
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This patch preserves source-atom identity when raw SPONGE export reorders
+noncontiguous linked residue components. The native layer now reports the
+saved atom permutation before serialization, and the compatibility layer
+applies the same permutation to caller-provided source IDs. This keeps Mokda
+trajectory topology and atom-order mappings aligned for proteins, ligands,
+metals, solvent, and repeated solvent molecules without matching atoms by
+name or coordinates.
+
+Focused release validation covers covalent and coordination-driven residue
+reordering, source-ID mapping, and the complete native bundle regression
+cohort. The complete repository suite passes with 716 tests, 10 optional
+skips, and 1 expected xfail. The change adds one linear residue/atom
+permutation pass before raw save and does not move force-field assignment back
+to Python.
+
 # XpongeCPP 0.2.4
 
 Compatibility target: Xponge-origin 1.7b9.

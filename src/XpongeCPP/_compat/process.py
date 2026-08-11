@@ -111,6 +111,10 @@ def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
         else:
             raise TypeError("save_sponge_input expects a Molecule, Residue, ResidueType, or template-like object")
 
+    new_to_old_atom_order = _prepare_sponge_atom_order(target)
+    if source_ids is not None:
+        source_ids = tuple(source_ids[old_index] for old_index in new_to_old_atom_order)
+
     previous_min_flag = None
     try:
         from ..forcefield.special.min import min_bonded_parameters_enabled
@@ -128,6 +132,12 @@ def Save_SPONGE_Input(  # pylint: disable=redefined-builtin
         if previous_min_flag is not None:
             target.enable_min_bonded_parameters(False)
     return _save_result_with_mapping(target, source_ids, return_mapping)
+
+
+def _prepare_sponge_atom_order(molecule):
+    from .._core import prepare_sponge_atom_order
+
+    return tuple(int(index) for index in prepare_sponge_atom_order(molecule))
 
 
 def _capture_source_atom_ids(molecule, source_atom_ids):

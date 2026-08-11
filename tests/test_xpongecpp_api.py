@@ -1114,6 +1114,34 @@ def test_save_sponge_input_reorders_linked_residue_components_for_export(tmp_pat
     assert (tmp_path / "linked_resname.txt").read_text().splitlines() == ["3", "FAR", "WAT", "LIG"]
 
 
+def test_save_sponge_input_mapping_tracks_reordered_linked_components(tmp_path):
+    Xponge.register_tip3p()
+    mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
+
+    residue_counts = [len(residue.atoms) for residue in mol.residues]
+    source_ids = tuple(f"source:{index}" for index, _atom in enumerate(mol.atoms))
+    mol.add_residue_link(mol.residues[0].name2atom("O1"), mol.residues[2].name2atom("O"))
+
+    saved, mapping = Xponge.Save_SPONGE_Input(
+        mol,
+        prefix="linked_mapping",
+        dirname=str(tmp_path),
+        source_atom_ids=source_ids,
+        return_mapping=True,
+    )
+
+    far_end = residue_counts[0]
+    ligand_end = far_end + residue_counts[1]
+    expected_source_ids = (
+        source_ids[:far_end]
+        + source_ids[ligand_end:]
+        + source_ids[far_end:ligand_end]
+    )
+    assert saved is mol
+    assert [residue.name for residue in saved.residues] == ["FAR", "WAT", "LIG"]
+    assert tuple(record["source_atom_id"] for record in mapping) == expected_source_ids
+
+
 def test_save_sponge_input_reorders_coordination_components_for_export(tmp_path):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
