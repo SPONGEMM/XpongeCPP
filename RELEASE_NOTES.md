@@ -1,3 +1,19 @@
+# XpongeCPP 0.2.4
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This compatibility patch preserves residue-link bonds in public MOL2 exports,
+keeps mixed standard/GAFF systems intact when invoking GAFF or GAFF2
+parameterization, and aligns the legacy MDAnalysis raw-SPONGE reader with the
+format hints exposed by Xponge. These fixes cover the Mokda SPONGE-input path
+without moving force-field assignment back to Python.
+
+Release validation includes the focused MOL2, mixed-force-field, and
+MDAnalysis compatibility regressions. The complete repository suite passes
+with 715 tests, 10 optional skips, and 1 expected xfail. A CPython 3.11 wheel
+was built and imported from an isolated environment under the Mokda resource
+gate with `OOMKillDelta=0`.
+
 # XpongeCPP 0.2.3
 
 Compatibility target: Xponge-origin 1.7b9.
@@ -8,17 +24,23 @@ template bonds when an mmCIF residue also supplies explicit covalent bonds,
 including model pseudo-bonds such as the TIP3P H-H distance constraint, while
 still honoring explicit Mokda edit deletions. It also synchronizes temporary
 legacy residue-link overrides with the native registry and canonicalizes CMAP
-grid identities independently of force-field declaration order.
+grid identities independently of force-field declaration order. The legacy
+MDAnalysis raw-SPONGE reader now advertises the `SPONGE_MASS` format and
+recognizes `_mass.txt`, matching the Xponge interface used by Mokda H5MD
+analysis.
 
 Linux x86_64 release-candidate evidence:
 
-- XpongeCPP source suite: 713 passed, 10 optional skips, 1 expected xfail;
-- installed CPython 3.12 wheel through the managed Mokda runtime: 716 passed,
-  7 optional skips, 1 expected xfail;
+- XpongeCPP repository suite under the coherent managed 0.2.3 runtime after the
+  raw-reader compatibility fix: 717 passed, 7 optional skips, 1 expected
+  xfail;
 - Xponge-origin 1.7b9 tests through the installed compatibility namespace:
   36/36 passed;
-- Mokda auto-discovered Xponge consumer matrix: 325 passed, 13 conditional
+- Mokda auto-discovered Xponge consumer matrix: 327 passed, 14 conditional
   skips, and 12 subtests under both providers;
+- real 3GOU/4EWL Life Modeling under the isolated XpongeCPP 0.2.3 managed
+  runtime completed in 205.656 s with a 1.09 GiB peak and
+  `OOMKillDelta=0`;
 - complete Mokda Lipid21/1BL8 tier: 8/8 files passed, with a 1.995 GiB peak
   and `OOMKillDelta=0`;
 - provider-neutral scientific manifests match for repaired 1EMA, 1KV2+B96,

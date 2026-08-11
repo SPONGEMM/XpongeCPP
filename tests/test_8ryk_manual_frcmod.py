@@ -126,3 +126,5 @@ def test_xpongecpp_matches_manual_8ryk_script_contract(tmp_path):
     frcmod_text = raw_frcmod.read_text()
     assert "MASS" in frcmod_text
     assert "NONBON" in frcmod_text
+    bond_section = frcmod_text.split("BOND", 1)[1].split("ANGLE", 1)[0]
+    assert bond_section.strip(), "mixed standard/GAFF boundary bonds must reach parmchk2"

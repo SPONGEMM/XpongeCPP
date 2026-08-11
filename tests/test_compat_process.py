@@ -205,6 +205,31 @@ def test_save_mol2_exports_core_residue_links_as_bonds(tmp_path):
     assert int(count_fields[1]) == len(bond_pairs)
 
 
+def test_save_mol2_exports_links_from_public_legacy_molecule_factory(tmp_path):
+    import Xponge
+    import Xponge.forcefield.amber.ff19sb  # noqa: F401
+
+    molecule = Xponge.Molecule("public_factory_links")
+    molecule.add_residue(
+        Xponge.Residue(Xponge.ResidueType.get_type("ALA"), directly_copy=True)
+    )
+    molecule.add_residue(
+        Xponge.Residue(Xponge.ResidueType.get_type("GLY"), directly_copy=True)
+    )
+    molecule.add_residue_link(
+        molecule.residues[0].name2atom("C"),
+        molecule.residues[1].name2atom("N"),
+    )
+
+    path = tmp_path / "public_factory_links.mol2"
+    Xponge.Save_Mol2(molecule, path)
+
+    count_fields, bond_pairs = _mol2_bond_pairs(path)
+    assert count_fields is not None
+    assert (9, 11) in bond_pairs
+    assert int(count_fields[1]) == len(bond_pairs)
+
+
 def test_save_mol2_exports_legacy_override_residue_links_as_bonds(tmp_path):
     import Xponge
 
