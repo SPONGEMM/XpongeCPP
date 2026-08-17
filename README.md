@@ -56,7 +56,9 @@ The package now declares a practical default dependency set for pip users:
 - `pyscf` on non-Windows platforms
 - `mokda-xpongelib` (imported as `XpongeLib`)
 
-Windows automatically skips `pyscf` through environment markers.
+Windows automatically skips `pyscf` through environment markers. Until official
+Windows wheels are released, install a self-built PySCF wheel separately to use
+that backend.
 
 `mokda-xpongelib` is included so legacy `gaff.parmchk2_gaff(...)` workflows can
 resolve the `XpongeLib` bridge automatically after installation.
@@ -129,8 +131,9 @@ pixi run test
 
 RESP supports a multi-backend strategy:
 
-- default backend: `PySCF`
-- optional backend: `Psi4`
+- preferred backend: `PySCF`
+- automatic fallback: `Psi4` when PySCF is not installed
+- clear error when neither backend is available
 - shared dispatch layer: `XpongeCPP.qm`
 
 Example:
@@ -145,7 +148,8 @@ qm.run_scf(assign, backend="pyscf")
 qm.optimize_geometry(assign, backend="pyscf")
 ```
 
-For Windows RESP workflows, install `Psi4` separately and select it explicitly:
+For Windows RESP workflows, install a compatible PySCF wheel or install `Psi4`
+separately. The default backend selection detects either installation:
 
 ```bash
 conda install -c conda-forge psi4

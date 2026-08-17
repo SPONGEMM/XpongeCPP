@@ -197,10 +197,22 @@ def test_calculate_charge_reports_optional_dependencies_clearly(monkeypatch):
         assignment.calculate_charge("resp")
 
 
-def test_resp_defaults_to_platform_backend(monkeypatch):
+@pytest.mark.parametrize(
+    ("available_backends", "expected_backend"),
+    [
+        ({"pyscf", "psi4"}, "pyscf"),
+        ({"psi4"}, "psi4"),
+    ],
+)
+def test_resp_defaults_to_available_backend(monkeypatch, available_backends, expected_backend):
     assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
     calls = []
-    default_backend = qm_scheduler.normalize_backend_name(None)
+
+    monkeypatch.setattr(
+        qm_scheduler,
+        "find_spec",
+        lambda name: object() if name in available_backends else None,
+    )
 
     class FakeBackend:
         @staticmethod
@@ -220,7 +232,7 @@ def test_resp_defaults_to_platform_backend(monkeypatch):
             calls.append(("esp", len(grids), memory_limit, chunk_policy, safety_factor))
             return np.zeros(len(grids))
 
-    monkeypatch.setitem(resp_module._BACKEND_MODULES, default_backend, FakeBackend)
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, expected_backend, FakeBackend)
     monkeypatch.setattr(resp_module.resp_core, "get_mk_grid", lambda *args, **kwargs: __import__("numpy").zeros((2, 3)))
     monkeypatch.setattr(resp_module.resp_core, "fit_resp_from_esp", lambda *args, **kwargs: [0.0, 0.0, 0.0])
 
@@ -327,7 +339,7 @@ def test_resp_rejects_unknown_core():
         resp_module.resp_fit(assignment, core="unknown")
 
 
-def test_resp_windows_hint_mentions_psi4(monkeypatch):
+def test_resp_explicit_pyscf_backend_reports_missing_dependency(monkeypatch):
     assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
 
     class FailingBackend:
@@ -336,9 +348,8 @@ def test_resp_windows_hint_mentions_psi4(monkeypatch):
             raise ImportError("PySCF is required for RESP charge calculation")
 
     monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FailingBackend)
-    monkeypatch.setattr(resp_module.sys, "platform", "win32")
 
-    with pytest.raises(ImportError, match="install Psi4"):
+    with pytest.raises(ImportError, match="PySCF"):
         resp_module.resp_fit(assignment, backend="pyscf")
 
 
@@ -356,9 +367,7 @@ def test_resp_explicit_psi4_backend_reports_missing_dependency(monkeypatch):
         resp_module.resp_fit(assignment, backend="psi4")
 
 
-def test_qm_scheduler_windows_psi4_hint_mentions_external_install(monkeypatch):
-    monkeypatch.setattr(qm_scheduler.sys, "platform", "win32")
-
+def test_qm_scheduler_psi4_hint_mentions_external_install():
     with pytest.raises(ImportError, match="official Psi4 installer"):
         qm_scheduler.backend_import_or_hint("psi4", ImportError("Psi4 is required"))
 
@@ -370,14 +379,29 @@ def test_qm_scheduler_exposes_known_backends():
         qm_get_backend("unknown")
 
 
-def test_qm_scheduler_default_backend_matches_platform(monkeypatch):
-    monkeypatch.setattr(qm_scheduler.sys, "platform", "linux")
+def test_qm_scheduler_default_backend_prefers_pyscf(monkeypatch):
+    monkeypatch.setattr(qm_scheduler, "find_spec", lambda name: object())
+
     assert qm_scheduler.normalize_backend_name(None) == "pyscf"
     assert qm_get_backend(None).name == "pyscf"
 
-    monkeypatch.setattr(qm_scheduler.sys, "platform", "win32")
+
+def test_qm_scheduler_default_backend_falls_back_to_psi4(monkeypatch):
+    monkeypatch.setattr(
+        qm_scheduler,
+        "find_spec",
+        lambda name: object() if name == "psi4" else None,
+    )
+
     assert qm_scheduler.normalize_backend_name(None) == "psi4"
     assert qm_get_backend(None).name == "psi4"
+
+
+def test_qm_scheduler_default_backend_errors_when_none_installed(monkeypatch):
+    monkeypatch.setattr(qm_scheduler, "find_spec", lambda name: None)
+
+    with pytest.raises(ImportError, match="Neither PySCF nor Psi4 is installed"):
+        qm_scheduler.normalize_backend_name(None)
 
 
 def test_qm_scheduler_runs_pyscf_scf_and_esp_smoke():
@@ -1025,12 +1049,12 @@ def test_save_as_mol2_atomtype_argument_and_equal_atoms_api(tmp_path):
     assert any(set(group) == {0, 1} for group in groups)
 
 
-def test_resp_uses_pyscf_backend_or_reports_missing_dependency():
+def test_resp_uses_available_backend_or_reports_missing_dependency():
     water = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
     try:
         water.calculate_charge("resp", basis="sto-3g", charge=0, grid_density=1, grid_cell_layer=1, only_esp=True)
     except ImportError as exc:
-        assert "PySCF" in str(exc)
+        assert "PySCF" in str(exc) or "Psi4" in str(exc)
         return
     assert len(water.charges) == 3
     assert math.isclose(sum(water.charges), 0.0, abs_tol=1e-5)

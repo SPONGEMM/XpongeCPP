@@ -50,20 +50,21 @@ python -c "import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special
 这意味着：
 
 - Linux / macOS 用户默认会得到完整一些的化学后端
-- Windows 用户不会因为 `pyscf` 不可用而导致整包安装失败
+- Windows 用户不会因为 `pyscf` 未被自动安装而导致整包安装失败
 - `gaff.parmchk2_gaff(...)` 这类 legacy workflow 能自动解析 `XpongeLib` bridge
 
 ## RESP 后端说明
 
 当前 RESP 电荷计算支持多后端策略：
 
-- 默认后端：`PySCF`
-- 可选后端：`Psi4`
+- 优先后端：`PySCF`
+- 自动回退：未安装 PySCF 时使用 `Psi4`
+- 两者均未安装时：相关量化化学功能明确报错
 
 推荐使用方式：
 
-- Linux / macOS：默认直接使用 `PySCF`
-- Windows：安装 `Psi4`，并在 RESP 调用时显式指定 `backend="psi4"`
+- Linux / macOS：默认优先使用 `PySCF`
+- Windows：可自行构建并安装 PySCF wheel，或安装 `Psi4` 作为自动回退
 
 示例：
 
@@ -72,7 +73,7 @@ assign.calculate_charge("resp", backend="pyscf")
 assign.calculate_charge("resp", backend="psi4")
 ```
 
-如果是在 Windows 上做 RESP，推荐安装顺序是：
+如果是在 Windows 上使用 RESP，可安装自行构建的 PySCF wheel，或安装 Psi4：
 
 ```bash
 conda install -c conda-forge psi4

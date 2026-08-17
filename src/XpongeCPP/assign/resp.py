@@ -7,8 +7,6 @@ the current behavior to a backend module plus a backend-neutral Python core.
 
 from __future__ import annotations
 
-import sys
-
 from ..qm import scheduler as qm_scheduler
 from ..qm.resp_basis import resolve_default_resp_basis, resolve_resp_basis
 from ..qm.resp_parameters import get_resp_radius_overrides, normalize_element_symbol
@@ -91,10 +89,8 @@ def _normalize_backend_name(backend):
 
 def _backend_import_or_hint(backend_name, exc):
     message = str(exc)
-    if backend_name == "pyscf" and sys.platform.startswith("win"):
-        message += " On Windows, install Psi4 via conda-forge or the official Psi4 installer and call calculate_charge('resp', backend='psi4', ...)."
-    elif backend_name == "psi4":
-        message += " On Windows, Psi4 is not installed through pip by default; install it via conda-forge or the official Psi4 installer and retry."
+    if backend_name == "psi4":
+        message += " Install Psi4 via conda-forge or the official Psi4 installer and retry."
     raise ImportError(message) from exc
 
 
