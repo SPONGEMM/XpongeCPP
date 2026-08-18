@@ -161,15 +161,18 @@ def main_axis_rotate(molecule, direction_long=None, direction_middle=None, direc
     direction_short = np.array(direction_short if direction_short is not None else [1, 0, 0], dtype=float)
     coordinates = _molecule_coordinates(molecule)
     center = np.zeros(3, dtype=float)
-    total_mass = 0.0
-    for atom, coordinate in zip(molecule.atoms, coordinates):
-        total_mass += atom.mass
-        center += atom.mass * coordinate
+    masses = np.asarray([float(atom.mass) for atom in molecule.atoms], dtype=float)
+    total_mass = float(masses.sum())
+    if not np.isfinite(total_mass) or total_mass <= 0.0:
+        masses = np.ones(len(molecule.atoms), dtype=float)
+        total_mass = float(len(molecule.atoms))
+    for mass, coordinate in zip(masses, coordinates):
+        center += mass * coordinate
     center /= total_mass
     inertia = np.zeros((3, 3), dtype=float)
-    for atom, coordinate in zip(molecule.atoms, coordinates):
+    for mass, coordinate in zip(masses, coordinates):
         x, y, z = coordinate - center
-        inertia += atom.mass * np.array([
+        inertia += mass * np.array([
             [y * y + z * z, -x * y, -x * z],
             [-x * y, x * x + z * z, -y * z],
             [-x * z, -y * z, x * x + y * y],

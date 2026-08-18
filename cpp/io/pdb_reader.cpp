@@ -903,6 +903,25 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
         if (it == chem_comp_bonds.end()) {
             continue;
         }
+        // A Chemcore/self-contained mmCIF describes ordinary covalent bonds in
+        // _chem_comp_bond, while a registered force-field template may also
+        // contain model-defining pseudo-bonds (TIP3P H1-H2 is the canonical
+        // example).  Once a residue has any explicit bond, build_topology()
+        // deliberately treats that explicit graph as authoritative.  Seed the
+        // graph with the complete registered template before overlaying the
+        // mmCIF bonds so an otherwise complete covalent loop does not silently
+        // discard those force-field terms.  Later _mokda_edit_operation rows
+        // still run last and can remove an explicitly deleted bond.
+        if (has_template(residue.name)) {
+            const auto& residue_type = get_residue_template(residue.name);
+            for (const auto& bond : residue_type.bonds()) {
+                const AtomId atom1 = find_atom(
+                    molecule, residue, residue_type.atoms()[bond.atom1].name);
+                const AtomId atom2 = find_atom(
+                    molecule, residue, residue_type.atoms()[bond.atom2].name);
+                mmcif_add_connection(molecule, atom1, atom2);
+            }
+        }
         for (const auto& [atom1_name, atom2_name] : it->second) {
             const AtomId atom1 = find_atom(molecule, residue, atom1_name);
             const AtomId atom2 = find_atom(molecule, residue, atom2_name);

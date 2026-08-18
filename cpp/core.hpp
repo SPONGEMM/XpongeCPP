@@ -579,6 +579,7 @@ void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::arr
                      double tolerance, std::int64_t n_solvent, std::uint64_t seed = 0);
 void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts,
               std::uint64_t seed = 0, const std::string& solvent_residue = "WAT");
+std::vector<AtomId> prepare_sponge_atom_order(Molecule& molecule);
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecule& molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname);
@@ -662,6 +663,9 @@ Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_
                            const std::unordered_map<std::string, double>& specific_lambda);
 void register_residue_templates_from_mol2_text(const std::string& text);
 void register_residue_templates_from_mol2_file(const std::filesystem::path& filename);
+void register_new_residue_templates_from_mol2_text(const std::string& text);
+void register_new_residue_templates_from_mol2_file(const std::filesystem::path& filename);
+void register_residue_type_template(const ResidueType& residue_type);
 void register_template_molecule_from_mol2_file(const std::filesystem::path& filename);
 void register_template_virtual_atom2(const std::string& template_name, const std::string& virtual_atom,
                                      const std::string& atom0, const std::string& atom1, const std::string& atom2,

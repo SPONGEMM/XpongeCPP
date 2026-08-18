@@ -14,6 +14,8 @@ from ._core import (
     get_template_molecule,
     has_template,
     molecule_from_residuetype,
+    register_residue_type_template,
+    registered_template_names,
     register_residue_templates_from_mol2_text,
 )
 
@@ -46,8 +48,10 @@ class _LegacyResidueTypeHandle:
     @head.setter
     def head(self, value):
         _legacy_template_metadata.setdefault(self._name, {})["head"] = value
-        if value:
-            configure_residue_template_head(self._name, str(value))
+        configure_residue_template_head(
+            self._name,
+            "" if value is None else str(value),
+        )
 
     @property
     def tail(self):
@@ -56,12 +60,79 @@ class _LegacyResidueTypeHandle:
     @tail.setter
     def tail(self, value):
         _legacy_template_metadata.setdefault(self._name, {})["tail"] = value
-        if value:
-            configure_residue_template_tail(self._name, str(value))
+        configure_residue_template_tail(
+            self._name,
+            "" if value is None else str(value),
+        )
+
+    @property
+    def head_next(self):
+        return _legacy_template_metadata.get(self._name, {}).get("head_next")
+
+    @head_next.setter
+    def head_next(self, value):
+        _legacy_template_metadata.setdefault(self._name, {})["head_next"] = value
+
+    @property
+    def tail_next(self):
+        return _legacy_template_metadata.get(self._name, {}).get("tail_next")
+
+    @tail_next.setter
+    def tail_next(self, value):
+        _legacy_template_metadata.setdefault(self._name, {})["tail_next"] = value
+
+    @property
+    def head_length(self):
+        return _legacy_template_metadata.get(self._name, {}).get("head_length")
+
+    @head_length.setter
+    def head_length(self, value):
+        _legacy_template_metadata.setdefault(self._name, {})["head_length"] = value
+
+    @property
+    def tail_length(self):
+        return _legacy_template_metadata.get(self._name, {}).get("tail_length")
+
+    @tail_length.setter
+    def tail_length(self, value):
+        _legacy_template_metadata.setdefault(self._name, {})["tail_length"] = value
+
+    @property
+    def head_link_conditions(self):
+        return _legacy_template_metadata.setdefault(self._name, {}).setdefault(
+            "head_link_conditions", []
+        )
+
+    @property
+    def tail_link_conditions(self):
+        return _legacy_template_metadata.setdefault(self._name, {}).setdefault(
+            "tail_link_conditions", []
+        )
 
     @property
     def atoms(self):
+        dynamic = _legacy_dynamic_residue_types.get(self._name)
+        if dynamic is not None:
+            return dynamic.atoms
         return get_template_molecule(self._name).residues[0].atoms
+
+    def name2atom(self, name):
+        for atom in self.atoms:
+            if atom.name == name:
+                return atom
+        raise KeyError(name)
+
+    def add_atom(self, name, atom_type, x, y, z, charge=0.0, mass=0.0):
+        residue_type = _materialize_dynamic_residuetype(self._name)
+        return residue_type.add_atom(
+            name,
+            atom_type,
+            x,
+            y,
+            z,
+            charge=charge,
+            mass=mass,
+        )
 
     def deepcopy(self, name):
         name = str(name)
@@ -106,6 +177,63 @@ def _legacy_get_residuetype(name):
     return _LegacyResidueTypeHandle(name)
 
 
+def _legacy_get_all_residuetypes():
+    names = set(registered_template_names())
+    names.update(_legacy_dynamic_residue_types)
+    return {name: _legacy_get_residuetype(name) for name in sorted(names)}
+
+
+def _materialize_dynamic_residuetype(name):
+    """Return a writable copy of a registered residue template."""
+
+    name = str(name)
+    dynamic = _legacy_dynamic_residue_types.get(name)
+    if dynamic is not None:
+        return dynamic
+    if not has_template(name):
+        raise KeyError(f"ResidueType {name!r} is not registered")
+
+    template = get_template_molecule(name)
+    if template.residue_count != 1:
+        raise TypeError(
+            "residue template compatibility expects one-residue templates"
+        )
+    residue = template.residues[0]
+    dynamic = _remember_dynamic_residuetype(ResidueType(name))
+    for atom in residue.atoms:
+        dynamic.add_atom(
+            atom.name,
+            atom.type,
+            atom.x,
+            atom.y,
+            atom.z,
+            charge=atom.charge,
+            mass=atom.mass,
+        )
+    for atom1, atom2 in template.explicit_bonds:
+        dynamic.add_connectivity(
+            template.atoms[int(atom1)].name,
+            template.atoms[int(atom2)].name,
+        )
+    return dynamic
+
+
+def _remember_template_connection(
+    residue_name,
+    position,
+    anchor,
+    next_atom,
+    length,
+    conditions=None,
+):
+    metadata = _legacy_template_metadata.setdefault(str(residue_name), {})
+    metadata[str(position)] = anchor
+    metadata[f"{position}_next"] = next_atom
+    metadata[f"{position}_length"] = length
+    if conditions is not None:
+        metadata[f"{position}_link_conditions"] = list(conditions)
+
+
 def _coerce_atom_index(atom):
     if isinstance(atom, (int, np.integer)):
         return int(atom)
@@ -126,16 +254,13 @@ class _AtomIndexProxy:
 
 
 _core_molecule_add_residue_link = Molecule.add_residue_link
+_core_molecule_clear_residue_links = Molecule.clear_residue_links
 _core_molecule_residue_links = Molecule.residue_links
 
 
 def _legacy_add_residue_link(self, atom1, atom2):
     pair = [_coerce_atom_index(atom1), _coerce_atom_index(atom2)]
-    override = _legacy_residue_links_override.get(self)
-    if override is not None:
-        if pair not in override:
-            override.append(pair)
-        return None
+    _legacy_residue_links_override.pop(self, None)
     return _core_molecule_add_residue_link(self, pair[0], pair[1])
 
 
@@ -229,9 +354,12 @@ def _ensure_dynamic_residuetype_template(name):
     residue_type = _legacy_dynamic_residue_types.get(str(name))
     if residue_type is None:
         return False
-    register_residue_templates_from_mol2_text(
-        _dynamic_residuetype_mol2_text(residue_type)
-    )
+    register_residue_type_template(residue_type)
+    metadata = _legacy_template_metadata.get(str(name), {})
+    if metadata.get("head"):
+        configure_residue_template_head(str(name), str(metadata["head"]))
+    if metadata.get("tail"):
+        configure_residue_template_tail(str(name), str(metadata["tail"]))
     return True
 
 
@@ -256,7 +384,8 @@ def _legacy_get_residue_links(self):
 
 
 def _legacy_clear_residue_links(self):
-    _legacy_residue_links_override[self] = []
+    _core_molecule_clear_residue_links(self)
+    _legacy_residue_links_override.pop(self, None)
     return self
 
 
@@ -270,7 +399,10 @@ def _legacy_set_residue_links(self, links):
             continue
         seen.add(pair)
         normalized.append([atom1, atom2])
-    _legacy_residue_links_override[self] = normalized
+    _core_molecule_clear_residue_links(self)
+    for atom1, atom2 in normalized:
+        _core_molecule_add_residue_link(self, atom1, atom2)
+    _legacy_residue_links_override.pop(self, None)
     return self
 
 

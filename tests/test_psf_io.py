@@ -124,3 +124,45 @@ PSF
     assert [res.type_name for res in mol.residues] == ["LIG", "LIG_1"]
     assert [res.atoms[0].type for res in mol.residues] == ["CT", "C2"]
     assert [res.atoms[0].charge for res in mol.residues] == [0.0, 0.5]
+
+
+def test_load_molpsf_keeps_zero_bond_multiatom_residue_intact():
+    psf = StringIO(
+        """\
+PSF
+       0 !NTITLE
+       3 !NATOM
+       1 SYS      1 LIG  C1   CT      0.000000       12.0100           0
+       2 SYS      1 LIG  C2   CT      0.000000       12.0100           0
+       3 SYS      2 ION  NA   NA      1.000000       22.9900           0
+       0 !NBOND: bonds
+"""
+    )
+
+    mol, mols = Xponge.load_molpsf(psf)
+
+    assert mol.residue_count == 2
+    assert [[atom.name for atom in residue.atoms] for residue in mol.residues] == [["C1", "C2"], ["NA"]]
+    assert sorted(mols) == ["psf_1", "psf_3"]
+    assert mols["psf_1"].atom_count == 2
+    assert mols["psf_3"].atom_count == 1
+
+
+def test_load_molpsf_does_not_merge_noncontiguous_reused_residue_keys():
+    psf = StringIO(
+        """\
+PSF
+       0 !NTITLE
+       3 !NATOM
+       1 SYS      1 LIG  C1   CT      0.000000       12.0100           0
+       2 SYS      2 MID  C2   CT      0.000000       12.0100           0
+       3 SYS      1 LIG  C3   CT      0.000000       12.0100           0
+       0 !NBOND: bonds
+"""
+    )
+
+    mol, _ = Xponge.load_molpsf(psf, split_by=None)
+
+    assert mol.residue_count == 3
+    assert [res.name for res in mol.residues] == ["LIG", "MID", "LIG"]
+    assert [[atom.name for atom in res.atoms] for res in mol.residues] == [["C1"], ["C2"], ["C3"]]

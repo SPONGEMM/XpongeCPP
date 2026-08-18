@@ -26,15 +26,16 @@ std::vector<std::array<double, 3>> fibonacci_grid(int npoints, const std::array<
         return out;
     }
     out.reserve(static_cast<std::size_t>(npoints));
-    const double golden_angle = kPi * (3.0 - std::sqrt(5.0));
+    const double golden_angle = kPi * (std::sqrt(5.0) - 1.0);
     for (int i = 0; i < npoints; ++i) {
-        const double y = 1.0 - (2.0 * i + 1.0) / static_cast<double>(npoints);
-        const double r = std::sqrt(std::max(1.0 - y * y, 0.0));
-        const double theta = golden_angle * static_cast<double>(i);
+        const double index = static_cast<double>(i + 1);
+        const double z = (2.0 * index - 1.0) / static_cast<double>(npoints) - 1.0;
+        const double planar_radius = std::sqrt(std::max(1.0 - z * z, 0.0));
+        const double theta = golden_angle * index;
         out.push_back({
-            center[0] + radius * std::cos(theta) * r,
-            center[1] + radius * y,
-            center[2] + radius * std::sin(theta) * r,
+            center[0] + radius * planar_radius * std::cos(theta),
+            center[1] + radius * planar_radius * std::sin(theta),
+            center[2] + radius * z,
         });
     }
     return out;

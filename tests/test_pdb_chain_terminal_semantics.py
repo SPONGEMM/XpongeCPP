@@ -132,23 +132,25 @@ SSBOND   1 CYS A   1    CYS B   1
 LINK         C   ACE C   1                 N   ALA C   2
 ATOM      1  N   CYS A   1       0.000   0.000   0.000  1.00  0.00           N
 ATOM      2  CA  CYS A   1       1.000   0.000   0.000  1.00  0.00           C
-ATOM      3  C   CYS A   1       2.000   0.000   0.000  1.00  0.00           C
-ATOM      4  O   CYS A   1       3.000   0.000   0.000  1.00  0.00           O
-ATOM      5  SG  CYS A   1       1.000   1.800   0.000  1.00  0.00           S
+ATOM      3  CB  CYS A   1       1.000   1.000   0.000  1.00  0.00           C
+ATOM      4  C   CYS A   1       2.000   0.000   0.000  1.00  0.00           C
+ATOM      5  O   CYS A   1       3.000   0.000   0.000  1.00  0.00           O
+ATOM      6  SG  CYS A   1       1.000   1.800   0.000  1.00  0.00           S
 TER
-ATOM      6  N   CYS B   1       0.000   5.000   0.000  1.00  0.00           N
-ATOM      7  CA  CYS B   1       1.000   5.000   0.000  1.00  0.00           C
-ATOM      8  C   CYS B   1       2.000   5.000   0.000  1.00  0.00           C
-ATOM      9  O   CYS B   1       3.000   5.000   0.000  1.00  0.00           O
-ATOM     10  SG  CYS B   1       1.000   3.200   0.000  1.00  0.00           S
+ATOM      7  N   CYS B   1       0.000   5.000   0.000  1.00  0.00           N
+ATOM      8  CA  CYS B   1       1.000   5.000   0.000  1.00  0.00           C
+ATOM      9  CB  CYS B   1       1.000   4.000   0.000  1.00  0.00           C
+ATOM     10  C   CYS B   1       2.000   5.000   0.000  1.00  0.00           C
+ATOM     11  O   CYS B   1       3.000   5.000   0.000  1.00  0.00           O
+ATOM     12  SG  CYS B   1       1.000   3.200   0.000  1.00  0.00           S
 TER
-ATOM     11  CH3 ACE C   1       0.000  10.000   0.000  1.00  0.00           C
-ATOM     12  C   ACE C   1       1.000  10.000   0.000  1.00  0.00           C
-ATOM     13  O   ACE C   1       2.000  10.000   0.000  1.00  0.00           O
-ATOM     14  N   ALA C   2       3.000  10.000   0.000  1.00  0.00           N
-ATOM     15  CA  ALA C   2       4.000  10.000   0.000  1.00  0.00           C
-ATOM     16  C   ALA C   2       5.000  10.000   0.000  1.00  0.00           C
-ATOM     17  O   ALA C   2       6.000  10.000   0.000  1.00  0.00           O
+ATOM     13  CH3 ACE C   1       0.000  10.000   0.000  1.00  0.00           C
+ATOM     14  C   ACE C   1       1.000  10.000   0.000  1.00  0.00           C
+ATOM     15  O   ACE C   1       2.000  10.000   0.000  1.00  0.00           O
+ATOM     16  N   ALA C   2       3.000  10.000   0.000  1.00  0.00           N
+ATOM     17  CA  ALA C   2       4.000  10.000   0.000  1.00  0.00           C
+ATOM     18  C   ALA C   2       5.000  10.000   0.000  1.00  0.00           C
+ATOM     19  O   ALA C   2       6.000  10.000   0.000  1.00  0.00           O
 TER
 END
 """
@@ -158,8 +160,8 @@ END
     pairs = _bond_pairs(tmp_path / "linked_bond.txt")
 
     assert [res.name for res in mol.residues[:2]] == ["NCYX", "NCYX"]
-    assert (4, 9) in pairs
-    assert (11, 13) in pairs
+    assert (5, 11) in pairs
+    assert (13, 15) in pairs
 
 
 def test_pdb_options_for_altloc_hydrogen_conect_and_cryst1(tmp_path):
@@ -245,25 +247,27 @@ def test_pdb_writer_rebuilds_ssbond_link_and_conect_records(tmp_path):
 SSBOND   1 CYS A   1    CYS B   1
 ATOM      1  N   CYS A   1       0.000   0.000   0.000  1.00  0.00           N
 ATOM      2  CA  CYS A   1       1.000   0.000   0.000  1.00  0.00           C
-ATOM      3  C   CYS A   1       2.000   0.000   0.000  1.00  0.00           C
-ATOM      4  O   CYS A   1       3.000   0.000   0.000  1.00  0.00           O
-ATOM      5  SG  CYS A   1       1.000   1.800   0.000  1.00  0.00           S
-ATOM      6  N   ALA A   2       4.000   0.000   0.000  1.00  0.00           N
-ATOM      7  CA  ALA A   2       5.000   0.000   0.000  1.00  0.00           C
-ATOM      8  C   ALA A   2       6.000   0.000   0.000  1.00  0.00           C
-ATOM      9  O   ALA A   2       7.000   0.000   0.000  1.00  0.00           O
+ATOM      3  CB  CYS A   1       1.000   1.000   0.000  1.00  0.00           C
+ATOM      4  C   CYS A   1       2.000   0.000   0.000  1.00  0.00           C
+ATOM      5  O   CYS A   1       3.000   0.000   0.000  1.00  0.00           O
+ATOM      6  SG  CYS A   1       1.000   1.800   0.000  1.00  0.00           S
+ATOM      7  N   ALA A   2       4.000   0.000   0.000  1.00  0.00           N
+ATOM      8  CA  ALA A   2       5.000   0.000   0.000  1.00  0.00           C
+ATOM      9  C   ALA A   2       6.000   0.000   0.000  1.00  0.00           C
+ATOM     10  O   ALA A   2       7.000   0.000   0.000  1.00  0.00           O
 TER
-ATOM     10  N   CYS B   1       0.000   5.000   0.000  1.00  0.00           N
-ATOM     11  CA  CYS B   1       1.000   5.000   0.000  1.00  0.00           C
-ATOM     12  C   CYS B   1       2.000   5.000   0.000  1.00  0.00           C
-ATOM     13  O   CYS B   1       3.000   5.000   0.000  1.00  0.00           O
-ATOM     14  SG  CYS B   1       1.000   3.200   0.000  1.00  0.00           S
-ATOM     15  N   ALA B   2       4.000   5.000   0.000  1.00  0.00           N
-ATOM     16  CA  ALA B   2       5.000   5.000   0.000  1.00  0.00           C
-ATOM     17  C   ALA B   2       6.000   5.000   0.000  1.00  0.00           C
-ATOM     18  O   ALA B   2       7.000   5.000   0.000  1.00  0.00           O
+ATOM     11  N   CYS B   1       0.000   5.000   0.000  1.00  0.00           N
+ATOM     12  CA  CYS B   1       1.000   5.000   0.000  1.00  0.00           C
+ATOM     13  CB  CYS B   1       1.000   4.000   0.000  1.00  0.00           C
+ATOM     14  C   CYS B   1       2.000   5.000   0.000  1.00  0.00           C
+ATOM     15  O   CYS B   1       3.000   5.000   0.000  1.00  0.00           O
+ATOM     16  SG  CYS B   1       1.000   3.200   0.000  1.00  0.00           S
+ATOM     17  N   ALA B   2       4.000   5.000   0.000  1.00  0.00           N
+ATOM     18  CA  ALA B   2       5.000   5.000   0.000  1.00  0.00           C
+ATOM     19  C   ALA B   2       6.000   5.000   0.000  1.00  0.00           C
+ATOM     20  O   ALA B   2       7.000   5.000   0.000  1.00  0.00           O
 TER
-CONECT    7   16
+CONECT    8   18
 END
 """
         ),
@@ -279,8 +283,8 @@ END
     assert any(line.startswith("LINK") and "ALA A   2" in line and "ALA B   2" in line for line in text.splitlines())
     assert "CONECT" not in text
     Xponge.Save_SPONGE_Input(reloaded, prefix="roundtrip", dirname=str(tmp_path))
-    assert (4, 13) in _bond_pairs(tmp_path / "roundtrip_bond.txt")
-    assert (6, 15) in _bond_pairs(tmp_path / "roundtrip_bond.txt")
+    assert (5, 15) in _bond_pairs(tmp_path / "roundtrip_bond.txt")
+    assert (7, 17) in _bond_pairs(tmp_path / "roundtrip_bond.txt")
 
 
 def test_pdb_writer_uses_conect_for_single_residue_chains(tmp_path):

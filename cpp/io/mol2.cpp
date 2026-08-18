@@ -28,6 +28,25 @@ std::vector<std::string> split_ws(const std::string& line) {
     return out;
 }
 
+std::vector<std::pair<AtomId, AtomId>> mol2_bond_pairs(const Molecule& molecule) {
+    std::vector<std::pair<AtomId, AtomId>> bonds;
+    bonds.reserve(molecule.explicit_bonds.size() + molecule.residue_links.size());
+    const auto append = [&bonds](const ResidueLink& bond) {
+        const auto atom1 = std::min(bond.atom1, bond.atom2);
+        const auto atom2 = std::max(bond.atom1, bond.atom2);
+        bonds.emplace_back(atom1, atom2);
+    };
+    for (const auto& bond : molecule.explicit_bonds) {
+        append(bond);
+    }
+    for (const auto& link : molecule.residue_links) {
+        append(link);
+    }
+    std::sort(bonds.begin(), bonds.end());
+    bonds.erase(std::unique(bonds.begin(), bonds.end()), bonds.end());
+    return bonds;
+}
+
 }  // namespace
 
 Molecule load_mol2_text(const std::string& text) {
@@ -116,9 +135,10 @@ void save_mol2(const Molecule& molecule, const std::filesystem::path& filename) 
     if (!out) {
         throw std::runtime_error("failed to open MOL2 output: " + filename.string());
     }
+    const auto bond_pairs = mol2_bond_pairs(molecule);
     out << "@<TRIPOS>MOLECULE\n";
     out << molecule.name << "\n";
-    out << std::setw(6) << molecule.atoms.size() << std::setw(6) << molecule.explicit_bonds.size()
+    out << std::setw(6) << molecule.atoms.size() << std::setw(6) << bond_pairs.size()
         << std::setw(6) << molecule.residues.size() << "     0     1\n";
     out << "SMALL\nUSER_CHARGES\n";
     out << "@<TRIPOS>ATOM\n";
@@ -140,9 +160,9 @@ void save_mol2(const Molecule& molecule, const std::filesystem::path& filename) 
             << "\n";
     }
     out << "@<TRIPOS>BOND\n";
-    for (std::size_t i = 0; i < molecule.explicit_bonds.size(); ++i) {
-        const auto& bond = molecule.explicit_bonds[i];
-        out << std::setw(6) << i + 1 << std::setw(6) << bond.atom1 + 1 << std::setw(6) << bond.atom2 + 1
+    for (std::size_t i = 0; i < bond_pairs.size(); ++i) {
+        const auto& bond = bond_pairs[i];
+        out << std::setw(6) << i + 1 << std::setw(6) << bond.first + 1 << std::setw(6) << bond.second + 1
             << " 1\n";
     }
     out << "@<TRIPOS>SUBSTRUCTURE\n";

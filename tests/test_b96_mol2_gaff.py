@@ -23,10 +23,11 @@ def _write_xpongecpp_b96(dirname):
         import json
         import XpongeCPP as Xponge
         import XpongeCPP.forcefield.amber.gaff  # noqa: F401
+        from XpongeCPP.forcefield import amber
 
         out = Path({str(dirname)!r})
         out.mkdir(parents=True, exist_ok=True)
-        Xponge.load_frcmod({str(B96_FRCMOD)!r})
+        amber.load_parameters_from_frcmod({str(B96_FRCMOD)!r}, prefix=False)
         mol = Xponge.load_mol2({str(B96_MOL2)!r})
         Xponge.Save_SPONGE_Input(mol, prefix="b96", dirname=str(out))
         (out / "b96_meta.json").write_text(json.dumps({{
@@ -58,10 +59,11 @@ def _write_xpongecpp_1kv2(dirname, with_solvent=False):
         import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
         import XpongeCPP.forcefield.amber.gaff  # noqa: F401
         {"import XpongeCPP.forcefield.amber.tip3p  # noqa: F401" if with_solvent else ""}
+        from XpongeCPP.forcefield import amber
 
         out = Path({str(dirname)!r})
         out.mkdir(parents=True, exist_ok=True)
-        Xponge.load_frcmod({str(B96_FRCMOD)!r})
+        amber.load_parameters_from_frcmod({str(B96_FRCMOD)!r}, prefix=False)
         protein = Xponge.load_pdb({str(DATA_DIR / "1KV2_H.pdb")!r})
         ligand = Xponge.load_mol2({str(B96_MOL2)!r})
         Xponge.Add_Molecule(protein, ligand)
@@ -269,14 +271,35 @@ def test_b96_h_mol2_gaff_assign_matches_xponge_atom_types(tmp_path):
 
     assert assignment.atom_count == 76
     assert assignment.bond_count == 80
-    assert assignment.atom_types == [
-        "c", "o", "n", "ca", "ca", "ca", "ca", "ca", "ca", "ca", "ca", "ca", "ca", "n",
-        "c2", "c2", "c2", "n2", "na", "ca", "c3", "c3", "c3", "c3", "ca", "ca", "ca",
-        "ca", "ca", "c3", "os", "c3", "c3", "n3", "c3", "c3", "os", "c3", "c3", "hn",
-        "ha", "ha", "ha", "ha", "ha", "ha", "hn", "ha", "hc", "hc", "hc", "hc", "hc",
-        "hc", "hc", "hc", "hc", "ha", "ha", "ha", "ha", "hc", "hc", "hc", "h1", "h1",
-        "h1", "h1", "h1", "h1", "h1", "h1", "h1", "h1", "h1", "h1",
-    ]
+    reference_path = tmp_path / "b96_h_xponge_atom_types.json"
+    reference_script = textwrap.dedent(
+        f"""
+        import json
+        import Xponge
+        import Xponge.forcefield.amber.gaff  # noqa: F401
+
+        assignment = Xponge.get_assignment_from_mol2(
+            {str(DATA_DIR / "B96_H.mol2")!r},
+            total_charge="sum",
+        )
+        assignment.determine_atom_type("gaff")
+        with open({str(reference_path)!r}, "w", encoding="utf-8") as handle:
+            json.dump([
+                getattr(assignment.atom_types[index], "name", str(assignment.atom_types[index]))
+                for index in range(len(assignment.atoms))
+            ], handle)
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", reference_script],
+        cwd=XPONGE_REPO,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(f"Xponge B96_H GAFF assignment failed: {result.stderr[-1000:]}")
+    assert assignment.atom_types == json.loads(reference_path.read_text())
 
     typed = assignment.to_molecule("B")
     Xponge.Save_Mol2(typed, str(tmp_path / "typed_b96.mol2"))

@@ -6,6 +6,10 @@ from XpongeCPP._compat.imports import copy_public_attributes, install_main_names
 
 from XpongeCPP import *  # noqa: F401,F403
 
+__version__ = _XpongeCPP.__version__
+__mokda_backend__ = "xpongecpp"
+__implementation_version__ = _XpongeCPP.__version__
+
 _SHIM_SUBPACKAGES = {
     "analysis",
     "assign",

@@ -3,6 +3,7 @@
 import json
 
 from ... import configure_residue_template_head, configure_residue_template_tail
+from ...legacy_types import _remember_template_connection
 
 
 def configure_connection(residue_name, position, anchor, next_atom, length=1.5):
@@ -12,6 +13,13 @@ def configure_connection(residue_name, position, anchor, next_atom, length=1.5):
         else configure_residue_template_tail
     )
     configure(residue_name, anchor, length, next_atom)
+    _remember_template_connection(
+        residue_name,
+        position,
+        anchor,
+        next_atom,
+        length,
+    )
 
 
 def configure_standard_chain(residue_name):
@@ -35,5 +43,12 @@ def configure_manifest(path):
                 configure_connection(
                     entry["template"], position, anchor, entry[f"{position}_next_atom"]
                 )
+                _remember_template_connection(
+                    entry["template"],
+                    position,
+                    anchor,
+                    entry[f"{position}_next_atom"],
+                    1.5,
+                    entry.get(f"{position}_link_conditions", []),
+                )
     return manifest
-

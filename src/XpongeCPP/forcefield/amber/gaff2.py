@@ -11,7 +11,6 @@ from . import data_path
 from . import load_parameters_from_frcmod
 from ._parmchk2 import (
     coerce_parmchk2_input,
-    filter_mixed_gaff_mol2,
     import_xpongelib,
 )
 
@@ -23,9 +22,7 @@ def parmchk2_gaff2(ifname, ofname, direct_load=True, keep=True):
     """Generate GAFF2 frcmod parameters with Xponge-compatible semantics."""
     xlib = import_xpongelib()
     mol2_path, tempdir = coerce_parmchk2_input(ifname)
-    filtered_tempdir = None
     try:
-        mol2_path, filtered_tempdir = filter_mixed_gaff_mol2(mol2_path)
         datapath = os.path.dirname(xlib.__file__)
         xlib._parmchk2(mol2_path, "mol2", str(ofname), datapath, 0, 1, 2)
         if direct_load:
@@ -33,7 +30,5 @@ def parmchk2_gaff2(ifname, ofname, direct_load=True, keep=True):
         if not keep:
             os.remove(ofname)
     finally:
-        if filtered_tempdir is not None:
-            filtered_tempdir.cleanup()
         if tempdir is not None:
             tempdir.cleanup()

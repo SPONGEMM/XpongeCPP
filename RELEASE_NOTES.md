@@ -1,3 +1,124 @@
+# XpongeCPP 0.2.6
+
+Compatibility target: Xponge-origin 1.7b10.
+
+This parity release changes QM backend selection from an operating-system rule
+to runtime capability detection. XpongeCPP now prefers an installed PySCF
+backend, falls back to Psi4 when PySCF is absent, and reports a clear error
+when neither backend is available. Windows packaging continues to skip PySCF;
+users may supply a compatible PySCF installation or install Psi4 separately.
+
+Regression coverage verifies PySCF preference, Psi4 fallback, and the
+no-backend error path. Windows wheel CI remains a packaging smoke test; it does
+not claim native Windows PySCF support.
+
+# XpongeCPP 0.2.5
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This patch preserves source-atom identity when raw SPONGE export reorders
+noncontiguous linked residue components. The native layer now reports the
+saved atom permutation before serialization, and the compatibility layer
+applies the same permutation to caller-provided source IDs. This keeps Mokda
+trajectory topology and atom-order mappings aligned for proteins, ligands,
+metals, solvent, and repeated solvent molecules without matching atoms by
+name or coordinates.
+
+Focused release validation covers covalent and coordination-driven residue
+reordering, source-ID mapping, and the complete native bundle regression
+cohort. The complete repository suite passes with 716 tests, 10 optional
+skips, and 1 expected xfail. The change adds one linear residue/atom
+permutation pass before raw save and does not move force-field assignment back
+to Python.
+
+# XpongeCPP 0.2.4
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This compatibility patch preserves residue-link bonds in public MOL2 exports,
+keeps mixed standard/GAFF systems intact when invoking GAFF or GAFF2
+parameterization, and aligns the legacy MDAnalysis raw-SPONGE reader with the
+format hints exposed by Xponge. These fixes cover the Mokda SPONGE-input path
+without moving force-field assignment back to Python.
+
+Release validation includes the focused MOL2, mixed-force-field, and
+MDAnalysis compatibility regressions. The complete repository suite passes
+with 715 tests, 10 optional skips, and 1 expected xfail. A CPython 3.11 wheel
+was built and imported from an isolated environment under the Mokda resource
+gate with `OOMKillDelta=0`.
+
+# XpongeCPP 0.2.3
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This release completes the Mokda-used same-script compatibility surface and
+adds scientific-output comparison for real systems. It preserves native
+template bonds when an mmCIF residue also supplies explicit covalent bonds,
+including model pseudo-bonds such as the TIP3P H-H distance constraint, while
+still honoring explicit Mokda edit deletions. It also synchronizes temporary
+legacy residue-link overrides with the native registry and canonicalizes CMAP
+grid identities independently of force-field declaration order. The legacy
+MDAnalysis raw-SPONGE reader now advertises the `SPONGE_MASS` format and
+recognizes `_mass.txt`, matching the Xponge interface used by Mokda H5MD
+analysis.
+
+Linux x86_64 release-candidate evidence:
+
+- XpongeCPP repository suite under the coherent managed 0.2.3 runtime after the
+  raw-reader compatibility fix: 717 passed, 7 optional skips, 1 expected
+  xfail;
+- Xponge-origin 1.7b9 tests through the installed compatibility namespace:
+  36/36 passed;
+- Mokda auto-discovered Xponge consumer matrix: 327 passed, 14 conditional
+  skips, and 12 subtests under both providers;
+- real 3GOU/4EWL Life Modeling under the isolated XpongeCPP 0.2.3 managed
+  runtime completed in 205.656 s with a 1.09 GiB peak and
+  `OOMKillDelta=0`;
+- complete Mokda Lipid21/1BL8 tier: 8/8 files passed, with a 1.995 GiB peak
+  and `OOMKillDelta=0`;
+- provider-neutral scientific manifests match for repaired 1EMA, 1KV2+B96,
+  8RYK, 1BNA, 1GYA, and 1BL8; the existing 3GOU/4EWL four-quadrant metal
+  acceptance also passes under both managed providers;
+- provider-neutral 1KV2 benchmark remains 42,600 atoms in both
+  implementations; XpongeCPP median 0.0588 s versus Xponge 12.47 s, and the
+  measured XpongeCPP pre/post change is +2.57%, within the 5% release
+  tolerance.
+
+# XpongeCPP 0.2.2
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This compatibility release closes the Mokda-used Xponge surface under the
+same-script `import Xponge` contract. It synchronizes legacy atom-type and
+residue-link state with the native registries, aligns GAFF/GAFF2, PDB/link,
+Lipid17/Lipid21 and non-Amber behavior with the current reference, and ships
+the non-Amber reference force-field data inside wheels. The release also adds
+a fail-closed machine-readable capability manifest and validates both source
+and installed-wheel execution.
+
+Linux x86_64 release-candidate evidence:
+
+- installed CPython 3.12 wheel: 701 passed, 7 optional skips, 1 expected
+  unsupported legacy-frcmod workflow;
+- Xponge-origin 1.7b9 suite through the compatibility namespace: 36/36 passed;
+- Mokda auto-discovered Xponge consumer matrix: 324 passed, 13 conditional
+  skips and 12 subtests;
+- provider-neutral 1KV2 benchmark: 42,600 atoms from both implementations;
+  XpongeCPP median 0.0588 s versus Xponge 12.47 s;
+- pre/post XpongeCPP micro-benchmark change: +2.57% total, within the 5%
+  release tolerance; no assignment hot path was moved back to Python.
+
+# XpongeCPP 0.2.1
+
+Compatibility target: Xponge-origin 1.7b9.
+
+This patch release corrects GLYCAM terminal-zero residue metadata across the
+native template registry, bundled Python data, and the pinned reference
+force-field copy. Terminal-zero names such as `0MA`, `0aA`, `0AD`, and `0aD`
+now carry no synthetic `O0`/`C0` head attachment. The release adds parity and
+standalone PDB-export regression coverage for all four pyranose/furanose and
+D/L representative families.
+
 # XpongeCPP 0.2.0
 
 Compatibility target: Xponge-origin 1.7b8.

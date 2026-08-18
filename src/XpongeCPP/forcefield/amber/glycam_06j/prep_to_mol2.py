@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from audit import EXTERNAL_COVERAGE, FUNCTIONAL_GROUP_TEMPLATES, _parse_mol2_units
+from .audit import EXTERNAL_COVERAGE, FUNCTIONAL_GROUP_TEMPLATES, _parse_mol2_units
 
 _UNIT_RE = re.compile(r"^([A-Za-z0-9]{3,4})\s+INT\s+0\s*$")
 _ATOM_TYPE_NORMALIZATION = {

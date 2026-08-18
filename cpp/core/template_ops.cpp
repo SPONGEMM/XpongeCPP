@@ -27,6 +27,30 @@ void append_internal_structures(Molecule& target, const Molecule& source, AtomId
     for (const auto& link : source.residue_links) {
         target.residue_links.push_back({link.atom1 + atom_offset, link.atom2 + atom_offset});
     }
+    target.coordination_bonds.reserve(
+        target.coordination_bonds.size() + source.coordination_bonds.size());
+    for (const auto& bond : source.coordination_bonds) {
+        target.coordination_bonds.push_back(
+            {bond.atom1 + atom_offset, bond.atom2 + atom_offset});
+    }
+    target.bond_parameter_overrides.reserve(
+        target.bond_parameter_overrides.size() + source.bond_parameter_overrides.size());
+    for (const auto& term : source.bond_parameter_overrides) {
+        target.bond_parameter_overrides.push_back(
+            {term.atom1 + atom_offset, term.atom2 + atom_offset,
+             term.k, term.length, term.source});
+    }
+    target.angle_parameter_overrides.reserve(
+        target.angle_parameter_overrides.size() + source.angle_parameter_overrides.size());
+    for (const auto& term : source.angle_parameter_overrides) {
+        target.angle_parameter_overrides.push_back(
+            {term.atom1 + atom_offset, term.atom2 + atom_offset,
+             term.atom3 + atom_offset, term.k, term.theta, term.source});
+    }
+    target.lj_parameter_overrides.insert(
+        target.lj_parameter_overrides.end(),
+        source.lj_parameter_overrides.begin(),
+        source.lj_parameter_overrides.end());
     target.virtual_atoms.reserve(target.virtual_atoms.size() + source.virtual_atoms.size());
     for (const auto& vatom : source.virtual_atoms) {
         target.virtual_atoms.push_back({vatom.virtual_atom + atom_offset, vatom.atom0 + atom_offset,
@@ -103,6 +127,41 @@ void remap_internal_structures(const Molecule& source, Molecule& target, const s
         }
         target.residue_links.push_back({atom1, atom2});
     }
+    target.coordination_bonds.reserve(
+        target.coordination_bonds.size() + source.coordination_bonds.size());
+    for (const auto& bond : source.coordination_bonds) {
+        const AtomId atom1 = remap_atom_id(old_to_new_atom, bond.atom1);
+        const AtomId atom2 = remap_atom_id(old_to_new_atom, bond.atom2);
+        if (atom1 == invalid_atom_id || atom2 == invalid_atom_id) {
+            continue;
+        }
+        target.coordination_bonds.push_back({atom1, atom2});
+    }
+    target.bond_parameter_overrides.reserve(
+        target.bond_parameter_overrides.size() + source.bond_parameter_overrides.size());
+    for (const auto& term : source.bond_parameter_overrides) {
+        const AtomId atom1 = remap_atom_id(old_to_new_atom, term.atom1);
+        const AtomId atom2 = remap_atom_id(old_to_new_atom, term.atom2);
+        if (atom1 == invalid_atom_id || atom2 == invalid_atom_id) {
+            continue;
+        }
+        target.bond_parameter_overrides.push_back(
+            {atom1, atom2, term.k, term.length, term.source});
+    }
+    target.angle_parameter_overrides.reserve(
+        target.angle_parameter_overrides.size() + source.angle_parameter_overrides.size());
+    for (const auto& term : source.angle_parameter_overrides) {
+        const AtomId atom1 = remap_atom_id(old_to_new_atom, term.atom1);
+        const AtomId atom2 = remap_atom_id(old_to_new_atom, term.atom2);
+        const AtomId atom3 = remap_atom_id(old_to_new_atom, term.atom3);
+        if (atom1 == invalid_atom_id || atom2 == invalid_atom_id ||
+            atom3 == invalid_atom_id) {
+            continue;
+        }
+        target.angle_parameter_overrides.push_back(
+            {atom1, atom2, atom3, term.k, term.theta, term.source});
+    }
+    target.lj_parameter_overrides = source.lj_parameter_overrides;
     target.virtual_atoms.reserve(target.virtual_atoms.size() + source.virtual_atoms.size());
     for (const auto& vatom : source.virtual_atoms) {
         const AtomId virtual_atom = remap_atom_id(old_to_new_atom, vatom.virtual_atom);
@@ -205,12 +264,16 @@ void Molecule::replace_residues(const std::unordered_map<ResidueId, Molecule>& r
 
     Molecule rebuilt(name);
     rebuilt.box_length = box_length;
+    rebuilt.box_origin = box_origin;
     rebuilt.box_angle = box_angle;
     rebuilt.has_box = has_box;
+    rebuilt.has_box_origin = has_box_origin;
     rebuilt.has_gb_parameters = has_gb_parameters;
     rebuilt.write_min_bonded_parameters = write_min_bonded_parameters;
     rebuilt.write_subsys_division = write_subsys_division;
     rebuilt.write_lj_soft_core = write_lj_soft_core;
+    rebuilt.ignore_missing_atoms = ignore_missing_atoms;
+    rebuilt.listed_force_definitions = listed_force_definitions;
     rebuilt.sw_parameters = sw_parameters;
     rebuilt.edip_parameters = edip_parameters;
 
@@ -298,12 +361,15 @@ void Molecule::reorder_atoms_by_template(const Molecule& template_molecule) {
 
     Molecule rebuilt(name);
     rebuilt.box_length = box_length;
+    rebuilt.box_origin = box_origin;
     rebuilt.box_angle = box_angle;
     rebuilt.has_box = has_box;
+    rebuilt.has_box_origin = has_box_origin;
     rebuilt.has_gb_parameters = has_gb_parameters;
     rebuilt.write_min_bonded_parameters = write_min_bonded_parameters;
     rebuilt.write_subsys_division = write_subsys_division;
     rebuilt.write_lj_soft_core = write_lj_soft_core;
+    rebuilt.ignore_missing_atoms = ignore_missing_atoms;
 
     std::vector<AtomId> old_to_new_atom(atoms.size(), invalid_atom_id);
     rebuilt.residues.reserve(residues.size());

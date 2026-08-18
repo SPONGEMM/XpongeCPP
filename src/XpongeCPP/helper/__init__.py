@@ -21,7 +21,14 @@ from .._compat.imports import (
     xopen,
     xprint,
 )
-from .._core import Atom, Molecule, Residue, ResidueType as _CoreResidueType
+from .._core import (
+    Atom,
+    Molecule,
+    Residue,
+    ResidueType as _CoreResidueType,
+    _find_amber_lj_parameter,
+    _find_amber_lj_type,
+)
 from ..legacy_types import _remember_dynamic_residuetype
 from ..gromacs import GlobalSetting
 from .cv import CVSystem
@@ -124,7 +131,14 @@ class AtomType(Type):
 
     @classmethod
     def get_type(cls, name):
-        return cls._types[str(name)]
+        key = str(name)
+        try:
+            return cls._types[key]
+        except KeyError:
+            lj_type = _find_amber_lj_type(key)
+            if _find_amber_lj_parameter(lj_type) is None:
+                raise
+            return cls(key, LJtype=lj_type)
 
     @classmethod
     def Get_Type(cls, name):

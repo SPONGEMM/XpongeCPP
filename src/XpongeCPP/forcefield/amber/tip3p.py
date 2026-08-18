@@ -3,6 +3,7 @@
 from ... import (
     AtomType,
     register_amber_frcmod_file,
+    register_pdb_residue_alias_mapping,
     register_residue_template_alias,
     register_residue_templates_from_mol2_file,
     register_tip3p,
@@ -21,6 +22,8 @@ register_tip3p()
 register_residue_templates_from_mol2_file(str(data_path("tip3p.mol2")))
 register_residue_template_alias("H2O", "WAT")
 register_residue_template_alias("HOH", "WAT")
+register_pdb_residue_alias_mapping("H2O", "WAT")
+register_pdb_residue_alias_mapping("HOH", "WAT")
 register_amber_frcmod_file(str(data_path("ions1lm_126_tip3p.frcmod")))
 register_amber_frcmod_file(str(data_path("ionsjc_tip3p.frcmod")))
 register_amber_frcmod_file(str(data_path("ions234lm_126_tip3p.frcmod")))

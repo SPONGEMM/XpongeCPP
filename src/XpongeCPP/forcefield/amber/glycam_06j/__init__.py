@@ -23,6 +23,9 @@ configure_residue_template_tail("TBT", "O1", 1.43, "C1")
 def configure_glycam_head(resname, oxygen_index):
     """Set the glycosidic head atom to the indexed hydroxyl oxygen."""
 
+    if oxygen_index == 0:
+        configure_residue_template_head(resname, "", 1.4, "")
+        return
     configure_residue_template_head(resname, f"O{oxygen_index}", 1.4, f"C{oxygen_index}")
 
 

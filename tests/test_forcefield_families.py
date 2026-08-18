@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _run(code):
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT / "src")
+    env.pop("PYTHONPATH", None)
     return subprocess.run(
         [sys.executable, "-c", code],
         cwd=ROOT,

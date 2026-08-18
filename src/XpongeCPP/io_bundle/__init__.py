@@ -46,6 +46,7 @@ from .protocol import (
     ProtocolSITS,
     ProtocolSoftWall,
     ProtocolSteering,
+    ProtocolVirtualAtom,
     SpongeProtocol,
 )
 from .reverse_converter import (
@@ -86,6 +87,7 @@ __all__ = [
     "ProtocolSITS",
     "ProtocolSoftWall",
     "ProtocolSteering",
+    "ProtocolVirtualAtom",
     "ReverseConversionManifest",
     "SpongeProtocol",
     "UnverifiedBundlePairError",

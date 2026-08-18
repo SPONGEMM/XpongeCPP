@@ -209,17 +209,42 @@ std::vector<std::string> real_lj_types(const std::vector<std::string>& lj_types,
     return real;
 }
 
-bool reorder_residues_by_linked_components(Molecule& molecule) {
-    if (molecule.residues.size() < 2 || molecule.residue_links.empty()) {
-        return false;
+std::vector<AtomId> reorder_residues_by_linked_components(Molecule& molecule) {
+    std::vector<AtomId> new_to_old_atom_order(molecule.atoms.size());
+    for (AtomId atom_id = 0; atom_id < molecule.atoms.size(); ++atom_id) {
+        new_to_old_atom_order[atom_id] = atom_id;
+    }
+    if (molecule.residues.size() < 2 ||
+        (molecule.residue_links.empty() &&
+         molecule.coordination_bonds.empty() &&
+         molecule.explicit_bonds.empty() &&
+         molecule.bond_parameter_overrides.empty())) {
+        return new_to_old_atom_order;
     }
 
     IndexDisjointSet components(molecule.residues.size());
-    for (const auto& link : molecule.residue_links) {
-        if (link.atom1 >= molecule.atoms.size() || link.atom2 >= molecule.atoms.size()) {
-            throw std::invalid_argument("residue link atom index out of range");
+    const auto unite_link = [&](AtomId atom1, AtomId atom2) {
+        if (atom1 >= molecule.atoms.size() || atom2 >= molecule.atoms.size()) {
+            throw std::invalid_argument("component link atom index out of range");
         }
-        components.unite(molecule.atoms[link.atom1].residue, molecule.atoms[link.atom2].residue);
+        components.unite(
+            molecule.atoms[atom1].residue,
+            molecule.atoms[atom2].residue
+        );
+    };
+    for (const auto& link : molecule.residue_links) {
+        unite_link(link.atom1, link.atom2);
+    }
+    for (const auto& link : molecule.coordination_bonds) {
+        unite_link(link.atom1, link.atom2);
+    }
+    for (const auto& link : molecule.explicit_bonds) {
+        unite_link(link.atom1, link.atom2);
+    }
+    for (const auto& parameter_override : molecule.bond_parameter_overrides) {
+        if (parameter_override.k != 0.0) {
+            unite_link(parameter_override.atom1, parameter_override.atom2);
+        }
     }
 
     std::unordered_map<std::size_t, double> root_to_sort_key;
@@ -242,11 +267,27 @@ bool reorder_residues_by_linked_components(Molecule& molecule) {
         previous_key = key;
     }
     if (already_contiguous) {
-        return false;
+        return new_to_old_atom_order;
     }
 
+    std::vector<ResidueId> residue_order(molecule.residues.size());
+    for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
+        residue_order[residue_id] = residue_id;
+    }
+    std::stable_sort(residue_order.begin(), residue_order.end(),
+                     [&](ResidueId lhs, ResidueId rhs) {
+                         return residue_sort_keys[lhs] < residue_sort_keys[rhs];
+                     });
+    new_to_old_atom_order.clear();
+    new_to_old_atom_order.reserve(molecule.atoms.size());
+    for (const ResidueId old_residue_id : residue_order) {
+        const auto& residue = molecule.residues[old_residue_id];
+        for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
+            new_to_old_atom_order.push_back(residue.atom_begin + local);
+        }
+    }
     molecule.replace_residues({}, residue_sort_keys, true);
-    return true;
+    return new_to_old_atom_order;
 }
 
 void check_sponge_atom_components_are_contiguous(const Molecule& molecule, const Topology& topology) {
@@ -280,17 +321,24 @@ void check_sponge_atom_components_are_contiguous(const Molecule& molecule, const
         if (static_cast<std::size_t>(range.max_atom - range.min_atom + 1) != range.count) {
             throw std::runtime_error(
                 "Atoms in the same molecule must be continuous for SPONGE input; "
-                "please reorder residues or atoms before export.");
+                "connected component spans atom indices " + std::to_string(range.min_atom) +
+                ".." + std::to_string(range.max_atom) + " but contains " +
+                std::to_string(range.count) +
+                " atoms. Please reorder residues or atoms before export.");
         }
     }
 }
 
 }  // namespace
 
+std::vector<AtomId> prepare_sponge_atom_order(Molecule& molecule) {
+    return reorder_residues_by_linked_components(molecule);
+}
+
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecule& input_molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname) {
-    reorder_residues_by_linked_components(input_molecule);
+    prepare_sponge_atom_order(input_molecule);
     std::optional<Molecule> molecule_with_generated_cmaps;
     if (input_molecule.cmaps.empty() && has_amber_cmap_parameters()) {
         molecule_with_generated_cmaps = input_molecule;

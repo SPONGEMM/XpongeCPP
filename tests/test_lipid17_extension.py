@@ -18,7 +18,7 @@ TEMPLATE_NAMES = [
 
 def _run_python(code, *args):
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT / "src")
+    env.pop("PYTHONPATH", None)
     return subprocess.run(
         [sys.executable, "-c", code, *map(str, args)],
         text=True,
@@ -98,8 +98,11 @@ def test_all_extension_templates_export_with_complete_parameters(tmp_path):
         "    molecule = X.get_template_molecule(entry['template'])\n"
         "    assert molecule.atom_count == entry['atom_count']\n"
         "    assert abs(sum(atom.charge for atom in molecule.atoms) - entry['total_charge']) < 1e-7\n"
-        "    output = X.Save_SPONGE_Input(molecule, prefix=entry['template'].replace('-', 'minus'), dirname=sys.argv[2])\n"
-        "    assert {'bond', 'angle', 'dihedral', 'nb14'}.issubset(output)\n",
+        "    prefix = entry['template'].replace('-', 'minus')\n"
+        "    output = X.Save_SPONGE_Input(molecule, prefix=prefix, dirname=sys.argv[2])\n"
+        "    assert output is molecule\n"
+        "    assert all((Path(sys.argv[2]) / f'{prefix}_{suffix}.txt').is_file() "
+        "for suffix in ('bond', 'angle', 'dihedral', 'nb14'))\n",
         AMBER_DATA / "lipid_ext_manifest.json",
         tmp_path,
     )
@@ -121,7 +124,9 @@ def test_representative_pdbs_load_with_expected_links_and_export(tmp_path):
         "    assert [residue.name for residue in molecule.residues] == residue_names\n"
         "    assert len(molecule.residue_links) == 2\n"
         "    output = X.Save_SPONGE_Input(molecule, prefix=name, dirname=outdir)\n"
-        "    assert {'bond', 'angle', 'dihedral', 'nb14', 'coordinate'}.issubset(output)\n",
+        "    assert output is molecule\n"
+        "    assert all((Path(outdir) / f'{name}_{suffix}.txt').is_file() "
+        "for suffix in ('bond', 'angle', 'dihedral', 'nb14', 'coordinate'))\n",
         DATA,
         tmp_path,
     )

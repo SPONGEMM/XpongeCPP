@@ -143,10 +143,10 @@ XpongeCPP.save_sponge_input_raw(molecule, "system", "inputs")
 XpongeCPP.save_sponge_input_bundle(molecule, "system", "inputs")
 ```
 
-RESP supports a multi-backend strategy:
+RESP automatically selects the first available backend:
 
-- default backend: `PySCF`
-- optional backend: `Psi4`
+- preferred backend: `PySCF`
+- fallback backend: `Psi4`
 - shared dispatch layer: `XpongeCPP.qm`
 
 Example:
@@ -161,7 +161,8 @@ qm.run_scf(assign, backend="pyscf")
 qm.optimize_geometry(assign, backend="pyscf")
 ```
 
-For Windows RESP workflows, install `Psi4` separately and select it explicitly:
+Windows does not install PySCF automatically. If a compatible PySCF is
+available, it is selected; otherwise install Psi4 separately as the fallback:
 
 ```bash
 conda install -c conda-forge psi4

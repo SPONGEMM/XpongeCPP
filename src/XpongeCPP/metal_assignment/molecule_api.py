@@ -174,7 +174,19 @@ def _normalized_patch_mapping(
             try:
                 index = molecule_atom_index[value]
             except (KeyError, TypeError) as exc:
-                raise ValidationError("molecule_atom_not_found", external_id) from exc
+                native_index = getattr(value, "index", None)
+                if isinstance(native_index, bool):
+                    raise ValidationError(
+                        "molecule_atom_not_found",
+                        external_id,
+                    ) from exc
+                try:
+                    index = int(native_index)
+                except (TypeError, ValueError):
+                    raise ValidationError(
+                        "molecule_atom_not_found",
+                        external_id,
+                    ) from exc
         if index < 0 or index >= len(molecule.atoms):
             raise ValidationError("invalid_molecule_atom_index", external_id)
         molecule_atom = molecule.atoms[index]

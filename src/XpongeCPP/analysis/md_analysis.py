@@ -65,6 +65,12 @@ else:
 
 
     class SpongeInputReader(TopologyReaderBase):
+        format = "SPONGE_MASS"
+
+        @staticmethod
+        def _format_hint(thing):
+            return isinstance(thing, str) and thing.endswith("_mass.txt")
+
         def parse(self, **kwargs):
             attrs = [topologyattrs.Segids(np.array(["SYSTEM"], dtype=object))]
             has_names = False

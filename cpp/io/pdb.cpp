@@ -248,6 +248,8 @@ void apply_template_atom_properties(Molecule& molecule, bool ignore_unknown_name
         const ResidueType* residue_type = nullptr;
         if (has_template(residue.name)) {
             residue_type = &get_residue_template(residue.name);
+            residue.name = residue_type->name();
+            residue.type_name = residue.name;
         }
         for (std::uint32_t local = 0; local < residue.atom_count; ++local) {
             auto atom = molecule.atoms[residue.atom_begin + local];

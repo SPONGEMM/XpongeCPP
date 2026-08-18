@@ -5,6 +5,7 @@
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 namespace xpongecpp {
@@ -25,14 +26,22 @@ ResidueType residue_type_from_molecule_residue(const Molecule& molecule, const R
     return residue_type;
 }
 
-void register_residue_templates_from_mol2_text(const std::string& text) {
+namespace {
+
+void register_residue_templates_from_mol2_text_impl(const std::string& text, bool preserve_existing) {
     const auto molecule = load_mol2_text(text);
     std::vector<std::pair<ResidueId, ResidueType>> residue_types;
     residue_types.reserve(molecule.residues.size());
     std::unordered_map<ResidueId, std::size_t> residue_to_type;
+    std::unordered_set<std::string> newly_registered_names;
 
     for (ResidueId residue_id = 0; residue_id < molecule.residues.size(); ++residue_id) {
         const auto& residue = molecule.residues[residue_id];
+        if ((preserve_existing && has_template(residue.name)) ||
+            newly_registered_names.find(residue.name) != newly_registered_names.end()) {
+            continue;
+        }
+        newly_registered_names.insert(residue.name);
         residue_to_type[residue_id] = residue_types.size();
         residue_types.emplace_back(residue_id, ResidueType(residue.name));
         auto& residue_type = residue_types.back().second;
@@ -45,13 +54,36 @@ void register_residue_templates_from_mol2_text(const std::string& text) {
     for (const auto& bond : molecule.explicit_bonds) {
         const auto res1 = molecule.atoms[bond.atom1].residue;
         const auto res2 = molecule.atoms[bond.atom2].residue;
-        if (res1 != res2) {
+        if (res1 == res2) {
+            const auto type_it = residue_to_type.find(res1);
+            if (type_it == residue_to_type.end()) {
+                continue;
+            }
+            auto& residue_type = residue_types[type_it->second].second;
+            try {
+                residue_type.add_connectivity(molecule.atoms[bond.atom1].name, molecule.atoms[bond.atom2].name);
+            } catch (const std::exception&) {
+            }
             continue;
         }
-        auto& residue_type = residue_types[residue_to_type.at(res1)].second;
-        try {
-            residue_type.add_connectivity(molecule.atoms[bond.atom1].name, molecule.atoms[bond.atom2].name);
-        } catch (const std::exception&) {
+        if (res1 + 1 == res2) {
+            const auto left_it = residue_to_type.find(res1);
+            if (left_it != residue_to_type.end()) {
+                residue_types[left_it->second].second.set_tail(molecule.atoms[bond.atom1].name);
+            }
+            const auto right_it = residue_to_type.find(res2);
+            if (right_it != residue_to_type.end()) {
+                residue_types[right_it->second].second.set_head(molecule.atoms[bond.atom2].name);
+            }
+        } else if (res2 + 1 == res1) {
+            const auto left_it = residue_to_type.find(res2);
+            if (left_it != residue_to_type.end()) {
+                residue_types[left_it->second].second.set_tail(molecule.atoms[bond.atom2].name);
+            }
+            const auto right_it = residue_to_type.find(res1);
+            if (right_it != residue_to_type.end()) {
+                residue_types[right_it->second].second.set_head(molecule.atoms[bond.atom1].name);
+            }
         }
     }
 
@@ -60,14 +92,36 @@ void register_residue_templates_from_mol2_text(const std::string& text) {
     }
 }
 
-void register_residue_templates_from_mol2_file(const std::filesystem::path& filename) {
+std::string read_mol2_template_file(const std::filesystem::path& filename) {
     std::ifstream input(filename);
     if (!input) {
         throw std::runtime_error("failed to open mol2 template file: " + filename.string());
     }
     std::ostringstream buffer;
     buffer << input.rdbuf();
-    register_residue_templates_from_mol2_text(buffer.str());
+    return buffer.str();
+}
+
+}  // namespace
+
+void register_residue_templates_from_mol2_text(const std::string& text) {
+    register_residue_templates_from_mol2_text_impl(text, false);
+}
+
+void register_residue_templates_from_mol2_file(const std::filesystem::path& filename) {
+    register_residue_templates_from_mol2_text(read_mol2_template_file(filename));
+}
+
+void register_new_residue_templates_from_mol2_text(const std::string& text) {
+    register_residue_templates_from_mol2_text_impl(text, true);
+}
+
+void register_new_residue_templates_from_mol2_file(const std::filesystem::path& filename) {
+    register_new_residue_templates_from_mol2_text(read_mol2_template_file(filename));
+}
+
+void register_residue_type_template(const ResidueType& residue_type) {
+    put_template(residue_type);
 }
 
 void register_template_molecule_from_mol2_file(const std::filesystem::path& filename) {

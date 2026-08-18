@@ -23,7 +23,7 @@ def _exported_keys(directory, prefix):
 
 def _run_isolated(code, *args):
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT / "src")
+    env.pop("PYTHONPATH", None)
     return subprocess.run(
         [sys.executable, "-c", code, *map(str, args)], cwd=ROOT, env=env,
         text=True, capture_output=True, check=True,
@@ -115,6 +115,41 @@ USER_CHARGES
         mol2, tmp_path,
     )
     assert (tmp_path / "ff19_cmap.txt").read_text().splitlines()[0] == "1 1"
+
+
+def test_ff19sb_maps_generic_mmcif_histidine_to_a_registered_protonation_template():
+    completed = _run_isolated(
+        "from io import StringIO\n"
+        "import XpongeCPP as X\n"
+        "import XpongeCPP.forcefield.amber.ff19sb\n"
+        "text = '''data_his\n"
+        "loop_\n"
+        "_atom_site.group_PDB\n"
+        "_atom_site.id\n"
+        "_atom_site.type_symbol\n"
+        "_atom_site.label_atom_id\n"
+        "_atom_site.label_comp_id\n"
+        "_atom_site.label_asym_id\n"
+        "_atom_site.label_seq_id\n"
+        "_atom_site.Cartn_x\n"
+        "_atom_site.Cartn_y\n"
+        "_atom_site.Cartn_z\n"
+        "_atom_site.auth_seq_id\n"
+        "_atom_site.auth_comp_id\n"
+        "_atom_site.auth_asym_id\n"
+        "_atom_site.auth_atom_id\n"
+        "_atom_site.pdbx_PDB_model_num\n"
+        "ATOM 1 N N HIS A 1 0.0 0.0 0.0 1 HIS A N 1\n"
+        "ATOM 2 C CA HIS A 1 1.4 0.0 0.0 1 HIS A CA 1\n"
+        "ATOM 3 C C HIS A 1 2.8 0.0 0.0 1 HIS A C 1\n"
+        "ATOM 4 O O HIS A 1 3.8 0.0 0.0 1 HIS A O 1\n"
+        "ATOM 5 H HE2 HIS A 1 1.0 1.0 0.0 1 HIS A HE2 1\n"
+        "#\n"
+        "'''\n"
+        "molecule = X.load_mmcif(StringIO(text), infer_terminals=False)\n"
+        "assert [residue.name for residue in molecule.residues] == ['HIE']\n"
+    )
+    assert completed.returncode == 0
 
 
 def test_gaff_and_gaff2_imports_register_packaged_parameters(tmp_path):

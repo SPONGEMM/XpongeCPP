@@ -12,6 +12,7 @@ from ..legacy_types import (
     _legacy_add_residue_links,
     _legacy_clear_residue_links,
     _legacy_get_residuetype,
+    _legacy_get_all_residuetypes,
     _legacy_get_residue_links,
     _legacy_get_residue_links_copy,
     _legacy_make_residue_like,
@@ -126,6 +127,8 @@ def install_legacy_runtime_patches(namespace: dict | None = None):
 
     ResidueType.get_type = staticmethod(_legacy_get_residuetype)
     ResidueType.Get_Type = staticmethod(_legacy_get_residuetype)
+    ResidueType.get_all_types = staticmethod(_legacy_get_all_residuetypes)
+    ResidueType.Get_All_Types = staticmethod(_legacy_get_all_residuetypes)
     ResidueType.add_atom = _legacy_residuetype_add_atom
     ResidueType.addAtom = _legacy_residuetype_add_atom
     ResidueType.Add_Atom = _legacy_residuetype_add_atom
