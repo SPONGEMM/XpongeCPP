@@ -194,12 +194,283 @@ else:
             return self.ts
 
 
+    class SpongeTrajectoryReader(base.ReaderBase):
+        """Read a legacy SPONGE float32 ``.dat`` trajectory and its box data."""
+
+        format = "SPONGE_TRAJ"
+
+        @staticmethod
+        def _format_hint(thing):
+            return isinstance(thing, str) and thing.endswith(".dat")
+
+        def __init__(self, dat_file_name, n_atoms, **kwargs):
+            super().__init__(dat_file_name, **kwargs)
+            box = kwargs.get("box", None)
+            if isinstance(box, str):
+                self.boxname = box
+                self.box = None
+                self._get_box_offset()
+            elif box is None:
+                raise TypeError(
+                    "box should be provided for the sponge trajectory file "
+                    f"{dat_file_name}"
+                )
+            else:
+                self.boxname = None
+                self.box = box
+            self._n_atoms = n_atoms
+            self._n_frames = os.path.getsize(dat_file_name) // 12 // self.n_atoms
+            self.trajfile = None
+            self.boxfile = None
+            self.ts = self._Timestep(self.n_atoms, **self._ts_kwargs)
+            self._read_next_timestep()
+
+        @property
+        def n_frames(self):
+            return self._n_frames
+
+        @property
+        def n_atoms(self):
+            return self._n_atoms
+
+        @classmethod
+        def with_arguments(cls, **kwargs):
+            class SpongeTrajectoryReaderWithArguments(cls):
+                def __init__(self, dat_file_name, n_atoms, **kwargs_):
+                    kwargs_.update(kwargs)
+                    super().__init__(dat_file_name, n_atoms, **kwargs_)
+
+            return SpongeTrajectoryReaderWithArguments
+
+        def close(self):
+            if self.trajfile is not None:
+                self.trajfile.close()
+                self.trajfile = None
+            if self.boxfile is not None:
+                self.boxfile.close()
+                self.boxfile = None
+
+        def open_trajectory(self):
+            self.trajfile = util.anyopen(self.filename, "rb")
+            if self.box is None:
+                self.boxfile = util.anyopen(self.boxname)
+            self.ts.frame = -1
+            return self.trajfile, self.boxfile
+
+        def _reopen(self):
+            self.close()
+            self.open_trajectory()
+
+        def _read_frame(self, frame):
+            if self.trajfile is None:
+                self.open_trajectory()
+            if self.boxfile is not None:
+                self.boxfile.seek(self._offsets[frame])
+            self.trajfile.seek(self.n_atoms * 12 * frame)
+            self.ts.frame = frame - 1
+            return self._read_next_timestep()
+
+        def _read_next_timestep(self):
+            ts = self.ts
+            if self.trajfile is None:
+                self.open_trajectory()
+            payload = self.trajfile.read(12 * self.n_atoms)
+            if not payload:
+                raise EOFError
+            ts.positions = np.frombuffer(payload, dtype=np.float32).reshape(
+                self.n_atoms, 3
+            )
+            if self.box is not None:
+                ts.dimensions = self.box
+            else:
+                ts.dimensions = list(map(float, self.boxfile.readline().split()))
+            ts.frame += 1
+            return ts
+
+        def _get_box_offset(self):
+            self._offsets = [0]
+            with util.openany(self.boxname) as handle:
+                line = handle.readline()
+                while line:
+                    self._offsets.append(handle.tell())
+                    line = handle.readline()
+            self._offsets.pop()
+
+
+    class SpongeTrajectoryWriter:
+        """Write a legacy SPONGE float32 ``.dat`` trajectory and ``.box`` sidecar."""
+
+        def __init__(self, filename, write_box=True, **_kwargs):
+            self.write_box = write_box
+            if not filename.endswith(".dat"):
+                raise ValueError(
+                    "the name of the SPONGE trajectory file should end with '.dat'"
+                )
+            self.datname = filename
+            self.boxname = filename[::-1].replace(".dat"[::-1], ".box"[::-1], 1)[::-1]
+            self.datfile = None
+            self.boxfile = None
+
+        def __enter__(self):
+            self.open()
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            self.close()
+
+        def open(self):
+            self.datfile = Xopen(self.datname, "wb")
+            if self.write_box:
+                self.boxfile = Xopen(self.boxname, "w")
+
+        def close(self):
+            if self.datfile is not None:
+                self.datfile.close()
+                self.datfile = None
+            if self.boxfile is not None:
+                self.boxfile.close()
+                self.boxfile = None
+
+        def write(self, universe):
+            if isinstance(universe, mda.Universe):
+                ts = universe.coord
+            elif isinstance(universe, mda.AtomGroup):
+                ts = universe.ts
+            else:
+                raise TypeError(
+                    f"u should be Universe or AtomGroup, but {type(universe)} got"
+                )
+            self.datfile.write(ts.positions.astype(np.float32).tobytes())
+            if (
+                self.write_box
+                and hasattr(ts, "dimensions")
+                and isinstance(ts.dimensions, Iterable)
+                and len(ts.dimensions) == 6
+            ):
+                self.boxfile.write(" ".join(f"{item:.6f}" for item in ts.dimensions) + "\n")
+
+
+    class SpongeCoordinateReader(base.ReaderBase):
+        """Read a legacy single-frame ``*_coordinate.txt`` SPONGE coordinate file."""
+
+        format = "SPONGE_CRD"
+
+        @staticmethod
+        def _format_hint(thing):
+            return isinstance(thing, str) and thing.endswith("_coordinate.txt")
+
+        def __init__(self, file_name, n_atoms, **kwargs):
+            super().__init__(file_name, **kwargs)
+            self._n_atoms = n_atoms
+            self._n_frames = 1
+            self.file = None
+            self.start = 0
+            self.ts = self._Timestep(self.n_atoms, **self._ts_kwargs)
+            self._read_next_timestep()
+
+        @property
+        def n_frames(self):
+            return self._n_frames
+
+        @property
+        def n_atoms(self):
+            return self._n_atoms
+
+        def close(self):
+            if self.file is not None:
+                self.file.close()
+                self.file = None
+
+        def open_file(self):
+            self.file = util.anyopen(self.filename, "r")
+            self.file.readline()
+            self.start = self.file.tell()
+
+        def _reopen(self):
+            self.close()
+            self.open_file()
+
+        def _read_frame(self, frame):
+            if self.file is None:
+                self.open_file()
+            self.file.seek(self.start)
+            self.ts.frame = frame - 1
+            return self._read_next_timestep()
+
+        def _read_next_timestep(self):
+            ts = self.ts
+            if self.file is None:
+                self.open_file()
+            if self.file.tell() != self.start:
+                raise EOFError
+            ts.positions = np.loadtxt(self.file, max_rows=self.n_atoms)
+            ts.dimensions = list(map(float, self.file.readline().split()))
+            ts.frame += 1
+            return ts
+
+
+    class SpongeCoordinateWriter:
+        """Write a legacy single-frame ``*_coordinate.txt`` SPONGE coordinate file."""
+
+        def __init__(self, file_name, n_atoms=None):
+            self.filename = file_name
+            self.file = None
+            self.n_atoms = n_atoms
+
+        def __enter__(self):
+            self.open()
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            self.close()
+
+        def open(self):
+            self.file = Xopen(self.filename, "w")
+
+        def close(self):
+            if self.file is not None:
+                self.file.close()
+                self.file = None
+
+        def write(self, universe):
+            if isinstance(universe, mda.Universe):
+                ts = universe.coord
+            elif isinstance(universe, mda.AtomGroup):
+                ts = universe.ts
+            else:
+                raise TypeError(
+                    f"u should be Universe or AtomGroup, but {type(universe)} got"
+                )
+            if self.n_atoms is None:
+                self.n_atoms = len(ts.positions)
+            lines = [str(self.n_atoms)]
+            lines.extend(
+                f"{coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}"
+                for coord in ts.positions[: self.n_atoms]
+            )
+            if hasattr(ts, "dimensions"):
+                lines.append(" ".join(f"{item:.6f}" for item in ts.dimensions))
+            else:
+                lines.append("999 999 999 90 90 90")
+            self.file.write("\n".join(lines) + "\n")
+
+
+    mda._SINGLEFRAME_WRITERS["SPONGE_CRD"] = SpongeCoordinateWriter
+    mda._SINGLEFRAME_WRITERS["TXT"] = SpongeCoordinateWriter
+    mda._MULTIFRAME_WRITERS["SPONGE_TRAJ"] = SpongeTrajectoryWriter
+    mda._MULTIFRAME_WRITERS["DAT"] = SpongeTrajectoryWriter
+
+
     __all__ = [
         "BundleTopologyParser",
         "SPONGEH5MDReader",
         "SpongeH5MDReader",
         "SpongeInputReader",
         "SpongeNoneReader",
+        "SpongeTrajectoryReader",
+        "SpongeTrajectoryWriter",
+        "SpongeCoordinateReader",
+        "SpongeCoordinateWriter",
         "XpongeMoleculeReader",
         "load_bundle_universe",
         "mda",
