@@ -197,10 +197,22 @@ def test_calculate_charge_reports_optional_dependencies_clearly(monkeypatch):
         assignment.calculate_charge("resp")
 
 
-def test_resp_defaults_to_platform_backend(monkeypatch):
+@pytest.mark.parametrize(
+    ("available_backends", "expected_backend"),
+    [
+        ({"pyscf", "psi4"}, "pyscf"),
+        ({"psi4"}, "psi4"),
+    ],
+)
+def test_resp_defaults_to_available_backend(monkeypatch, available_backends, expected_backend):
     assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
     calls = []
-    default_backend = qm_scheduler.normalize_backend_name(None)
+
+    monkeypatch.setattr(
+        qm_scheduler,
+        "find_spec",
+        lambda name: object() if name in available_backends else None,
+    )
 
     class FakeBackend:
         @staticmethod
@@ -220,7 +232,7 @@ def test_resp_defaults_to_platform_backend(monkeypatch):
             calls.append(("esp", len(grids), memory_limit, chunk_policy, safety_factor))
             return np.zeros(len(grids))
 
-    monkeypatch.setitem(resp_module._BACKEND_MODULES, default_backend, FakeBackend)
+    monkeypatch.setitem(resp_module._BACKEND_MODULES, expected_backend, FakeBackend)
     monkeypatch.setattr(resp_module.resp_core, "get_mk_grid", lambda *args, **kwargs: __import__("numpy").zeros((2, 3)))
     monkeypatch.setattr(resp_module.resp_core, "fit_resp_from_esp", lambda *args, **kwargs: [0.0, 0.0, 0.0])
 
@@ -1037,12 +1049,12 @@ def test_save_as_mol2_atomtype_argument_and_equal_atoms_api(tmp_path):
     assert any(set(group) == {0, 1} for group in groups)
 
 
-def test_resp_uses_pyscf_backend_or_reports_missing_dependency():
+def test_resp_uses_available_backend_or_reports_missing_dependency():
     water = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
     try:
         water.calculate_charge("resp", basis="sto-3g", charge=0, grid_density=1, grid_cell_layer=1, only_esp=True)
     except ImportError as exc:
-        assert "PySCF" in str(exc)
+        assert "PySCF" in str(exc) or "Psi4" in str(exc)
         return
     assert len(water.charges) == 3
     assert math.isclose(sum(water.charges), 0.0, abs_tol=1e-5)
