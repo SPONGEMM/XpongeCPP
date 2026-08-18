@@ -122,7 +122,7 @@ jobs:
       - name: Run Xponge-origin compatibility parity cohorts
         run: >-
           python -m pytest -q
-          tests/test_release_023.py
+          tests/test_release_025.py
           tests/test_origin_resp_linear_constraints.py
           tests/test_origin_io_bundle.py
           tests/test_origin_io_bundle_reverse.py
