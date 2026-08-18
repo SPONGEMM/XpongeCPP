@@ -68,15 +68,16 @@ python -c "import Xponge.forcefield.amber.ff19sb; from Xponge.forcefield.special
 
 ## RESP 后端说明
 
-当前 RESP 电荷计算采用多后端策略：
+当前 RESP 电荷计算会自动选择第一个可用的后端：
 
-- 默认后端：`PySCF`
-- 可选后端：`Psi4`
+- 优先后端：`PySCF`
+- 回退后端：`Psi4`
 
 推荐用法：
 
-- Linux / macOS：默认直接使用 `PySCF`
-- Windows：安装 `Psi4`，并在 RESP 调用时显式指定 `backend="psi4"`
+- 所有平台：若已安装可用的 `PySCF`，则优先使用它
+- PySCF 不可用时：自动回退到 `Psi4`
+- 两者都不可用时：在开始 QM 前给出明确错误
 
 示例：
 
@@ -85,7 +86,7 @@ assign.calculate_charge("resp", backend="pyscf")
 assign.calculate_charge("resp", backend="psi4")
 ```
 
-如果你是在 Windows 上使用 RESP，推荐安装方式是：
+Windows 不会自动安装 PySCF；如果没有自行提供兼容的 PySCF，推荐安装 Psi4：
 
 ```bash
 conda install -c conda-forge psi4

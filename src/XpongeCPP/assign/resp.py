@@ -6,7 +6,6 @@ The **module** is not available on Windows unless a supported backend is install
 from __future__ import annotations
 
 import time
-import sys
 
 from ..helper import Xprint, set_global_alternative_names
 from ..qm import scheduler as qm_scheduler
@@ -86,15 +85,9 @@ def _build_backend_payload(backend_module, assign, resolved_basis, charge, spin,
 
 def _legacy_backend_import_or_hint(backend_name, exc):
     message = str(exc)
-    if backend_name == "pyscf" and sys.platform.startswith("win"):
+    if backend_name == "psi4":
         message += (
-            " On Windows, install Psi4 via conda-forge or the official Psi4 "
-            "installer and call calculate_charge('resp', backend='psi4', ...)."
-        )
-    elif backend_name == "psi4":
-        message += (
-            " On Windows, Psi4 is not installed through pip by default; "
-            "install it via conda-forge or the official Psi4 installer and retry."
+            " Install Psi4 via conda-forge or the official Psi4 installer and retry."
         )
     raise ImportError(message) from exc
 

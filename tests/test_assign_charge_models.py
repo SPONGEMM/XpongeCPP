@@ -327,7 +327,7 @@ def test_resp_rejects_unknown_core():
         resp_module.resp_fit(assignment, core="unknown")
 
 
-def test_resp_windows_hint_mentions_psi4(monkeypatch):
+def test_resp_pyscf_import_error_is_not_platform_specific(monkeypatch):
     assignment = _assignment("water", ["O", "H", "H"], [(0, 1, 1), (0, 2, 1)])
 
     class FailingBackend:
@@ -336,9 +336,7 @@ def test_resp_windows_hint_mentions_psi4(monkeypatch):
             raise ImportError("PySCF is required for RESP charge calculation")
 
     monkeypatch.setitem(resp_module._BACKEND_MODULES, "pyscf", FailingBackend)
-    monkeypatch.setattr(resp_module.sys, "platform", "win32")
-
-    with pytest.raises(ImportError, match="install Psi4"):
+    with pytest.raises(ImportError, match="PySCF is required"):
         resp_module.resp_fit(assignment, backend="pyscf")
 
 
@@ -356,9 +354,7 @@ def test_resp_explicit_psi4_backend_reports_missing_dependency(monkeypatch):
         resp_module.resp_fit(assignment, backend="psi4")
 
 
-def test_qm_scheduler_windows_psi4_hint_mentions_external_install(monkeypatch):
-    monkeypatch.setattr(qm_scheduler.sys, "platform", "win32")
-
+def test_qm_scheduler_psi4_hint_mentions_external_install():
     with pytest.raises(ImportError, match="official Psi4 installer"):
         qm_scheduler.backend_import_or_hint("psi4", ImportError("Psi4 is required"))
 
@@ -370,14 +366,30 @@ def test_qm_scheduler_exposes_known_backends():
         qm_get_backend("unknown")
 
 
-def test_qm_scheduler_default_backend_matches_platform(monkeypatch):
-    monkeypatch.setattr(qm_scheduler.sys, "platform", "linux")
+def test_qm_scheduler_default_backend_prefers_pyscf(monkeypatch):
+    monkeypatch.setattr(qm_scheduler, "find_spec", lambda name: object())
     assert qm_scheduler.normalize_backend_name(None) == "pyscf"
     assert qm_get_backend(None).name == "pyscf"
 
-    monkeypatch.setattr(qm_scheduler.sys, "platform", "win32")
+
+def test_qm_scheduler_default_backend_falls_back_to_psi4(monkeypatch):
+    monkeypatch.setattr(
+        qm_scheduler,
+        "find_spec",
+        lambda name: object() if name == "psi4" else None,
+    )
     assert qm_scheduler.normalize_backend_name(None) == "psi4"
     assert qm_get_backend(None).name == "psi4"
+
+
+def test_qm_scheduler_default_backend_errors_when_none_installed(monkeypatch):
+    monkeypatch.setattr(qm_scheduler, "find_spec", lambda name: None)
+
+    with pytest.raises(
+        qm_scheduler.QMBackendImportError,
+        match="Neither PySCF nor Psi4 is installed",
+    ):
+        qm_scheduler.normalize_backend_name(None)
 
 
 def test_qm_scheduler_runs_pyscf_scf_and_esp_smoke():

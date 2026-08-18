@@ -1,3 +1,17 @@
+# XpongeCPP 0.2.6
+
+Compatibility target: Xponge-origin 1.7b10.
+
+This parity release changes QM backend selection from an operating-system rule
+to runtime capability detection. XpongeCPP now prefers an installed PySCF
+backend, falls back to Psi4 when PySCF is absent, and reports a clear error
+when neither backend is available. Windows packaging continues to skip PySCF;
+users may supply a compatible PySCF installation or install Psi4 separately.
+
+Regression coverage verifies PySCF preference, Psi4 fallback, and the
+no-backend error path. Windows wheel CI remains a packaging smoke test; it does
+not claim native Windows PySCF support.
+
 # XpongeCPP 0.2.5
 
 Compatibility target: Xponge-origin 1.7b9.
