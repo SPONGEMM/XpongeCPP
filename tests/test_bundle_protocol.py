@@ -138,6 +138,36 @@ def test_invalid_protocol_does_not_publish_partial_bundle(tmp_path):
     assert not list(tmp_path.glob("invalid_*"))
 
 
+def test_protocol_writes_typed_virtual_atom_arrays_and_cv_references(tmp_path):
+    molecule = _peptide()
+    protocol = Xponge.SpongeProtocol(
+        virtual_atoms=(
+            Xponge.ProtocolVirtualAtom(
+                name="center",
+                type="center",
+                atom_indices=(0, 1),
+                weight=(0.25, 0.75),
+            ),
+        ),
+        collective_variables=(
+            Xponge.ProtocolCollectiveVariable(
+                name="distance_cv",
+                type="distance",
+                atom_refs=("center", 2),
+            ),
+        ),
+    )
+
+    Xponge.save_sponge_input_bundle(molecule, "virtual", tmp_path, protocol=protocol)
+
+    with h5py.File(tmp_path / "virtual_protocol.spgp.h5", "r") as handle:
+        assert _text(handle["/cv/virtual_atom/center/type"]) == "center"
+        assert handle["/cv/virtual_atom/center/atom_indices"][...].tolist() == [0, 1]
+        assert handle["/cv/virtual_atom/center/weight"][...].tolist() == pytest.approx([0.25, 0.75])
+        assert handle["/cv/distance_cv/atom_refs"].asstr()[...].tolist() == ["center", "2"]
+        assert int(handle["/protocol/cv_count"][()]) == 1
+
+
 @pytest.mark.parametrize("prefix", ["../escape", ".", "subdir/.."])
 def test_protocol_saver_rejects_unsafe_prefixes(tmp_path, prefix):
     with pytest.raises(BundlePathError, match="prefix|escapes"):

@@ -94,6 +94,7 @@ from .io_bundle import (
     ProtocolSITS,
     ProtocolSoftWall,
     ProtocolSteering,
+    ProtocolVirtualAtom,
     SpongeProtocol,
     save_sponge_input_bundle,
 )
@@ -333,6 +334,7 @@ __all__ = [
     "ProtocolSITS",
     "ProtocolSoftWall",
     "ProtocolSteering",
+    "ProtocolVirtualAtom",
     "save_pdb",
     "save_gro",
     "save_mol2",
