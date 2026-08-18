@@ -1,3 +1,13 @@
+# XpongeCPP 0.2.7
+
+Compatibility target: Xponge-origin 1.7b11.
+
+This patch release adds typed virtual-atom support to the bundled SPONGE
+protocol path and restores legacy SPONGE DAT handling in the MDAnalysis
+compatibility layer. It also includes the release-CI test-path correction so
+the Xponge-origin compatibility cohort is collected and executed during
+package validation.
+
 # XpongeCPP 0.2.6
 
 Compatibility target: Xponge-origin 1.7b10.

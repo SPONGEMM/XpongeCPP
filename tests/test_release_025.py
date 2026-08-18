@@ -1,4 +1,4 @@
-"""Release-contract checks for the Xponge-origin 1.7b10 alignment."""
+"""Release-contract checks for the Xponge-origin 1.7b11 alignment."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ def test_release_version_and_compatibility_target():
     metadata = tomllib.loads(
         (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
-    assert metadata["version"] == XpongeCPP.__version__ == "0.2.6"
-    assert "Xponge-origin 1.7b10" in metadata["description"]
+    assert metadata["version"] == XpongeCPP.__version__ == "0.2.7"
+    assert "Xponge-origin 1.7b11" in metadata["description"]
     assert metadata["requires-python"] == ">=3.10,<3.13"
 
 
