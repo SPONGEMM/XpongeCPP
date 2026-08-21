@@ -1,3 +1,18 @@
+# XpongeCPP 0.2.8
+
+Compatibility target: Xponge-origin 1.7.1.
+
+This patch release restores the Python instance-attribute behavior required
+by the Xponge RESP diagnostics contract. The pybind-backed `Assign` type now
+supports compatibility attributes, allowing `calculate_charge(...,
+return_diagnostics=True)` and `return_metadata=True` to retain
+`charge_fit_diagnostics` and `charge_fit_metadata` after fitting.
+
+Regression coverage verifies diagnostics, metadata, and general legacy
+extension attributes without requiring a QM backend. Release validation also
+includes a real PySCF RESP calculation and the complete compatibility suite
+against the official Xponge 1.7.1 package.
+
 # XpongeCPP 0.2.7
 
 Compatibility target: Xponge-origin 1.7b11.

@@ -12,7 +12,7 @@ env:
   CIBW_TEST_COMMAND: >-
     python -c "import importlib.util, XpongeCPP, Xponge,
     XpongeCPP.io_bundle, XpongeCPP.metal_assignment;
-    assert XpongeCPP.__version__ == '0.2.7';
+    assert XpongeCPP.__version__ == '0.2.8';
     assert not hasattr(XpongeCPP, 'MC' + 'PB');
     assert importlib.util.find_spec('XpongeCPP.' + ('MC' + 'PB').lower()) is None"
   CIBW_BEFORE_ALL_LINUX: >-

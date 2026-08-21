@@ -50,7 +50,7 @@ void save_assignment_pdb_object(const Assign& assignment, const std::string& fil
 }  // namespace
 
 void bind_assign_module(py::module_& m) {
-    py::class_<Assign, std::shared_ptr<Assign>>(m, "Assign")
+    py::class_<Assign, std::shared_ptr<Assign>>(m, "Assign", py::dynamic_attr())
         .def(py::init<std::string>(), py::arg("name") = "ASN")
         .def_readwrite("name", &Assign::name)
         .def_property_readonly("atom_count", &Assign::atom_count)

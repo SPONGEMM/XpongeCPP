@@ -210,3 +210,36 @@ def test_assign_legacy_atom_numbers_and_residuetype_aliases_match_old_mokda_usag
 
     assert residue_type.name == "TES"
     assert len(residue_type.atoms) == 1
+
+
+def test_assign_resp_preserves_diagnostics_and_metadata_attributes(monkeypatch):
+    import Xponge
+    from XpongeCPP.assign import resp
+
+    assign = Xponge.Assign("RESP_ATTRIBUTES")
+    assign.add_atom("O", 0.0, 0.0, 0.0, name="O1")
+    diagnostics = {"max_constraint_residual": 0.0}
+    metadata = {"backend": "mock"}
+
+    def fake_resp_fit(*_args, **kwargs):
+        assert kwargs["return_diagnostics"] is True
+        assert kwargs["return_metadata"] is True
+        return {
+            "charges": [0.0],
+            "diagnostics": diagnostics,
+            "metadata": metadata,
+        }
+
+    monkeypatch.setattr(resp, "resp_fit", fake_resp_fit)
+
+    assign.calculate_charge(
+        "resp",
+        return_diagnostics=True,
+        return_metadata=True,
+    )
+
+    assert assign.charges == [0.0]
+    assert assign.charge_fit_diagnostics == diagnostics
+    assert assign.charge_fit_metadata == metadata
+    assign.legacy_extension = "available"
+    assert assign.legacy_extension == "available"
