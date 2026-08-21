@@ -4,13 +4,13 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "XpongeCPP"
-version = "0.2.7"
-description = "C++ core rewrite of Xponge workflows, compatible with Xponge-origin 1.7b11"
+version = "0.2.8"
+description = "C++ core rewrite of Xponge workflows, compatible with Xponge-origin 1.7.1"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 authors = [{ name = "The XpongeCPP contributors" }]
 license = { text = "Apache License 2.0" }
-keywords = ["molecular-dynamics", "molecular-mechanics", "Xponge-origin-1.7b11"]
+keywords = ["molecular-dynamics", "molecular-mechanics", "Xponge-origin-1.7.1"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
