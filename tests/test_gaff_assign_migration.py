@@ -1,13 +1,13 @@
 import io
 import json
 import re
-import site
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
 
 import pytest
+import numpy as np
 import XpongeCPP as Xponge
 from conftest import original_xponge_repo
 
@@ -155,7 +155,7 @@ def test_gaff_assign_100_matches_current_original_xponge(tmp_path):
     mol2_paths = [str(path) for path, _ in prepared]
     assert sum(was_prepared for _, was_prepared in prepared) == 8
     reference_path = tmp_path / "xponge-current-gaff-reference.json"
-    site_packages = Path(site.getsitepackages()[0])
+    site_packages = Path(np.__file__).resolve().parent.parent
     script = textwrap.dedent(
         f"""
         import json

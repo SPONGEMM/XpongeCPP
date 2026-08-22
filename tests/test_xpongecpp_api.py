@@ -655,6 +655,35 @@ def test_set_residue_links_accepts_atom_objects_and_indices():
     assert combined.residue_links == [[int(atom_a.index), int(atom_b.index)]]
 
 
+def test_del_residue_link_accepts_atom_objects_and_legacy_alias():
+    import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401
+
+    combined = Xponge.load_pdb(StringIO(PDB_TEXT)) + Xponge.load_pdb(StringIO(PDB_TEXT))
+    atom_a = combined.residues[0].name2atom("C")
+    atom_b = combined.residues[1].name2atom("N")
+    atom_c = combined.residues[0].name2atom("N")
+    atom_d = combined.residues[1].name2atom("C")
+    combined.set_residue_links([(atom_a, atom_b), (atom_c, atom_d)])
+    assert combined.has_residue_link(int(atom_a.index), int(atom_b.index))
+
+    links = combined.residue_links
+    assert int(links[0].atom1.index) == int(atom_a.index)
+    assert int(links[0].atom2.index) == int(atom_b.index)
+    assert list(links[0]) == [int(atom_a.index), int(atom_b.index)]
+    assert combined.get_residue_link(atom_b, atom_a) == links[0]
+    assert combined.Get_Residue_Link(atom_a, atom_b) == links[0]
+
+    assert combined.del_residue_link(atom_b, atom_a) is None
+    assert combined.residue_links == [[int(atom_c.index), int(atom_d.index)]]
+    assert combined.get_residue_link(atom_a, atom_b) is None
+    assert not combined.has_residue_link(int(atom_a.index), int(atom_b.index))
+
+    assert combined.Del_Residue_Link(int(atom_c.index), int(atom_d.index)) is None
+    assert combined.residue_links == []
+    with pytest.raises(KeyError):
+        combined.del_residue_link(atom_a, atom_b)
+
+
 def test_add_missing_atoms_restores_terminal_oxt_without_moving_existing_atoms():
     import XpongeCPP.forcefield.amber as amber
     import XpongeCPP.forcefield.amber.ff14sb  # noqa: F401

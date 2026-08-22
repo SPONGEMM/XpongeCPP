@@ -256,6 +256,8 @@ class _AtomIndexProxy:
 _core_molecule_add_residue_link = Molecule.add_residue_link
 _core_molecule_clear_residue_links = Molecule.clear_residue_links
 _core_molecule_residue_links = Molecule.residue_links
+_core_molecule_has_residue_link = getattr(Molecule, "has_residue_link", None)
+_core_molecule_remove_residue_link = getattr(Molecule, "remove_residue_link", None)
 
 
 def _legacy_add_residue_link(self, atom1, atom2):
@@ -376,11 +378,24 @@ def _normalize_residue_link(link):
     raise TypeError("residue link entries should be (atom1, atom2) pairs or link objects")
 
 
+def _legacy_residue_link_object(molecule, link, atoms=None):
+    from .helper import ResidueLink
+
+    atom1, atom2 = _normalize_residue_link(link)
+    if atoms is None:
+        atoms = molecule.atoms
+    return ResidueLink(atoms[atom1], atoms[atom2])
+
+
 def _legacy_get_residue_links(self):
+    atoms = self.atoms
     override = _legacy_residue_links_override.get(self)
     if override is not None:
-        return [list(link) for link in override]
-    return [list(link) for link in _core_molecule_residue_links.__get__(self, type(self))]
+        return [_legacy_residue_link_object(self, link, atoms) for link in override]
+    return [
+        _legacy_residue_link_object(self, link, atoms)
+        for link in _core_molecule_residue_links.__get__(self, type(self))
+    ]
 
 
 def _legacy_clear_residue_links(self):
@@ -412,8 +427,44 @@ def _legacy_add_residue_links(self, links):
     return _legacy_set_residue_links(self, current)
 
 
+def _legacy_get_residue_link(self, atom1, atom2):
+    atom1_index = _coerce_atom_index(atom1)
+    atom2_index = _coerce_atom_index(atom2)
+    if _core_molecule_has_residue_link is not None:
+        if not _core_molecule_has_residue_link(self, atom1_index, atom2_index):
+            return None
+        return _legacy_residue_link_object(self, (atom1_index, atom2_index))
+    target = {atom1_index, atom2_index}
+    for link in _legacy_get_residue_links(self):
+        if set(_normalize_residue_link(link)) == target:
+            return link
+    return None
+
+
+def _legacy_del_residue_link(self, atom1, atom2):
+    atom1_index = _coerce_atom_index(atom1)
+    atom2_index = _coerce_atom_index(atom2)
+    target = {atom1_index, atom2_index}
+    if _core_molecule_remove_residue_link is not None:
+        if not _core_molecule_remove_residue_link(self, atom1_index, atom2_index):
+            raise KeyError(tuple(sorted(target)))
+        _legacy_residue_links_override.pop(self, None)
+        return None
+    retained = []
+    found = False
+    for link in _legacy_get_residue_links(self):
+        pair = _normalize_residue_link(link)
+        if not found and set(pair) == target:
+            found = True
+            continue
+        retained.append(pair)
+    if not found:
+        raise KeyError(tuple(sorted(target)))
+    _legacy_set_residue_links(self, retained)
+
+
 def _legacy_get_residue_links_copy(self, copy=True):
     links = _legacy_get_residue_links(self)
     if copy:
-        return [list(link) for link in links]
+        return [link.deepcopy(None) for link in links]
     return links

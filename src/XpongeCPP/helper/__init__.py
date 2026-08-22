@@ -84,12 +84,14 @@ class Entity(ABC):
     """Minimal legacy-compatible entity marker."""
 
 
-class ResidueLink:
-    """Minimal legacy-compatible residue-link object."""
+class ResidueLink(Entity):
+    """Legacy-compatible residue link with atom and index-pair views."""
 
     def __init__(self, atom1, atom2):
         self.atom1 = atom1
         self.atom2 = atom2
+        self.built = False
+        self.bonded_forces = {}
         self.tohash = ResidueLink.get_hash(atom1, atom2)
 
     def __repr__(self):
@@ -99,12 +101,45 @@ class ResidueLink:
         return hash(self.tohash)
 
     def __eq__(self, other):
-        return isinstance(other, ResidueLink) and self.tohash == other.tohash
+        if isinstance(other, ResidueLink):
+            return sorted(self.index_pair) == sorted(other.index_pair)
+        if isinstance(other, (list, tuple)) and len(other) == 2:
+            try:
+                return self.index_pair == [self._atom_index(other[0]), self._atom_index(other[1])]
+            except (TypeError, ValueError):
+                return False
+        return False
+
+    @staticmethod
+    def _atom_index(atom):
+        if isinstance(atom, int):
+            return int(atom)
+        if hasattr(atom, "index"):
+            return int(atom.index)
+        raise TypeError("residue-link atoms should expose an integer index")
+
+    @property
+    def index_pair(self):
+        """Return the native XpongeCPP atom-index representation."""
+
+        return [self._atom_index(self.atom1), self._atom_index(self.atom2)]
+
+    def __iter__(self):
+        # Native XpongeCPP helpers historically unpack residue links as indices.
+        return iter(self.index_pair)
+
+    def __len__(self):
+        return 2
+
+    def __getitem__(self, index):
+        return self.index_pair[index]
 
     @staticmethod
     def get_hash(atom1, atom2):
-        ids = sorted((id(atom1), id(atom2)))
-        return tuple(ids)
+        try:
+            return tuple(sorted((ResidueLink._atom_index(atom1), ResidueLink._atom_index(atom2))))
+        except TypeError:
+            return tuple(sorted((id(atom1), id(atom2))))
 
     def deepcopy(self, forcopy):
         del forcopy

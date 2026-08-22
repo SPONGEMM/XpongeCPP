@@ -1,7 +1,7 @@
 {
   "format_version": 2,
   "source": "lipid21.lib",
-  "source_sha256": "03fab780a94ff7f80f912cf08e80967ef63bae3ae5d9b204bb88bee51f1fae3d",
+  "source_sha256": "d6137cf10a6e39699535d74349e10a5e975ba89a0bd008dfa3b3ca6a69b42241",
   "source_license": "Public Domain (AmberTools dat/leap)",
   "template_count": 16,
   "templates": [

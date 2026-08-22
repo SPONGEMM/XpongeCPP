@@ -331,6 +331,31 @@ void Molecule::add_residue_link(AtomId atom1, AtomId atom2) {
     residue_links.push_back({lo, hi});
 }
 
+bool Molecule::has_residue_link(AtomId atom1, AtomId atom2) const {
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    const auto lo = std::min(atom1, atom2);
+    const auto hi = std::max(atom1, atom2);
+    return std::any_of(residue_links.begin(), residue_links.end(), [lo, hi](const ResidueLink& link) {
+        return std::min(link.atom1, link.atom2) == lo && std::max(link.atom1, link.atom2) == hi;
+    });
+}
+
+bool Molecule::remove_residue_link(AtomId atom1, AtomId atom2) {
+    ensure_atom_id(*this, atom1);
+    ensure_atom_id(*this, atom2);
+    const auto lo = std::min(atom1, atom2);
+    const auto hi = std::max(atom1, atom2);
+    const auto found = std::find_if(residue_links.begin(), residue_links.end(), [lo, hi](const ResidueLink& link) {
+        return std::min(link.atom1, link.atom2) == lo && std::max(link.atom1, link.atom2) == hi;
+    });
+    if (found == residue_links.end()) {
+        return false;
+    }
+    residue_links.erase(found);
+    return true;
+}
+
 void Molecule::add_coordination_bond(AtomId atom1, AtomId atom2) {
     ensure_atom_id(*this, atom1);
     ensure_atom_id(*this, atom2);

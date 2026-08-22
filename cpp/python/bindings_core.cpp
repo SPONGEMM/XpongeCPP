@@ -441,6 +441,8 @@ void bind_core_module(py::module_& m) {
         .def("add_coordination_bond", &Molecule::add_coordination_bond, py::arg("atom1"), py::arg("atom2"))
         .def("add_residue_link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
         .def("Add_Residue_Link", &Molecule::add_residue_link, py::arg("atom1"), py::arg("atom2"))
+        .def("has_residue_link", &Molecule::has_residue_link, py::arg("atom1"), py::arg("atom2"))
+        .def("remove_residue_link", &Molecule::remove_residue_link, py::arg("atom1"), py::arg("atom2"))
         .def("clear_residue_links", [](Molecule& self) { self.residue_links.clear(); })
         .def(
             "_set_bond_parameter_override", &Molecule::set_bond_parameter_override,

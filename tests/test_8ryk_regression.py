@@ -156,8 +156,8 @@ legacy_root = {legacy_root!r}
 data_root = {data_root!r}
 output_dir = pathlib.Path({output_dir!r})
 script_text = script_path.read_text()
-script_text = script_text.replace(f"{legacy_root}/sponge", str(output_dir))
-script_text = script_text.replace(legacy_root, data_root)
+script_text = script_text.replace(f"{legacy_root}/sponge", output_dir.as_posix())
+script_text = script_text.replace(legacy_root, pathlib.Path(data_root).as_posix())
 globals_dict = {{"__file__": str(script_path), "__name__": "__main__"}}
 exec(compile(script_text, str(script_path), "exec"), globals_dict, globals_dict)
     """.format(

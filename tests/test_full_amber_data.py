@@ -199,6 +199,20 @@ def test_amber_multi_site_water_imports_register_complete_templates(tmp_path):
         ]
 
 
+def test_opls_tip4p_registers_complete_template(tmp_path):
+    module = importlib.import_module("Xponge.forcefield.opls.tip4p")
+    importlib.reload(module)
+
+    water = Xponge.get_template_molecule("WAT")
+    assert water.atom_count == 4
+    assert water.residues[0].name2atom("EPW").type == "EP"
+
+    Xponge.Save_SPONGE_Input(water, prefix="opls_tip4p", dirname=str(tmp_path))
+    assert (tmp_path / "opls_tip4p_virtual_atom.txt").read_text().splitlines() == [
+        "2 3 0 1 2 0.127970 0.127970",
+    ]
+
+
 def test_spce_import_registers_three_site_water_without_virtual_atom(tmp_path):
     import XpongeCPP.forcefield.amber.spce  # noqa: F401
 

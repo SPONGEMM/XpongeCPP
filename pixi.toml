@@ -1,31 +1,39 @@
 [workspace]
 channels = ["conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "win-64"]
 
 [dependencies]
 python = ">=3.11,<3.12"
 numpy = ">=1.26"
-h5py = ">=3.11"
 pytest = ">=8"
 cmake = ">=3.18"
 ninja = "*"
 pybind11 = ">=2.12"
 scikit-build-core = ">=0.10"
-highfive = "*"
-hdf5 = "*"
 rdkit = "*"
-pyscf = "*"
 pip = "*"
 
 [target.linux-64.dependencies]
 gcc_linux-64 = "11.*"
 gxx_linux-64 = "11.*"
+pyscf = "*"
+
+[target.win-64.dependencies]
+cxx-compiler = "*"
 
 [pypi-dependencies]
+h5py = ">=3.11"
 pubchempy = "*"
 
 [tasks]
-install-dev = "python -m pip install -e . --force-reinstall --no-cache-dir"
+install-dev = "python -m pip install -e . --no-deps --force-reinstall --no-cache-dir"
+
+[target.win-64.tasks]
+test = { cmd = "pytest -q", depends-on = ["install-dev"], env = { OMP_NUM_THREADS = "1", MKL_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1" } }
+test-assign-full = { cmd = "pytest tests/test_assign_charge_models.py tests/test_gaff_assign_migration.py tests/test_amber_fep_workflow.py::test_merge_dual_topology_can_derive_match_map_from_assign_when_rdkit_is_available -q", depends-on = ["install-dev"], env = { OMP_NUM_THREADS = "1", MKL_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1" } }
+test-resp = { cmd = "pytest tests/test_assign_charge_models.py::test_resp_uses_available_backend_or_reports_missing_dependency -q", depends-on = ["install-dev"], env = { OMP_NUM_THREADS = "1", MKL_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1" } }
+
+[target.unix.tasks]
 test = { cmd = "pytest -q", depends-on = ["install-dev"] }
 test-assign-full = { cmd = "pytest tests/test_assign_charge_models.py tests/test_gaff_assign_migration.py tests/test_amber_fep_workflow.py::test_merge_dual_topology_can_derive_match_map_from_assign_when_rdkit_is_available -q", depends-on = ["install-dev"] }
 test-resp = { cmd = "pytest tests/test_assign_charge_models.py::test_resp_uses_available_backend_or_reports_missing_dependency -q", depends-on = ["install-dev"] }

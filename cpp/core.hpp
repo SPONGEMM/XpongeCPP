@@ -413,6 +413,8 @@ public:
     void add_molecule_linked(const Molecule& other, bool link);
     void add_coordination_bond(AtomId atom1, AtomId atom2);
     void add_residue_link(AtomId atom1, AtomId atom2);
+    bool has_residue_link(AtomId atom1, AtomId atom2) const;
+    bool remove_residue_link(AtomId atom1, AtomId atom2);
     void set_bond_parameter_override(
         AtomId atom1, AtomId atom2, double k, double length,
         const std::string& source);

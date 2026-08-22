@@ -11,8 +11,10 @@ from ..legacy_types import (
     _legacy_add_residue_link,
     _legacy_add_residue_links,
     _legacy_clear_residue_links,
+    _legacy_del_residue_link,
     _legacy_get_residuetype,
     _legacy_get_all_residuetypes,
+    _legacy_get_residue_link,
     _legacy_get_residue_links,
     _legacy_get_residue_links_copy,
     _legacy_make_residue_like,
@@ -143,6 +145,10 @@ def install_legacy_runtime_patches(namespace: dict | None = None):
     Molecule.Add_Residue_Links = _legacy_add_residue_links
     Molecule.clear_residue_links = _legacy_clear_residue_links
     Molecule.Clear_Residue_Links = _legacy_clear_residue_links
+    Molecule.del_residue_link = _legacy_del_residue_link
+    Molecule.Del_Residue_Link = _legacy_del_residue_link
+    Molecule.get_residue_link = _legacy_get_residue_link
+    Molecule.Get_Residue_Link = _legacy_get_residue_link
     Molecule.set_residue_links = _legacy_set_residue_links
     Molecule.Set_Residue_Links = _legacy_set_residue_links
     Molecule.get_residue_links = _legacy_get_residue_links_copy

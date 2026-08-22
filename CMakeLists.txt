@@ -7,23 +7,44 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(PYBIND11_FINDPYTHON ON)
 
 find_package(pybind11 CONFIG REQUIRED)
-find_package(HDF5 REQUIRED COMPONENTS C)
-find_package(HighFive CONFIG QUIET)
-if(NOT HighFive_FOUND)
-    include(FetchContent)
-    set(HIGHFIVE_FIND_HDF5 OFF CACHE BOOL "Do not let vendored HighFive find HDF5" FORCE)
-    set(HIGHFIVE_UNIT_TESTS OFF CACHE BOOL "Disable vendored HighFive tests" FORCE)
-    set(HIGHFIVE_EXAMPLES OFF CACHE BOOL "Disable vendored HighFive examples" FORCE)
-    set(HIGHFIVE_BUILD_DOCS OFF CACHE BOOL "Disable vendored HighFive documentation" FORCE)
-    FetchContent_Declare(
-        highfive
-        URL https://github.com/highfive-devs/highfive/archive/refs/tags/v3.3.0.tar.gz
-        URL_HASH SHA256=325cfbcf0c0296a6dd26f3b088801b7ebb8d6f109c0565c11d2d8c4af3253bff
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    )
-    FetchContent_MakeAvailable(highfive)
-    set_property(DIRECTORY "${highfive_SOURCE_DIR}" PROPERTY EXCLUDE_FROM_ALL TRUE)
-endif()
+include(FetchContent)
+
+# Build one private static HDF5 implementation on every platform.  In
+# particular, this prevents the extension and h5py from loading two
+# incompatible HDF5 shared libraries into the same Python process on Windows.
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries" FORCE)
+set(BUILD_STATIC_LIBS ON CACHE BOOL "Build static libraries" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "Disable dependency tests" FORCE)
+set(HDF5_BUILD_CPP_LIB OFF CACHE BOOL "Disable the HDF5 C++ API" FORCE)
+set(HDF5_BUILD_EXAMPLES OFF CACHE BOOL "Disable HDF5 examples" FORCE)
+set(HDF5_BUILD_FORTRAN OFF CACHE BOOL "Disable the HDF5 Fortran API" FORCE)
+set(HDF5_BUILD_HL_LIB OFF CACHE BOOL "Disable the HDF5 high-level API" FORCE)
+set(HDF5_BUILD_JAVA OFF CACHE BOOL "Disable the HDF5 Java API" FORCE)
+set(HDF5_BUILD_TOOLS OFF CACHE BOOL "Disable HDF5 tools" FORCE)
+set(HDF5_ENABLE_PARALLEL OFF CACHE BOOL "Disable parallel HDF5" FORCE)
+set(HDF5_ENABLE_SZIP_SUPPORT OFF CACHE BOOL "Disable SZip support" FORCE)
+set(HDF5_ENABLE_THREADSAFE OFF CACHE BOOL "Disable threaded HDF5" FORCE)
+set(HDF5_ENABLE_Z_LIB_SUPPORT OFF CACHE BOOL "Disable zlib support" FORCE)
+set(HDF5_NO_PACKAGES ON CACHE BOOL "Disable HDF5 packaging" FORCE)
+FetchContent_Declare(
+    hdf5
+    URL https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5_1.14.6.tar.gz
+    URL_HASH SHA256=09ee1c671a87401a5201c06106650f62badeea5a3b3941e9b1e2e1e08317357f
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(hdf5)
+
+set(HIGHFIVE_FIND_HDF5 OFF CACHE BOOL "Use XpongeCPP's private HDF5" FORCE)
+set(HIGHFIVE_UNIT_TESTS OFF CACHE BOOL "Disable vendored HighFive tests" FORCE)
+set(HIGHFIVE_EXAMPLES OFF CACHE BOOL "Disable vendored HighFive examples" FORCE)
+set(HIGHFIVE_BUILD_DOCS OFF CACHE BOOL "Disable vendored HighFive documentation" FORCE)
+FetchContent_Declare(
+    highfive
+    URL https://github.com/highfive-devs/highfive/archive/refs/tags/v3.3.0.tar.gz
+    URL_HASH SHA256=325cfbcf0c0296a6dd26f3b088801b7ebb8d6f109c0565c11d2d8c4af3253bff
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(highfive)
 
 pybind11_add_module(_core
     cpp/assign/amber_alternating.cpp
@@ -78,12 +99,7 @@ elseif(TARGET HighFive)
 else()
     message(FATAL_ERROR "HighFive target was not provided by find_package(HighFive)")
 endif()
-if(TARGET HDF5::HDF5)
-    target_link_libraries(_core PRIVATE HDF5::HDF5)
-else()
-    target_include_directories(_core PRIVATE ${HDF5_INCLUDE_DIRS})
-    target_link_libraries(_core PRIVATE ${HDF5_LIBRARIES})
-endif()
+target_link_libraries(_core PRIVATE hdf5-static)
 target_compile_options(_core PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
 )

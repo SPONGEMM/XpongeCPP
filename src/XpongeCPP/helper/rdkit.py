@@ -9,7 +9,7 @@ except ModuleNotFoundError as exc:
         "'rdkit' package needed. Maybe you need 'conda install -c rdkit rdkit'"
     ) from exc
 
-from .._core import Assign
+from XpongeCPP._core import Assign
 
 
 def assign_to_rdmol(assign, ignore_bond_type=False):

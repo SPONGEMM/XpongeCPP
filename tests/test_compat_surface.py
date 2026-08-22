@@ -476,3 +476,49 @@ def test_old_xponge_init_export_surface_has_first_wave_compatibility_shape():
     assert callable(get_mindsponge_system_energy)
     assert hasattr(Xponge, "Atom")
     assert hasattr(Xponge, "Residue")
+
+
+def test_mokda_life_modeling_xponge_surface_is_available():
+    """Keep the bounded API surface used by Mokda's SPONGE builder compatible."""
+
+    import Xponge
+    import Xponge.forcefield.amber.ff14sb  # noqa: F401
+    import Xponge.forcefield.amber.gaff  # noqa: F401
+    import Xponge.forcefield.amber.tip3p  # noqa: F401
+
+    for name in (
+        "load_pdb",
+        "load_mmcif",
+        "load_mol2",
+        "save_sponge_input",
+        "save_pdb",
+        "add_solvent_box",
+        "Solvent_Replace",
+    ):
+        assert callable(getattr(Xponge, name, None)), name
+
+    for name in (
+        "get_atoms",
+        "add_residue_link",
+        "del_residue_link",
+        "Del_Residue_Link",
+        "get_residue_link",
+        "Get_Residue_Link",
+        "set_residue_links",
+        "add_missing_atoms",
+        "set_ignore_missing_atoms",
+        "set_box_padding",
+    ):
+        assert callable(getattr(Xponge.Molecule, name, None)), name
+
+    assert hasattr(Xponge.Molecule, "residue_links")
+    assert hasattr(Xponge.Molecule, "atom_index")
+
+
+def test_legacy_rdkit_helper_imports_against_xponge_namespace():
+    pytest.importorskip("rdkit")
+
+    from Xponge.helper.rdkit import assign_to_rdmol, rdmol_to_assign
+
+    assert callable(assign_to_rdmol)
+    assert callable(rdmol_to_assign)

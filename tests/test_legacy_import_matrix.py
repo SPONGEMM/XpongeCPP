@@ -37,6 +37,7 @@ CORE_SCOPE_LEGACY_IMPORTS = [
     "Xponge.forcefield.charmm.charmm36",
     "Xponge.forcefield.charmm.tip3p_charmm",
     "Xponge.forcefield.opls.oplsaam",
+    "Xponge.forcefield.opls.tip4p",
     "Xponge.forcefield.special.gb",
     "Xponge.forcefield.special.fep",
     "Xponge.forcefield.special.min",
