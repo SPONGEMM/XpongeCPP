@@ -224,7 +224,8 @@ def remap_protocol_atom_order(protocol: SpongeProtocol | None, new_to_old) -> Sp
     if order == tuple(range(len(order))):
         return protocol
     _validate_protocol(
-        tuple(protocol.collective_variables), tuple(protocol.distance_constraints),
+        tuple(protocol.collective_variables), tuple(protocol.virtual_atoms),
+        tuple(protocol.distance_constraints),
         tuple(protocol.positional_restraints), tuple(protocol.cv_restraints),
         tuple(protocol.metadynamics), protocol.steering, protocol.sits,
         protocol.hard_wall, tuple(protocol.soft_walls), atom_count=len(order),
@@ -238,8 +239,12 @@ def remap_protocol_atom_order(protocol: SpongeProtocol | None, new_to_old) -> Sp
 
     # CV references and restraint weights follow selection order, not system
     # order. Only positional launch coordinates cover the complete system.
-    cvs = tuple(replace(cv, atom_indices=indices(cv.atom_indices))
+    cvs = tuple(replace(cv, atom_indices=indices(cv.atom_indices),
+                        atom_refs=tuple(old_to_new[ref] if isinstance(ref, (int, np.integer)) else ref
+                                        for ref in cv.atom_refs))
                 for cv in protocol.collective_variables)
+    virtual_atoms = tuple(replace(item, atom_indices=indices(item.atom_indices))
+                          for item in protocol.virtual_atoms)
     constraints = tuple(replace(item, atoms=tuple(indices(pair) for pair in item.atoms))
                         for item in protocol.distance_constraints)
     positional = tuple(replace(
@@ -254,7 +259,7 @@ def remap_protocol_atom_order(protocol: SpongeProtocol | None, new_to_old) -> Sp
             # A numeric policy selects the first N *input* atoms.
             sits = replace(sits, atom_indices=indices(range(sits.atom_numbers_policy)),
                            atom_numbers_policy=None)
-    return replace(protocol, collective_variables=cvs, distance_constraints=constraints,
+    return replace(protocol, collective_variables=cvs, virtual_atoms=virtual_atoms, distance_constraints=constraints,
                    positional_restraints=positional, sits=sits)
 
 

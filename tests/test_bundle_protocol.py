@@ -43,6 +43,24 @@ def test_protocol_remapping_preserves_input_atom_semantics():
         remap_protocol_atom_order(original, (0, 0, 2, 3))
 
 
+def test_protocol_remapping_preserves_virtual_atom_references():
+    from XpongeCPP.io_bundle.protocol import remap_protocol_atom_order
+
+    original = Xponge.SpongeProtocol(
+        virtual_atoms=(Xponge.ProtocolVirtualAtom(
+            name="center", type="center", atom_indices=(0, 2), weight=(0.25, 0.75),
+        ),),
+        collective_variables=(Xponge.ProtocolCollectiveVariable(
+            name="distance", type="distance", atom_refs=(1, "center"),
+        ),),
+    )
+    mapped = remap_protocol_atom_order(original, (2, 3, 0, 1))
+    assert mapped.virtual_atoms[0].atom_indices == (2, 0)
+    assert mapped.virtual_atoms[0].weight == (0.25, 0.75)
+    assert mapped.collective_variables[0].atom_refs == (3, "center")
+    assert original.collective_variables[0].atom_refs == (1, "center")
+
+
 def _full_protocol(atom_count):
     reference = tuple((float(index), 0.0, 0.0) for index in range(atom_count))
     return Xponge.SpongeProtocol(

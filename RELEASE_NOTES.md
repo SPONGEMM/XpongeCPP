@@ -1,3 +1,15 @@
+# XpongeCPP 0.2.10
+
+Fix bundled SPONGE input export to group linked residue components in contiguous
+atom order, matching the existing raw-text exporter. Both Python and native
+bundle entry points validate molecular component continuity before writing topology.
+
+Source atom mappings, collective variables (including typed virtual atoms),
+distance constraints, positional reference coordinates and SITS selections follow
+the reordered atoms. Selection weights and named virtual-atom references retain
+their original meaning. Regression tests cover raw/native/Python bundle export,
+covalent and coordination links, source mappings and protocol remapping.
+
 # XpongeCPP 0.2.8
 
 Compatibility target: Xponge-origin 1.7.1.

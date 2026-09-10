@@ -194,7 +194,7 @@ from .process import (
 from .legacy_types import _LegacyResidueTypeHandle
 from .template_ops import load_mol2
 
-__version__ = "0.2.9"
+__version__ = "0.2.10"
 __mokda_backend__ = "xpongecpp"
 __implementation_version__ = __version__
 pi = np.pi
