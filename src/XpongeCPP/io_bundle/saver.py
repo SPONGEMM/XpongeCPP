@@ -15,7 +15,7 @@ from .bundle_builder import (
     _RESTART_PARTICLE_STATE_PATHS,
 )
 from .errors import BundlePathError
-from .protocol import SpongeProtocol, add_protocol_to_bundle
+from .protocol import SpongeProtocol, add_protocol_to_bundle, remap_protocol_atom_order
 
 
 def save_sponge_input_bundle(
@@ -30,6 +30,11 @@ def save_sponge_input_bundle(
     """Write native C++ topology/restart data plus an origin-compatible protocol."""
 
     from .. import _core, get_template_molecule, has_template
+    from .._compat.process import (
+        _capture_source_atom_ids,
+        _prepare_sponge_atom_order,
+        _save_result_with_mapping,
+    )
 
     target = molecule
     if isinstance(molecule, _core.Residue):
@@ -65,6 +70,15 @@ def save_sponge_input_bundle(
                 "ResidueType, or registered template-like object"
             )
 
+    # Capture identities before native reordering invalidates Atom indices.
+    source_ids = _capture_source_atom_ids(target, source_atom_ids)
+    if return_mapping and source_ids is None:
+        raise ValueError("return_mapping=True requires source_atom_ids")
+    new_to_old = _prepare_sponge_atom_order(target)
+    if source_ids is not None:
+        source_ids = tuple(source_ids[index] for index in new_to_old)
+    protocol = remap_protocol_atom_order(protocol, new_to_old)
+
     output_root = Path(dirname).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     normalized_prefix = str(prefix or getattr(molecule, "name", "system"))
@@ -88,32 +102,7 @@ def save_sponge_input_bundle(
             destination.parent.mkdir(parents=True, exist_ok=True)
             os.replace(source, destination)
     del prepared
-    if not return_mapping:
-        return target
-    if source_atom_ids is None:
-        raise ValueError("return_mapping=True requires source_atom_ids")
-    atoms = list(target.atoms)
-    if isinstance(source_atom_ids, dict):
-        by_index = {
-            int(atom.index): str(value) for atom, value in source_atom_ids.items()
-        }
-        if set(by_index) != {int(atom.index) for atom in atoms}:
-            raise ValueError(
-                "source_atom_ids mapping must cover every input Atom exactly once"
-            )
-        values = tuple(by_index[int(atom.index)] for atom in atoms)
-    else:
-        values = tuple(str(value) for value in source_atom_ids)
-        if len(values) != len(atoms):
-            raise ValueError(
-                "source_atom_ids must contain one ID for every input Atom"
-            )
-    if len(set(values)) != len(values):
-        raise ValueError("source_atom_ids must be unique")
-    return target, tuple(
-        {"simulation_index": index, "source_atom_id": source_id}
-        for index, source_id in enumerate(values)
-    )
+    return _save_result_with_mapping(target, source_ids, return_mapping)
 
 
 def _apply_protocol(paths: BundlePaths, protocol: SpongeProtocol | None) -> None:

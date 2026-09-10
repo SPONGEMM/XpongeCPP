@@ -6,7 +6,7 @@ compile legacy SPONGE configuration text before writing HDF5.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import re
 from typing import Any, Mapping, Sequence
 
@@ -210,6 +210,52 @@ class ProtocolSummary:
     cv_count: int = 0
     restraint_count: int = 0
     enhanced_methods: tuple[str, ...] = ()
+
+
+def remap_protocol_atom_order(protocol: SpongeProtocol | None, new_to_old) -> SpongeProtocol | None:
+    """Preserve input-atom semantics when the saver groups linked molecules."""
+    if protocol is None:
+        return None
+    if not isinstance(protocol, SpongeProtocol):
+        raise TypeError("protocol must be a SpongeProtocol instance or None")
+    order = tuple(new_to_old)
+    if sorted(order) != list(range(len(order))):
+        raise BundleValidationError("atom order must be a complete permutation")
+    if order == tuple(range(len(order))):
+        return protocol
+    _validate_protocol(
+        tuple(protocol.collective_variables), tuple(protocol.distance_constraints),
+        tuple(protocol.positional_restraints), tuple(protocol.cv_restraints),
+        tuple(protocol.metadynamics), protocol.steering, protocol.sits,
+        protocol.hard_wall, tuple(protocol.soft_walls), atom_count=len(order),
+    )
+    old_to_new = [0] * len(order)
+    for new, old in enumerate(order):
+        old_to_new[old] = new
+
+    def indices(values):
+        return tuple(old_to_new[index] for index in values)
+
+    # CV references and restraint weights follow selection order, not system
+    # order. Only positional launch coordinates cover the complete system.
+    cvs = tuple(replace(cv, atom_indices=indices(cv.atom_indices))
+                for cv in protocol.collective_variables)
+    constraints = tuple(replace(item, atoms=tuple(indices(pair) for pair in item.atoms))
+                        for item in protocol.distance_constraints)
+    positional = tuple(replace(
+        item, atom_indices=indices(item.atom_indices),
+        reference_coordinates=tuple(item.reference_coordinates[old] for old in order),
+    ) for item in protocol.positional_restraints)
+    sits = protocol.sits
+    if sits is not None:
+        if sits.atom_indices:
+            sits = replace(sits, atom_indices=indices(sits.atom_indices))
+        elif isinstance(sits.atom_numbers_policy, (int, np.integer)):
+            # A numeric policy selects the first N *input* atoms.
+            sits = replace(sits, atom_indices=indices(range(sits.atom_numbers_policy)),
+                           atom_numbers_policy=None)
+    return replace(protocol, collective_variables=cvs, distance_constraints=constraints,
+                   positional_restraints=positional, sits=sits)
 
 
 def add_protocol_to_bundle(

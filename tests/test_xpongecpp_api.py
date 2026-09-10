@@ -728,6 +728,7 @@ END
 
 
 def test_save_sponge_input_keeps_missing_atom_tolerance_when_enabled(tmp_path):
+    Xponge.register_tip3p()
     Xponge.load_mol2(StringIO(MOL2_TEXT), as_template=True)
     mol = Xponge.load_pdb(
         StringIO(
@@ -1129,34 +1130,48 @@ def test_add_molecule_preserves_source_explicit_bonds(tmp_path):
     assert (tmp_path / "merged_bond.txt").read_text().splitlines()[0] == "6"
 
 
-def test_save_sponge_input_reorders_linked_residue_components_for_export(tmp_path):
+@pytest.mark.parametrize("format", ["raw", "bundle", "native_bundle"])
+def test_save_sponge_input_reorders_linked_residue_components_for_export(tmp_path, format):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
 
     assert [res.name for res in mol.residues] == ["FAR", "LIG", "WAT"]
 
     mol.add_residue_link(mol.residues[0].name2atom("O1"), mol.residues[2].name2atom("O"))
-    Xponge.Save_SPONGE_Input(mol, prefix="linked", dirname=str(tmp_path))
+    if format == "native_bundle":
+        Xponge._core.save_sponge_input_bundle(mol, prefix="linked", dirname=str(tmp_path))
+    else:
+        Xponge.Save_SPONGE_Input(mol, prefix="linked", dirname=str(tmp_path), format=format)
 
     assert [res.name for res in mol.residues] == ["FAR", "WAT", "LIG"]
     assert mol.residue_links == [[0, 3]]
-    assert (tmp_path / "linked_resname.txt").read_text().splitlines() == ["3", "FAR", "WAT", "LIG"]
+    if format == "raw":
+        assert (tmp_path / "linked_resname.txt").read_text().splitlines() == ["3", "FAR", "WAT", "LIG"]
+    else:
+        import h5py
+        with h5py.File(tmp_path / "linked_topology.spgt.h5") as handle:
+            assert handle['parameters/xponge/residues/name'].asstr()[:].tolist() == ['FAR', 'WAT', 'LIG']
 
 
-def test_save_sponge_input_mapping_tracks_reordered_linked_components(tmp_path):
+@pytest.mark.parametrize("format", ["raw", "bundle"])
+@pytest.mark.parametrize("mapping_kind", ["sequence", "atoms"])
+def test_save_sponge_input_mapping_tracks_reordered_linked_components(tmp_path, format, mapping_kind):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
 
     residue_counts = [len(residue.atoms) for residue in mol.residues]
     source_ids = tuple(f"source:{index}" for index, _atom in enumerate(mol.atoms))
     mol.add_residue_link(mol.residues[0].name2atom("O1"), mol.residues[2].name2atom("O"))
+    coordinates = [(a.x, a.y, a.z) for a in mol.atoms]
+    charges = [a.charge for a in mol.atoms]
 
     saved, mapping = Xponge.Save_SPONGE_Input(
         mol,
         prefix="linked_mapping",
         dirname=str(tmp_path),
-        source_atom_ids=source_ids,
+        source_atom_ids=source_ids if mapping_kind == "sequence" else dict(zip(mol.atoms, source_ids)),
         return_mapping=True,
+        format=format,
     )
 
     far_end = residue_counts[0]
@@ -1169,9 +1184,13 @@ def test_save_sponge_input_mapping_tracks_reordered_linked_components(tmp_path):
     assert saved is mol
     assert [residue.name for residue in saved.residues] == ["FAR", "WAT", "LIG"]
     assert tuple(record["source_atom_id"] for record in mapping) == expected_source_ids
+    old_indices = [int(record['source_atom_id'].split(':')[1]) for record in mapping]
+    assert [(a.x, a.y, a.z) for a in saved.atoms] == [coordinates[i] for i in old_indices]
+    assert [a.charge for a in saved.atoms] == [charges[i] for i in old_indices]
 
 
-def test_save_sponge_input_reorders_coordination_components_for_export(tmp_path):
+@pytest.mark.parametrize("format", ["raw", "bundle"])
+def test_save_sponge_input_reorders_coordination_components_for_export(tmp_path, format):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
 
@@ -1188,24 +1207,26 @@ def test_save_sponge_input_reorders_coordination_components_for_export(tmp_path)
         2.0,
         "test:coordination",
     )
-    Xponge.Save_SPONGE_Input(mol, prefix="coordinated", dirname=str(tmp_path))
+    Xponge.Save_SPONGE_Input(mol, prefix="coordinated", dirname=str(tmp_path), format=format)
 
     assert [res.name for res in mol.residues] == ["FAR", "WAT", "LIG"]
     assert mol.coordination_bonds == [(0, 3)]
-    assert (tmp_path / "coordinated_resname.txt").read_text().splitlines() == [
-        "3",
-        "FAR",
-        "WAT",
-        "LIG",
-    ]
+    if format == "raw":
+        assert (tmp_path / "coordinated_resname.txt").read_text().splitlines() == [
+            "3", "FAR", "WAT", "LIG",
+        ]
 
 
-def test_save_sponge_input_rejects_noncontiguous_atom_components(tmp_path):
+@pytest.mark.parametrize("format", ["raw", "bundle", "native_bundle"])
+def test_save_sponge_input_rejects_noncontiguous_atom_components(tmp_path, format):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(SPLIT_COMPONENT_MOL2_TEXT))
 
     with pytest.raises(RuntimeError, match="must be continuous for SPONGE input"):
-        Xponge.Save_SPONGE_Input(mol, prefix="split", dirname=str(tmp_path))
+        if format == "native_bundle":
+            Xponge._core.save_sponge_input_bundle(mol, prefix="split", dirname=str(tmp_path))
+        else:
+            Xponge.Save_SPONGE_Input(mol, prefix="split", dirname=str(tmp_path), format=format)
 
 
 def test_assign_builds_graph_markers_and_residue_type():

@@ -13,6 +13,36 @@ def _peptide():
     return Xponge.get_template_molecule("ALA")
 
 
+def test_protocol_remapping_preserves_input_atom_semantics():
+    from dataclasses import replace
+    from XpongeCPP.io_bundle.protocol import remap_protocol_atom_order
+
+    original = _full_protocol(4)
+    original = replace(original, collective_variables=(replace(
+        original.collective_variables[0], reference_coordinates=((1., 2., 3.), (4., 5., 6.)),
+    ),))
+    mapped = remap_protocol_atom_order(original, (2, 3, 0, 1))
+    assert mapped.collective_variables[0].atom_indices == (2, 3)
+    assert mapped.collective_variables[0].reference_coordinates == original.collective_variables[0].reference_coordinates
+    assert mapped.distance_constraints[0].atoms == ((2, 3),)
+    assert mapped.positional_restraints[0].atom_indices == (2,)
+    assert mapped.positional_restraints[0].reference_coordinates == tuple(
+        original.positional_restraints[0].reference_coordinates[i] for i in (2, 3, 0, 1)
+    )
+    assert mapped.positional_restraints[0].weight == original.positional_restraints[0].weight
+    assert mapped.sits.atom_indices == (2, 3)
+    assert original.sits.atom_indices == (0, 1)
+    assert mapped.metadynamics == original.metadynamics
+    assert mapped.cv_restraints == original.cv_restraints
+    assert mapped.steering == original.steering
+    assert remap_protocol_atom_order(original, (0, 1, 2, 3)) is original
+    prefix = replace(original, sits=replace(original.sits, atom_indices=(), atom_numbers_policy=2))
+    assert remap_protocol_atom_order(prefix, (2, 3, 0, 1)).sits.atom_indices == (2, 3)
+    assert remap_protocol_atom_order(prefix, (2, 3, 0, 1)).sits.atom_numbers_policy is None
+    with pytest.raises(BundleValidationError, match='permutation'):
+        remap_protocol_atom_order(original, (0, 0, 2, 3))
+
+
 def _full_protocol(atom_count):
     reference = tuple((float(index), 0.0, 0.0) for index in range(atom_count))
     return Xponge.SpongeProtocol(
@@ -81,6 +111,33 @@ def _full_protocol(atom_count):
 def _text(dataset):
     value = dataset[()]
     return value.decode("utf-8") if isinstance(value, bytes) else str(value)
+
+
+def test_bundle_saver_remaps_protocol_with_reordered_atoms(tmp_path):
+    from io import StringIO
+    from test_xpongecpp_api import CUSTOM_MOL2_TEXT, MOL2_TEXT
+
+    Xponge.register_tip3p()
+    molecule = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
+    molecule.add_residue_link(molecule.residues[0].name2atom("O1"), molecule.residues[2].name2atom("O"))
+    reference = tuple((float(i), 1., 2.) for i in range(molecule.atom_count))
+    protocol = Xponge.SpongeProtocol(
+        collective_variables=(Xponge.ProtocolCollectiveVariable(
+            name="distance", type="distance", atom_indices=(0, 3),
+        ),),
+        positional_restraints=(Xponge.ProtocolPositionalRestraint(
+            name="position", atom_indices=(3,), reference_coordinates=reference, single_weight_default=1.,
+        ),),
+    )
+    _, mapping = Xponge.save_sponge_input_bundle(
+        molecule, "reordered", tmp_path, protocol=protocol,
+        source_atom_ids=tuple(range(molecule.atom_count)), return_mapping=True,
+    )
+    order = [int(row["source_atom_id"]) for row in mapping]
+    with h5py.File(tmp_path / "reordered_protocol.spgp.h5") as handle:
+        assert handle["/cv/distance/atom_indices"][:].tolist() == [order.index(0), order.index(3)]
+    with h5py.File(tmp_path / "reordered_restart.spgr.h5") as handle:
+        assert handle["/parameters/restart/references/restraint/position/coordinate"][:].tolist() == [list(reference[i]) for i in order]
 
 
 def test_native_bundle_protocol_writes_all_origin_contract_groups(tmp_path):
