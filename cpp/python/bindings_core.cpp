@@ -367,9 +367,9 @@ void bind_core_module(py::module_& m) {
         .def_property("name", [](const ResidueView& self) { return self.get().name; },
                       [](ResidueView& self, const std::string& value) { self.molecule->residue(self.id).name = value; })
         .def_property_readonly("type_name", [](const ResidueView& self) { return self.get().type_name; })
-        .def_property_readonly("chain_id", [](const ResidueView& self) { return std::string(1, self.get().chain_id); })
+        .def_property_readonly("chain_id", [](const ResidueView& self) { return self.get().mmcif_chain_id.empty() ? std::string(1, self.get().chain_id) : self.get().mmcif_chain_id; })
         .def_property_readonly("effective_chain_id",
-                               [](const ResidueView& self) { return std::string(1, self.get().effective_chain_id); })
+                               [](const ResidueView& self) { return self.get().mmcif_chain_id.empty() ? std::string(1, self.get().effective_chain_id) : self.get().mmcif_chain_id; })
         .def_property_readonly("segment_id", [](const ResidueView& self) { return self.get().segment_id; })
         .def_property_readonly("pdb_resseq", [](const ResidueView& self) { return self.get().pdb_resseq; })
         .def_property_readonly("insertion_code",

@@ -1,3 +1,11 @@
+# XpongeCPP 0.2.11
+
+Preserve full mmCIF chain identifiers in residue grouping, chain-end inference,
+explicit terminal selectors and external residue links. Distinct chains such as
+ML1 and ML2 no longer collapse to M or acquire unintended cross-chain bonds.
+Python residue identities and template replacement retain the full chain name.
+PDB reading and writing behavior is unchanged.
+
 # XpongeCPP 0.2.10
 
 Fix bundled SPONGE input export to group linked residue components in contiguous

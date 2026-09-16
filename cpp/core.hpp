@@ -48,6 +48,7 @@ struct Residue {
     std::string original_name;
     char chain_id{' '};
     char effective_chain_id{' '};
+    std::string mmcif_chain_id;
     std::uint32_t segment_id{0};
     std::int32_t pdb_resseq{0};
     char insertion_code{' '};
@@ -340,7 +341,7 @@ struct PdbLoadOptions {
 };
 
 struct MmcifResidueLinkAtom {
-    char chain_id{' '};
+    std::string chain_id{" "};
     int resseq{0};
     char insertion_code{' '};
     std::string residue_name;
@@ -360,7 +361,14 @@ struct MmcifLoadOptions {
     bool ignore_seqres{true};
     bool read_cell{true};
     std::vector<std::string> unterminal_residues;
-    std::vector<PdbLoadOptions::TerminalResidue> terminal_residues;
+    struct TerminalResidue {
+        std::string chain_id{" "};
+        int resseq{0};
+        char insertion_code{' '};
+        bool n_terminal{false};
+        bool c_terminal{false};
+    };
+    std::vector<TerminalResidue> terminal_residues;
     bool infer_terminals{true};
     std::optional<std::string> model_id;
     std::vector<MmcifResidueLink> residue_links;

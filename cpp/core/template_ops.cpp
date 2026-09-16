@@ -316,6 +316,7 @@ void Molecule::replace_residues(const std::unordered_map<ResidueId, Molecule>& r
         const AtomId atom_offset = static_cast<AtomId>(rebuilt.atoms.size());
         Residue copied_residue = replacement_residue;
         copied_residue.chain_id = source_residue.chain_id;
+        copied_residue.mmcif_chain_id = source_residue.mmcif_chain_id;
         copied_residue.effective_chain_id = source_residue.effective_chain_id;
         copied_residue.segment_id = source_residue.segment_id;
         copied_residue.pdb_resseq = source_residue.pdb_resseq;

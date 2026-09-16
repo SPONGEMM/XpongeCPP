@@ -163,7 +163,7 @@ std::optional<std::tuple<char, int, char>> ssbond_ref(const std::string& line, b
     return std::nullopt;
 }
 
-ResidueSelectorSets parse_unterminal_residues(const std::vector<std::string>& selectors) {
+ResidueSelectorSets parse_unterminal_residues(const std::vector<std::string>& selectors, bool full_chain_id) {
     ResidueSelectorSets out;
     for (auto selector : selectors) {
         selector = pdb_trimmed_copy(selector);
@@ -177,11 +177,11 @@ ResidueSelectorSets parse_unterminal_residues(const std::vector<std::string>& se
                            selector.end());
             std::replace(selector.begin(), selector.end(), ',', ':');
         }
-        char chain = '\0';
+        std::string chain;
         std::string residue_text = selector;
         const auto colon = selector.find(':');
         if (colon != std::string::npos) {
-            chain = selector[0];
+            chain = full_chain_id ? pdb_trimmed_copy(selector.substr(0, colon)) : selector.substr(0, 1);
             residue_text = selector.substr(colon + 1);
         }
         char insertion = ' ';
@@ -190,7 +190,7 @@ ResidueSelectorSets parse_unterminal_residues(const std::vector<std::string>& se
             residue_text.pop_back();
         }
         const int resseq = std::stoi(residue_text);
-        if (chain == '\0') {
+        if (chain.empty()) {
             out.all_resseq.insert(resseq);
         } else if (insertion == ' ') {
             out.chain_resseq.insert({chain, resseq});
@@ -201,7 +201,7 @@ ResidueSelectorSets parse_unterminal_residues(const std::vector<std::string>& se
     return out;
 }
 
-bool is_unterminal(const ResidueSelectorSets& selectors, char chain_id, int resseq, char insertion_code) {
+bool is_unterminal(const ResidueSelectorSets& selectors, const std::string& chain_id, int resseq, char insertion_code) {
     return selectors.all_resseq.count(resseq) != 0 ||
            selectors.chain_resseq.count({chain_id, resseq}) != 0 ||
            selectors.chain_resseq_ins.count({chain_id, resseq, insertion_code}) != 0;
@@ -209,6 +209,19 @@ bool is_unterminal(const ResidueSelectorSets& selectors, char chain_id, int ress
 
 std::pair<bool, bool> terminal_residue_flags(const std::vector<PdbLoadOptions::TerminalResidue>& selectors,
                                              char chain_id, int resseq, char insertion_code) {
+    bool n_terminal = false;
+    bool c_terminal = false;
+    for (const auto& selector : selectors) {
+        if (selector.chain_id == chain_id && selector.resseq == resseq && selector.insertion_code == insertion_code) {
+            n_terminal = n_terminal || selector.n_terminal;
+            c_terminal = c_terminal || selector.c_terminal;
+        }
+    }
+    return {n_terminal, c_terminal};
+}
+
+std::pair<bool, bool> terminal_residue_flags(const std::vector<MmcifLoadOptions::TerminalResidue>& selectors,
+                                             const std::string& chain_id, int resseq, char insertion_code) {
     bool n_terminal = false;
     bool c_terminal = false;
     for (const auto& selector : selectors) {
