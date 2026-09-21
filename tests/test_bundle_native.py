@@ -494,57 +494,147 @@ def test_native_bundle_saver_ignores_empty_compatibility_serializers(tmp_path):
     assert (tmp_path / "inactive_compat_topology.spgt.h5").is_file()
 
 
-def test_native_bundle_saver_rejects_user_defined_listed_forces(tmp_path):
+@pytest.mark.parametrize("kind,width", [("sw", 10), ("edip", 17)])
+def test_native_bundle_manybody_matches_legacy_and_reverse(tmp_path, kind, width):
+    import itertools
+    import h5py
+    from XpongeCPP.io_bundle import convert_bundle_to_legacy
+    from XpongeCPP.io_bundle.topology_parsers import parse_topology_file
+
     molecule = _peptide()
-    molecule.add_listed_force_definition(
-        "[[[ User_Defined ]]]\nfloat k\nE = k;\n[[[ END ]]]\n"
+    for i, atom in enumerate(molecule.atoms):
+        setattr(atom, kind + "_type", ("B", "A")[i % 2])
+    for arity in (2, 3):
+        for i, types in enumerate(itertools.product(("B", "A"), repeat=arity)):
+            getattr(molecule, "add_" + kind + "_type")(
+                "-".join(types), *[arity * 100 + i * 20 + j + 0.25 for j in range(width)]
+            )
+    legacy = tmp_path / "source"
+    Xponge.save_sponge_input(molecule, "original", legacy)
+    bundle = tmp_path / "bundle"
+    Xponge.save_sponge_input_bundle(molecule, "system", bundle)
+    key = kind.upper() + "_in_file"
+    expected = parse_topology_file(key, legacy / ("original_" + kind.upper() + ".txt"))
+    with h5py.File(bundle / "system_topology.spgt.h5") as handle:
+        for dataset in expected:
+            np.testing.assert_array_equal(handle[dataset.path][()], dataset.data)
+            assert handle[dataset.path].dtype == dataset.data.dtype
+        assert "/parameters/sponge/files/legacy_sidecars" not in handle
+        assert handle["/topology/forcefield_hash"].asstr()[()] == _content_hash(
+            handle, "topology.spgt.h5", ("/forcefield/", "/manybody/", "/qc/")
+        )
+    (bundle / "run.mdin").write_text(
+        "test\ninput_h5_topology_path = system_topology.spgt.h5\n"
+        "input_h5_protocol_path = system_protocol.spgp.h5\n"
+        "input_h5_restart_path = system_restart.spgr.h5\ninput_h5_restart_load = structural\n"
     )
+    output = tmp_path / "reverse"
+    convert_bundle_to_legacy(bundle, output, mdin="run.mdin", prefix="roundtrip")
+    actual = parse_topology_file(key, output / ("roundtrip_" + kind.upper() + ".txt"))
+    for left, right in zip(expected, actual):
+        assert left.path == right.path
+        np.testing.assert_array_equal(left.data, right.data)
 
-    with pytest.raises(ValueError, match="user-defined listed forces"):
-        Xponge.save_sponge_input_bundle(molecule, "custom", tmp_path)
 
-    assert not list(tmp_path.glob("custom_*"))
+_LISTED_DEFINITION = """[[[ custom_bond ]]]
+[[ parameters ]]
+int atom_a, int atom_b, int label, float k, float r0
+[[ potential ]]
+E = k * (r_ab - r0) * (r_ab - r0);
+[[ connected_atoms ]]
+ab
+[[ constrain_distance ]]
+r0
+[[ end ]]
+"""
 
 
-def test_native_bundle_saver_rejects_stillinger_weber_parameters(tmp_path):
+@pytest.mark.parametrize("definition_source", ["molecule", "serializer"])
+def test_native_bundle_custom_listed_force_with_rb(tmp_path, definition_source):
+    import h5py
+    from XpongeCPP.io_bundle import convert_bundle_to_legacy
+    from XpongeCPP.io_bundle.topology_parsers import parse_listed_force_data_file
+
     molecule = _peptide()
-    molecule.add_sw_type(
-        "S-S", 1.1, 2.2, 3.3, 4.0, 5.0, 6.6, 7.7, 8.8, 0.0, 0.0
+    molecule.add_ryckaert_bellemans(0, 1, 2, 3, 1., 2., 3., 4., 5., 6.)
+    if definition_source == "molecule":
+        molecule.add_listed_force_definition(_LISTED_DEFINITION)
+    else:
+        Xponge.Molecule.Set_Save_SPONGE_Input("listed_forces")(lambda _: _LISTED_DEFINITION)
+    payload = "2\n0 1 16777217 10.25 1.5\n2 3 -7 3.5 2.5\n"
+    Xponge.Molecule.Set_Save_SPONGE_Input("custom_bond")(lambda _: payload)
+    try:
+        Xponge.save_sponge_input_bundle(molecule, "system", tmp_path)
+    finally:
+        Xponge.Molecule.Del_Save_SPONGE_Input("custom_bond")
+        if definition_source == "serializer":
+            Xponge.Molecule.Del_Save_SPONGE_Input("listed_forces")
+    root = "/forcefield/custom_force/listed"
+    with h5py.File(tmp_path / "system_topology.spgt.h5") as handle:
+        assert handle[root + "/name"].asstr()[:].tolist() == ["Ryckaert_Bellemans", "custom_bond"]
+        assert handle[root + "/parameters/offset"][:].tolist() == [0, 10, 15]
+        data = handle[root + "/data/custom_bond"]
+        assert data["parameter/int_value"][:, 2].tolist() == [16777217, -7]
+        np.testing.assert_array_equal(data["parameter/float_value"][:, 3:], [[10.25, 1.5], [3.5, 2.5]])
+        assert handle["/topology/forcefield_hash"].asstr()[()] == _content_hash(
+            handle, "topology.spgt.h5", ("/forcefield/", "/manybody/", "/qc/")
+        )
+        assert "/parameters/sponge/files/legacy_sidecars" not in handle
+    (tmp_path / "run.mdin").write_text(
+        "test\ninput_h5_topology_path = system_topology.spgt.h5\n"
+        "input_h5_protocol_path = system_protocol.spgp.h5\n"
+        "input_h5_restart_path = system_restart.spgr.h5\ninput_h5_restart_load = structural\n"
     )
+    convert_bundle_to_legacy(tmp_path, tmp_path / "reverse", mdin="run.mdin", prefix="roundtrip")
+    datasets = parse_listed_force_data_file("custom_bond", tmp_path / "reverse/roundtrip_custom_bond.txt",
+        parameter_types=["int", "int", "int", "float", "float"],
+        parameter_names=["atom_a", "atom_b", "label", "k", "r0"])
+    with h5py.File(tmp_path / "system_topology.spgt.h5") as handle:
+        for dataset in datasets:
+            if dataset.data.dtype.kind == "O":
+                np.testing.assert_array_equal(handle[dataset.path].asstr()[()], dataset.data)
+            else:
+                np.testing.assert_array_equal(handle[dataset.path][()], dataset.data)
 
-    with pytest.raises(ValueError, match="Stillinger-Weber"):
-        Xponge.save_sponge_input_bundle(molecule, "sw", tmp_path)
 
-    assert not list(tmp_path.glob("sw_*"))
-
-
-def test_native_bundle_saver_rejects_edip_parameters(tmp_path):
+@pytest.mark.parametrize("payload,error", [
+    (None, "missing listed force data"),
+    ("1\n0 1 1 2\n", "missing listed force parameter data"),
+    ("1\n0 999999 1 2 3\n", "atom index"),
+    ("1\n0 1 1.5 2 3\n", "integer"),
+    ("1\n0 1 1 2 3 4\n", "extra listed force"),
+])
+def test_native_bundle_rejects_invalid_listed_payload(tmp_path, payload, error):
     molecule = _peptide()
-    molecule.add_edip_type(
-        "E-E",
-        1.1,
-        2.2,
-        3.3,
-        4.4,
-        5.5,
-        6.6,
-        7.7,
-        8.8,
-        0.0,
-        0.0,
-        0.0,
-        12.12,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-    )
+    molecule.add_listed_force_definition(_LISTED_DEFINITION)
+    if payload is not None:
+        Xponge.Molecule.Set_Save_SPONGE_Input("custom_bond")(lambda _: payload)
+    try:
+        with pytest.raises(ValueError, match=error):
+            Xponge.save_sponge_input_bundle(molecule, "invalid", tmp_path)
+    finally:
+        if payload is not None:
+            Xponge.Molecule.Del_Save_SPONGE_Input("custom_bond")
+    assert not list(tmp_path.glob("invalid_*"))
 
-    with pytest.raises(ValueError, match="EDIP"):
-        Xponge.save_sponge_input_bundle(molecule, "edip", tmp_path)
 
-    assert not list(tmp_path.glob("edip_*"))
+def test_native_bundle_rejects_malformed_listed_definition(tmp_path):
+    molecule = _peptide()
+    molecule.add_listed_force_definition("[[[ broken ]]]\nfloat k\n")
+    with pytest.raises(ValueError, match="listed force"):
+        Xponge.save_sponge_input_bundle(molecule, "invalid", tmp_path)
+    assert not list(tmp_path.glob("invalid_*"))
+
+
+@pytest.mark.parametrize("kind,width", [("sw", 10), ("edip", 17)])
+def test_native_bundle_rejects_missing_manybody_parameters(tmp_path, kind, width):
+    molecule = _peptide()
+    getattr(molecule, "add_" + kind + "_type")("A-A", *([1.] * width))
+    for atom in molecule.atoms:
+        setattr(atom, kind + "_type", "A")
+    with pytest.raises(ValueError, match="missing " + kind + " parameter: A-A-A"):
+        Xponge.save_sponge_input_bundle(molecule, "invalid", tmp_path)
+    assert not list(tmp_path.glob("invalid_*"))
 
 
 def test_native_bundle_saver_rejects_escaping_prefix(tmp_path):

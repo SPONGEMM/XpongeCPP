@@ -586,7 +586,8 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname);
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input_bundle(
-    const Molecule& molecule, const std::string& prefix, const std::filesystem::path& dirname);
+    const Molecule& molecule, const std::string& prefix, const std::filesystem::path& dirname,
+    const std::unordered_map<std::string, std::string>& listed_force_payloads = {});
 void save_pdb(const Molecule& molecule, const std::filesystem::path& filename);
 void save_mol2(const Molecule& molecule, const std::filesystem::path& filename);
 struct GroData {

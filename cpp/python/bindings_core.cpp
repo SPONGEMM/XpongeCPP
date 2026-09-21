@@ -75,42 +75,22 @@ void require_empty_native_protocol(const py::object& protocol) {
     }
 }
 
-void require_native_bundle_compatibility(const std::shared_ptr<Molecule>& molecule) {
+std::unordered_map<std::string, std::string> native_bundle_payloads(const std::shared_ptr<Molecule>& molecule) {
     const py::object workflows = py::module_::import("XpongeCPP._compat.workflows");
     if (py::cast<bool>(workflows.attr("min_bonded_parameters_enabled")())) {
-        throw std::invalid_argument(
-            "bundle export does not support minimum-bonded parameters "
-            "(fake_mass, fake_LJ, fake_charge)");
+        throw std::invalid_argument("bundle export does not support minimum-bonded parameters (fake_mass, fake_LJ, fake_charge)");
     }
-
+    std::unordered_map<std::string, std::string> payloads;
     const py::object molecule_type = py::module_::import("XpongeCPP._core").attr("Molecule");
-    if (!py::hasattr(molecule_type, "_save_functions")) {
-        return;
-    }
-    const py::dict serializers =
-        py::reinterpret_borrow<py::dict>(molecule_type.attr("_save_functions"));
-    if (py::len(serializers) == 0) {
-        return;
-    }
-    py::list active_keys;
+    if (!py::hasattr(molecule_type, "_save_functions")) return payloads;
+    const py::dict serializers = py::reinterpret_borrow<py::dict>(molecule_type.attr("_save_functions"));
     for (const auto item : serializers) {
-        const py::object payload =
-            py::reinterpret_borrow<py::object>(item.second)(py::cast(molecule));
-        const int is_active = PyObject_IsTrue(payload.ptr());
-        if (is_active < 0) {
-            throw py::error_already_set();
-        }
-        if (is_active != 0) {
-            active_keys.append(item.first);
-        }
+        const py::object payload = py::reinterpret_borrow<py::object>(item.second)(py::cast(molecule));
+        const int active = PyObject_IsTrue(payload.ptr());
+        if (active < 0) throw py::error_already_set();
+        if (active) payloads.emplace(py::cast<std::string>(item.first), py::cast<std::string>(payload));
     }
-    if (active_keys.empty()) {
-        return;
-    }
-    throw std::invalid_argument(
-        "bundle export does not support active compatibility serializers " +
-        py::str(active_keys).cast<std::string>() +
-        "; native bundle conversion is required");
+    return payloads;
 }
 
 std::string normalize_bundle_prefix(const py::object& prefix, const std::string& fallback) {
@@ -124,9 +104,9 @@ std::string normalize_bundle_prefix(const py::object& prefix, const std::string&
 std::shared_ptr<Molecule> save_sponge_input_bundle_object(
     const std::shared_ptr<Molecule>& molecule, py::object prefix, py::object dirname, py::object protocol) {
     require_empty_native_protocol(protocol);
-    require_native_bundle_compatibility(molecule);
+    const auto payloads = native_bundle_payloads(molecule);
     save_sponge_input_bundle(*molecule, normalize_bundle_prefix(prefix, molecule->name),
-                             py::str(dirname).cast<std::string>());
+                             py::str(dirname).cast<std::string>(), payloads);
     return molecule;
 }
 
@@ -135,9 +115,9 @@ std::shared_ptr<Molecule> save_residuetype_bundle_object(
     require_empty_native_protocol(protocol);
     auto molecule = std::make_shared<Molecule>(residue_type.name());
     molecule->append_residue_from_type(residue_type, 0.0, 0.0, 0.0);
-    require_native_bundle_compatibility(molecule);
+    const auto payloads = native_bundle_payloads(molecule);
     save_sponge_input_bundle(*molecule, normalize_bundle_prefix(prefix, molecule->name),
-                             py::str(dirname).cast<std::string>());
+                             py::str(dirname).cast<std::string>(), payloads);
     return molecule;
 }
 
@@ -284,9 +264,9 @@ std::shared_ptr<Molecule> save_residue_bundle_object(
     const ResidueView& residue, py::object prefix, py::object dirname, py::object protocol) {
     require_empty_native_protocol(protocol);
     auto molecule = molecule_from_residue_view(residue);
-    require_native_bundle_compatibility(molecule);
+    const auto payloads = native_bundle_payloads(molecule);
     save_sponge_input_bundle(*molecule, normalize_bundle_prefix(prefix, molecule->name),
-                             py::str(dirname).cast<std::string>());
+                             py::str(dirname).cast<std::string>(), payloads);
     return molecule;
 }
 
@@ -298,9 +278,9 @@ std::shared_ptr<Molecule> save_template_like_bundle_object(
     }
     auto molecule = std::make_shared<Molecule>(
         get_template_molecule(py::str(source.attr("name")).cast<std::string>()));
-    require_native_bundle_compatibility(molecule);
+    const auto payloads = native_bundle_payloads(molecule);
     save_sponge_input_bundle(*molecule, normalize_bundle_prefix(prefix, molecule->name),
-                             py::str(dirname).cast<std::string>());
+                             py::str(dirname).cast<std::string>(), payloads);
     return molecule;
 }
 

@@ -143,6 +143,17 @@ XpongeCPP.save_sponge_input_raw(molecule, "system", "inputs")
 XpongeCPP.save_sponge_input_bundle(molecule, "system", "inputs")
 ```
 
+Native topology export includes SW and EDIP pair/triple tables and atom-type
+indices. Custom listed forces can be declared with
+`molecule.add_listed_force_definition(definition)` (the usual `[[[ name ]]]`
+configuration), with their counted parameter rows supplied by a matching
+`Molecule.Set_Save_SPONGE_Input(name)` serializer. A `listed_forces` serializer
+may also supply the definitions. Definitions and data are parsed in memory and
+stored as typed HDF5 datasets, without text sidecars; custom modules can coexist
+with built-in Ryckaert–Bellemans terms. Missing data, conflicting definitions,
+and invalid parameter rows fail before replacing the output bundle.
+Minimum-bonded `fake_mass`, `fake_LJ`, and `fake_charge` remain unsupported.
+
 For bundled input, pass a `SpongeProtocol` via `protocol=`. An RMSD
 `ProtocolCollectiveVariable` stores its `reference_coordinates` inline in
 `protocol.spgp.h5` at `/cv/<name>/coordinate`: one finite XYZ row per selected

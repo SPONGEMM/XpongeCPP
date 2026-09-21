@@ -351,7 +351,330 @@ std::pair<float, float> lj_ab(
           static_cast<float>(2.0 * epsilon * r6)};
 }
 
-void write_native_topology(H5File &file, const Molecule &molecule) {
+// The legacy serializer interface supplies strings; parse them in memory and
+// write typed datasets only. No compatibility files are produced.
+struct ListedModule {
+  std::string name;
+  std::map<std::string, std::string> fields;
+};
+
+std::string trim_bundle_text(const std::string &text) {
+  const auto begin = text.find_first_not_of(" \t\r\n");
+  if (begin == std::string::npos)
+    return {};
+  return text.substr(begin, text.find_last_not_of(" \t\r\n") - begin + 1);
+}
+
+void append_listed_modules(std::vector<ListedModule> &modules,
+                           const std::string &text) {
+  std::istringstream input(text);
+  std::string line, key;
+  ListedModule module;
+  bool active = false;
+  while (std::getline(input, line)) {
+    line = trim_bundle_text(line);
+    if (line.empty())
+      continue;
+    if (line.rfind("[[[", 0) == 0 && line.size() >= 6 &&
+        line.substr(line.size() - 3) == "]]]") {
+      if (active)
+        throw std::invalid_argument("listed force missing [[ end ]]");
+      module = {trim_bundle_text(line.substr(3, line.size() - 6)), {}};
+      if (module.name.empty() ||
+          module.name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL"
+                                        "MNOPQRSTUVWXYZ0123456789_") !=
+              std::string::npos)
+        throw std::invalid_argument("invalid listed force name: " +
+                                    module.name);
+      active = true;
+      key.clear();
+    } else if (line.rfind("[[", 0) == 0 && line.size() >= 4 &&
+               line.substr(line.size() - 2) == "]]") {
+      if (!active)
+        throw std::invalid_argument("listed force key outside section");
+      key = trim_bundle_text(line.substr(2, line.size() - 4));
+      if (key == "end") {
+        if (!module.fields.count("potential") ||
+            !module.fields.count("parameters") ||
+            module.fields.at("potential").empty())
+          throw std::invalid_argument(
+              "listed force requires potential and parameters: " + module.name);
+        auto previous =
+            std::find_if(modules.begin(), modules.end(), [&](const auto &item) {
+              return item.name == module.name;
+            });
+        if (previous == modules.end())
+          modules.push_back(module);
+        else if (previous->fields != module.fields)
+          throw std::invalid_argument("conflicting listed force definition: " +
+                                      module.name);
+        active = false;
+      } else {
+        if (key != "potential" && key != "parameters" &&
+            key != "connected_atoms" && key != "constrain_distance")
+          throw std::invalid_argument("unsupported listed force key: " + key);
+        if (!module.fields.emplace(key, "").second)
+          throw std::invalid_argument("duplicate listed force key: " + key);
+      }
+    } else {
+      if (!active || key.empty())
+        throw std::invalid_argument("invalid listed force definition");
+      auto &value = module.fields.at(key);
+      if (!value.empty())
+        value += "\n";
+      value += line;
+    }
+  }
+  if (active)
+    throw std::invalid_argument("listed force missing [[ end ]]");
+}
+
+void write_listed_modules(
+    H5File &file, const Molecule &molecule,
+    const std::unordered_map<std::string, std::string> &payloads) {
+  std::vector<ListedModule> modules;
+  auto data = payloads;
+  if (!molecule.ryckaert_bellemans.empty()) {
+    std::vector<std::pair<std::array<std::int32_t, 4>, std::array<double, 6>>>
+        rows;
+    for (const auto &term : molecule.ryckaert_bellemans) {
+      std::array<double, 6> c{term.c0, term.c1, term.c2,
+                              term.c3, term.c4, term.c5};
+      if (std::none_of(c.begin(), c.end(), [](double x) { return x != 0; }))
+        continue;
+      std::array<std::int32_t, 4> atoms{static_cast<std::int32_t>(term.atom0),
+                                        static_cast<std::int32_t>(term.atom1),
+                                        static_cast<std::int32_t>(term.atom2),
+                                        static_cast<std::int32_t>(term.atom3)};
+      if (atoms.front() > atoms.back())
+        std::reverse(atoms.begin(), atoms.end());
+      rows.emplace_back(atoms, c);
+    }
+    if (!rows.empty()) {
+      std::sort(rows.begin(), rows.end());
+      modules.push_back({"Ryckaert_Bellemans",
+                         {{"parameters", kRyckaertBellemansParameterText},
+                          {"potential", kRyckaertBellemansPotential}}});
+      std::ostringstream out;
+      out << rows.size() << '\n'
+          << std::setprecision(std::numeric_limits<double>::max_digits10);
+      for (const auto &row : rows) {
+        for (auto atom : row.first)
+          out << atom << ' ';
+        for (auto c : row.second)
+          out << c << ' ';
+        out << '\n';
+      }
+      if (!data.emplace("Ryckaert_Bellemans", out.str()).second)
+        throw std::invalid_argument("duplicate Ryckaert_Bellemans payload");
+    }
+  }
+  for (const auto &definition : molecule.listed_force_definitions)
+    append_listed_modules(modules, definition);
+  if (data.count("listed_forces")) {
+    append_listed_modules(modules, data.at("listed_forces"));
+    data.erase("listed_forces");
+  }
+  for (const auto &entry : data)
+    if (std::none_of(modules.begin(), modules.end(), [&](const auto &module) {
+          return module.name == entry.first;
+        }))
+      throw std::invalid_argument(
+          "bundle export does not support active compatibility serializer "
+          "without listed force definition: " +
+          entry.first);
+  if (modules.empty())
+    return;
+  const std::string root = "/forcefield/custom_force/listed";
+  std::vector<std::string> names, potentials, texts, types, parameters,
+      connected, distances;
+  std::vector<std::int64_t> offsets{0};
+  std::vector<std::int32_t> atoms, ints;
+  for (const auto &module : modules) {
+    const auto &name = module.name;
+    std::vector<std::string> local_types, local_names;
+    std::vector<std::int32_t> local_atoms;
+    std::vector<std::uint8_t> local_ints;
+    std::istringstream declarations(module.fields.at("parameters"));
+    std::string declaration;
+    while (std::getline(declarations, declaration, ',')) {
+      std::istringstream parser(declaration);
+      std::string type, parameter, extra;
+      if (!(parser >> type >> parameter) || (parser >> extra) ||
+          (type != "int" && type != "float"))
+        throw std::invalid_argument(
+            "invalid listed force parameter declaration: " + name);
+      if (std::find(local_names.begin(), local_names.end(), parameter) !=
+          local_names.end())
+        throw std::invalid_argument("duplicate listed force parameter: " +
+                                    parameter);
+      local_types.push_back(type);
+      local_names.push_back(parameter);
+      local_ints.push_back(type == "int");
+      local_atoms.push_back(type == "int" && parameter.rfind("atom_", 0) == 0 &&
+                            parameter.size() == 6);
+    }
+    const auto atom_parameters =
+        std::count(local_atoms.begin(), local_atoms.end(), 1);
+    if (atom_parameters < 1 || atom_parameters > 6)
+      throw std::invalid_argument(
+          "listed force must declare 1 to 6 atom parameters: " + name);
+    const auto field = [&](const std::string &key) {
+      auto it = module.fields.find(key);
+      return it == module.fields.end() ? std::string{} : it->second;
+    };
+    const auto connection = field("connected_atoms");
+    if (!connection.empty() &&
+        (connection.size() != 2 || connection[0] == connection[1]))
+      throw std::invalid_argument("invalid listed force connected_atoms: " +
+                                  name);
+    if (!data.count(name))
+      throw std::invalid_argument("missing listed force data: " + name);
+    std::istringstream input(data.at(name));
+    std::int64_t count;
+    if (!(input >> count) || count < 0)
+      throw std::invalid_argument("invalid listed force item count: " + name);
+    std::vector<float> values, floats;
+    std::vector<std::int32_t> integers;
+    for (std::int64_t i = 0; i < count; ++i) {
+      for (std::size_t j = 0; j < local_names.size(); ++j) {
+        std::string token;
+        if (!(input >> token))
+          throw std::invalid_argument("missing listed force parameter data: " +
+                                      name);
+        std::size_t consumed = 0;
+        if (local_ints[j]) {
+          const auto value = std::stoll(token, &consumed);
+          if (consumed != token.size() ||
+              value < std::numeric_limits<std::int32_t>::min() ||
+              value > std::numeric_limits<std::int32_t>::max() ||
+              (local_atoms[j] &&
+               (value < 0 ||
+                static_cast<std::size_t>(value) >= molecule.atoms.size())))
+            throw std::invalid_argument(
+                "invalid listed force integer/atom index: " + name);
+          values.push_back(static_cast<float>(value));
+          integers.push_back(static_cast<std::int32_t>(value));
+          floats.push_back(std::numeric_limits<float>::quiet_NaN());
+        } else {
+          const auto value = std::stof(token, &consumed);
+          if (consumed != token.size() || !std::isfinite(value))
+            throw std::invalid_argument("invalid listed force float: " + name);
+          values.push_back(value);
+          integers.push_back(0);
+          floats.push_back(value);
+        }
+      }
+    }
+    std::string extra;
+    if (input >> extra)
+      throw std::invalid_argument("extra listed force parameter data: " + name);
+    const auto path = root + "/data/" + name;
+    write_string(file, path + "/name", name);
+    write_scalar<std::int64_t>(file, path + "/item_count", count);
+    write_strings(file, path + "/parameter/name", local_names);
+    write_strings(file, path + "/parameter/type", local_types);
+    write_bool_array(file, path + "/parameter/is_int", {local_ints.size()},
+                     local_ints);
+    const std::vector<std::size_t> shape{static_cast<std::size_t>(count),
+                                         local_names.size()};
+    write_array(file, path + "/parameter/value", shape, values);
+    write_array(file, path + "/parameter/int_value", shape, integers);
+    write_array(file, path + "/parameter/float_value", shape, floats);
+    names.push_back(name);
+    potentials.push_back(module.fields.at("potential"));
+    texts.push_back(module.fields.at("parameters"));
+    connected.push_back(connection);
+    distances.push_back(field("constrain_distance"));
+    types.insert(types.end(), local_types.begin(), local_types.end());
+    parameters.insert(parameters.end(), local_names.begin(), local_names.end());
+    atoms.insert(atoms.end(), local_atoms.begin(), local_atoms.end());
+    ints.insert(ints.end(), local_ints.begin(), local_ints.end());
+    offsets.push_back(parameters.size());
+  }
+  write_strings(file, root + "/name", names);
+  write_strings(file, root + "/potential", potentials);
+  write_strings(file, root + "/parameters/text", texts);
+  write_strings(file, root + "/parameters/type", types);
+  write_strings(file, root + "/parameters/name", parameters);
+  write_array(file, root + "/parameters/offset", {offsets.size()}, offsets);
+  write_array(file, root + "/parameters/is_atom", {atoms.size()}, atoms);
+  write_array(file, root + "/parameters/is_int", {ints.size()}, ints);
+  write_strings(file, root + "/connected_atoms", connected);
+  write_strings(file, root + "/constrain_distance", distances);
+  write_scalar<std::int64_t>(file, root + "/count", modules.size());
+}
+
+template <typename Parameter, typename Pair, typename Triple>
+void write_manybody_table(
+    H5File &file, const Molecule &molecule, const std::string &name,
+    const std::string Atom::*atom_field,
+    const std::unordered_map<std::string, Parameter> &parameters,
+    Pair pair_values, Triple triple_values) {
+  if (parameters.empty())
+    return;
+  std::vector<std::string> types;
+  std::vector<std::int32_t> atom_types, pairs, triples;
+  std::vector<float> pair_parameters, triple_parameters;
+  for (const auto &atom : molecule.atoms) {
+    const auto &type = atom.*atom_field;
+    if (type.empty())
+      throw std::invalid_argument("missing " + name +
+                                  " type for atom: " + atom.name);
+    auto it = std::find(types.begin(), types.end(), type);
+    if (it == types.end()) {
+      types.push_back(type);
+      it = types.end() - 1;
+    }
+    atom_types.push_back(static_cast<std::int32_t>(it - types.begin()));
+  }
+  const auto get = [&](const std::string &key) -> const Parameter & {
+    auto it = parameters.find(key);
+    if (it == parameters.end())
+      throw std::invalid_argument("missing " + name + " parameter: " + key);
+    return it->second;
+  };
+  std::size_t pair_width = 0, triple_width = 0;
+  for (std::size_t i = 0; i < types.size(); ++i) {
+    for (std::size_t j = 0; j < types.size(); ++j) {
+      pairs.insert(pairs.end(), {static_cast<std::int32_t>(i),
+                                 static_cast<std::int32_t>(j)});
+      const auto pair = pair_values(get(types[i] + "-" + types[j]));
+      pair_width = pair.size();
+      pair_parameters.insert(pair_parameters.end(), pair.begin(), pair.end());
+      for (std::size_t k = 0; k < types.size(); ++k) {
+        triples.insert(triples.end(), {static_cast<std::int32_t>(i),
+                                       static_cast<std::int32_t>(j),
+                                       static_cast<std::int32_t>(k)});
+        const auto triple =
+            triple_values(get(types[i] + "-" + types[j] + "-" + types[k]));
+        triple_width = triple.size();
+        triple_parameters.insert(triple_parameters.end(), triple.begin(),
+                                 triple.end());
+      }
+    }
+  }
+  for (const auto value : pair_parameters)
+    if (!std::isfinite(value))
+      throw std::invalid_argument("nonfinite " + name + " parameter");
+  for (const auto value : triple_parameters)
+    if (!std::isfinite(value))
+      throw std::invalid_argument("nonfinite " + name + " parameter");
+  const auto root = "/manybody/" + name;
+  const auto n = types.size();
+  write_scalar<std::int32_t>(file, root + "/atom_type_count", n);
+  write_array(file, root + "/atom_type", {atom_types.size()}, atom_types);
+  write_array(file, root + "/pair/type", {n * n, 2}, pairs);
+  write_array(file, root + "/pair/parameters", {n * n, pair_width},
+              pair_parameters);
+  write_array(file, root + "/triple/type", {n * n * n, 3}, triples);
+  write_array(file, root + "/triple/parameters", {n * n * n, triple_width},
+              triple_parameters);
+}
+
+void write_native_topology(
+    H5File &file, const Molecule &molecule,
+    const std::unordered_map<std::string, std::string> &listed_payloads) {
   const auto topology = build_topology(molecule);
   const auto atom_count = molecule.atoms.size();
   std::vector<float> mass, charge;
@@ -586,91 +909,13 @@ void write_native_topology(H5File &file, const Molecule &molecule) {
     }
   }
 
-  if (!molecule.ryckaert_bellemans.empty()) {
-    struct RyckaertBellemansRow {
-      std::array<std::int32_t, 4> atoms;
-      std::array<double, 6> coefficients;
-    };
-    std::vector<RyckaertBellemansRow> rows;
-    for (const auto &dihedral : molecule.ryckaert_bellemans) {
-      const std::array<double, 6> coefficients{
-          dihedral.c0, dihedral.c1, dihedral.c2,
-          dihedral.c3, dihedral.c4, dihedral.c5};
-      if (std::none_of(coefficients.begin(), coefficients.end(),
-                       [](double value) { return value != 0.0; }))
-        continue;
-      std::array<std::int32_t, 4> atoms{
-          static_cast<std::int32_t>(dihedral.atom0),
-          static_cast<std::int32_t>(dihedral.atom1),
-          static_cast<std::int32_t>(dihedral.atom2),
-          static_cast<std::int32_t>(dihedral.atom3)};
-      if (atoms.front() > atoms.back())
-        std::reverse(atoms.begin(), atoms.end());
-      rows.push_back({atoms, coefficients});
-    }
-    std::sort(rows.begin(), rows.end(), [](const auto &lhs, const auto &rhs) {
-      return std::tie(lhs.atoms, lhs.coefficients) <
-             std::tie(rhs.atoms, rhs.coefficients);
-    });
-    if (!rows.empty()) {
-      const std::vector<std::string> parameter_names{
-          "atom_a", "atom_b", "atom_c", "atom_d", "c0",
-          "c1",     "c2",     "c3",     "c4",     "c5"};
-      const std::vector<std::string> parameter_types{
-          "int",   "int",   "int",   "int",   "float",
-          "float", "float", "float", "float", "float"};
-      const std::vector<std::int32_t> parameter_is_atom{
-          1, 1, 1, 1, 0, 0, 0, 0, 0, 0};
-      const std::vector<std::int32_t> parameter_is_int{
-          1, 1, 1, 1, 0, 0, 0, 0, 0, 0};
-      const std::string root = "/forcefield/custom_force/listed";
-      write_strings(file, root + "/name", {"Ryckaert_Bellemans"});
-      write_strings(file, root + "/potential", {kRyckaertBellemansPotential});
-      write_strings(file, root + "/parameters/text",
-                    {kRyckaertBellemansParameterText});
-      write_strings(file, root + "/parameters/type", parameter_types);
-      write_strings(file, root + "/parameters/name", parameter_names);
-      write_array<std::int64_t>(file, root + "/parameters/offset", {2},
-                                {0, 10});
-      write_array(file, root + "/parameters/is_atom", {10},
-                  parameter_is_atom);
-      write_array(file, root + "/parameters/is_int", {10}, parameter_is_int);
-      write_strings(file, root + "/connected_atoms", {""});
-      write_strings(file, root + "/constrain_distance", {""});
-      write_scalar<std::int64_t>(file, root + "/count", 1);
-
-      const std::string data_root = root + "/data/Ryckaert_Bellemans";
-      std::vector<float> values, float_values;
-      std::vector<std::int32_t> int_values;
-      values.reserve(rows.size() * 10);
-      int_values.reserve(rows.size() * 10);
-      float_values.reserve(rows.size() * 10);
-      for (const auto &row : rows) {
-        for (const auto atom : row.atoms) {
-          values.push_back(static_cast<float>(atom));
-          int_values.push_back(atom);
-          float_values.push_back(std::numeric_limits<float>::quiet_NaN());
-        }
-        for (const auto coefficient : row.coefficients) {
-          values.push_back(static_cast<float>(coefficient));
-          int_values.push_back(0);
-          float_values.push_back(static_cast<float>(coefficient));
-        }
-      }
-      write_string(file, data_root + "/name", "Ryckaert_Bellemans");
-      write_scalar<std::int64_t>(file, data_root + "/item_count", rows.size());
-      write_strings(file, data_root + "/parameter/name", parameter_names);
-      write_strings(file, data_root + "/parameter/type", parameter_types);
-      write_bool_array(file, data_root + "/parameter/is_int", {10},
-                       {1, 1, 1, 1, 0, 0, 0, 0, 0, 0});
-      write_array(file, data_root + "/parameter/value", {rows.size(), 10},
-                  values);
-      write_array(file, data_root + "/parameter/int_value",
-                  {rows.size(), 10}, int_values);
-      write_array(file, data_root + "/parameter/float_value",
-                  {rows.size(), 10}, float_values);
-    }
-  }
+  write_listed_modules(file, molecule, listed_payloads);
+  write_manybody_table(file, molecule, "sw", &Atom::sw_type, molecule.sw_parameters,
+      [](const StillingerWeberParameter &p) { return std::array<double, 8>{p.a_big, p.b_big, p.epsilon, p.p, p.q, p.a, p.gamma, p.sigma}; },
+      [](const StillingerWeberParameter &p) { return std::array<double, 3>{p.lambda, p.epsilon, p.b}; });
+  write_manybody_table(file, molecule, "edip", &Atom::edip_type, molecule.edip_parameters,
+      [](const EDIPParameter &p) { return std::array<double, 8>{p.alpha, p.c, p.a, p.a_big, p.b_big, p.rho, p.beta, p.sigma}; },
+      [](const EDIPParameter &p) { return std::array<double, 9>{p.eta, p.gamma, p.lambda, p.q0, p.mu, p.u1, p.u2, p.u3, p.u4}; });
 
   if (molecule.has_gb_parameters) {
     std::vector<float> gb_params;
@@ -978,7 +1223,8 @@ public:
 std::unordered_map<std::string, std::filesystem::path>
 save_sponge_input_bundle(const Molecule &input_molecule,
                          const std::string &prefix,
-                         const std::filesystem::path &dirname) {
+                         const std::filesystem::path &dirname,
+                         const std::unordered_map<std::string, std::string> &listed_payloads) {
   std::optional<Molecule> molecule_with_generated_cmaps;
   if (input_molecule.cmaps.empty() && has_amber_cmap_parameters()) {
     molecule_with_generated_cmaps = input_molecule;
@@ -993,19 +1239,6 @@ save_sponge_input_bundle(const Molecule &input_molecule,
     throw std::invalid_argument(
         "bundle export does not support minimum-bonded parameters "
         "(fake_mass, fake_LJ, fake_charge)");
-  }
-  if (!molecule.listed_force_definitions.empty()) {
-    throw std::invalid_argument(
-        "bundle export does not support user-defined listed forces; only "
-        "typed Ryckaert-Bellemans terms are supported");
-  }
-  if (!molecule.sw_parameters.empty()) {
-    throw std::invalid_argument(
-        "bundle export does not support Stillinger-Weber parameters");
-  }
-  if (!molecule.edip_parameters.empty()) {
-    throw std::invalid_argument(
-        "bundle export does not support EDIP parameters");
   }
   const std::filesystem::path relative(prefix.empty() ? molecule.name : prefix);
   if (relative.is_absolute())
@@ -1036,7 +1269,7 @@ save_sponge_input_bundle(const Molecule &input_molecule,
   std::string forcefield_hash;
   {
     H5File topology(files.temporary[0], &hash_tracker);
-    write_native_topology(topology, molecule);
+    write_native_topology(topology, molecule, listed_payloads);
     topology_hash = hash_tracker.content_hash("topology.spgt.h5");
     atom_order_hash = hash_tracker.content_hash(
         "topology.spgt.h5", {"/atoms/", "/residues/"});
