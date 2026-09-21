@@ -143,6 +143,22 @@ XpongeCPP.save_sponge_input_raw(molecule, "system", "inputs")
 XpongeCPP.save_sponge_input_bundle(molecule, "system", "inputs")
 ```
 
+For bundled input, pass a `SpongeProtocol` via `protocol=`. An RMSD
+`ProtocolCollectiveVariable` stores its `reference_coordinates` inline in
+`protocol.spgp.h5` at `/cv/<name>/coordinate`: one finite XYZ row per selected
+atom, in `atom_indices` or `atom_refs` order. SPONGE continues to accept the
+old restart reference path; if both references are present, they must agree.
+Positional-restraint references remain in `restart.spgr.h5`.
+
+`bundle-to-legacy` also exports native CV definitions and virtual atoms. RMSD
+reference coordinates are included directly as `coordinate = ...` in the
+generated CV file, preserving atom order and avoiding external reference files.
+Both inline protocol references and the old restart reference path are accepted;
+conflicting references or malformed coordinates fail before files are written.
+Disabled native objects are omitted. Legacy-to-bundle conversion retains these
+self-contained CV sections under `/cv/config`, so subsequent exports preserve
+their values.
+
 RESP automatically selects the first available backend:
 
 - preferred backend: `PySCF`
