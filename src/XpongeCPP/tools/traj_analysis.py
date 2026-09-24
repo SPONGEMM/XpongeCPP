@@ -31,6 +31,8 @@ def load_Sponge_trajectory(topo, traj, box):
 
     if len(traj_list) == 1:
         traj_path = traj_list[0]
+        if xmda.CIFTopologyParser._format_hint(topo):
+            return xmda.load_cif_h5md_universe(topo, traj_path)
         if xmda.BundleTopologyParser._format_hint(topo) and xmda.SpongeH5MDReader._format_hint(
             traj_path
         ):

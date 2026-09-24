@@ -32,6 +32,7 @@ if mda is not None:
         register_mdanalysis_formats,
         validate_bundle_pair,
     )
+    from .cif_mdanalysis import CIFTopologyParser, load_cif_h5md_universe  # noqa: F401
 
 
 def _missing_mdanalysis():
@@ -44,7 +45,23 @@ if mda is None:
             _missing_mdanalysis()
 
 
-    __all__ = ["XpongeMoleculeReader", "mda"]
+    class CIFTopologyParser:  # pragma: no cover - exercised only without MDAnalysis
+        format = "XPONGE_CIF"
+
+        def __init__(self, *_args, **_kwargs):
+            _missing_mdanalysis()
+
+
+    def load_cif_h5md_universe(*_args, **_kwargs):  # pragma: no cover
+        _missing_mdanalysis()
+
+
+    __all__ = [
+        "CIFTopologyParser",
+        "XpongeMoleculeReader",
+        "load_cif_h5md_universe",
+        "mda",
+    ]
 else:
     # pylint: disable=abstract-method, arguments-differ, protected-access, unused-argument
     class SpongeNoneReader(base.ReaderBase):
@@ -463,6 +480,7 @@ else:
 
     __all__ = [
         "BundleTopologyParser",
+        "CIFTopologyParser",
         "SPONGEH5MDReader",
         "SpongeH5MDReader",
         "SpongeInputReader",
@@ -473,6 +491,7 @@ else:
         "SpongeCoordinateWriter",
         "XpongeMoleculeReader",
         "load_bundle_universe",
+        "load_cif_h5md_universe",
         "mda",
         "register_mdanalysis_formats",
         "validate_bundle_pair",

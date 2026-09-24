@@ -6,7 +6,12 @@ import numpy as np
 
 from . import wham
 from .bundle_mdanalysis import load_bundle_universe
-from .md_analysis import XpongeMoleculeReader, mda
+from .md_analysis import (
+    CIFTopologyParser,
+    XpongeMoleculeReader,
+    load_cif_h5md_universe,
+    mda,
+)
 from .sasa import SASA
 
 
@@ -30,10 +35,12 @@ class MdoutReader:
 
 
 __all__ = [
+    "CIFTopologyParser",
     "MdoutReader",
     "SASA",
     "XpongeMoleculeReader",
     "load_bundle_universe",
+    "load_cif_h5md_universe",
     "mda",
     "wham",
 ]
