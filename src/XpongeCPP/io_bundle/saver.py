@@ -16,6 +16,7 @@ from .bundle_builder import (
 )
 from .errors import BundlePathError
 from .protocol import SpongeProtocol, add_protocol_to_bundle
+from .source_order import bind_bundle_source_order
 
 
 def save_sponge_input_bundle(
@@ -65,6 +66,29 @@ def save_sponge_input_bundle(
                 "ResidueType, or registered template-like object"
             )
 
+    values = None
+    if return_mapping and source_atom_ids is None:
+        raise ValueError("return_mapping=True requires source_atom_ids")
+    if source_atom_ids is not None:
+        atoms = list(target.atoms)
+        if isinstance(source_atom_ids, dict):
+            by_index = {
+                int(atom.index): str(value) for atom, value in source_atom_ids.items()
+            }
+            if set(by_index) != {int(atom.index) for atom in atoms}:
+                raise ValueError(
+                    "source_atom_ids mapping must cover every input Atom exactly once"
+                )
+            values = tuple(by_index[int(atom.index)] for atom in atoms)
+        else:
+            values = tuple(str(value) for value in source_atom_ids)
+            if len(values) != len(atoms):
+                raise ValueError(
+                    "source_atom_ids must contain one ID for every input Atom"
+                )
+        if len(set(values)) != len(values):
+            raise ValueError("source_atom_ids must be unique")
+
     output_root = Path(dirname).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     normalized_prefix = str(prefix or getattr(molecule, "name", "system"))
@@ -79,6 +103,8 @@ def save_sponge_input_bundle(
             target, staged_prefix, str(staging_root), protocol=None
         )
         staged_paths = _prefixed_bundle_paths(staging_root, staged_prefix)
+        if values is not None:
+            bind_bundle_source_order(staged_paths, values)
         _apply_protocol(staged_paths, protocol)
         for source, destination in (
             (staged_paths.topology, final_paths.topology),
@@ -90,26 +116,6 @@ def save_sponge_input_bundle(
     del prepared
     if not return_mapping:
         return target
-    if source_atom_ids is None:
-        raise ValueError("return_mapping=True requires source_atom_ids")
-    atoms = list(target.atoms)
-    if isinstance(source_atom_ids, dict):
-        by_index = {
-            int(atom.index): str(value) for atom, value in source_atom_ids.items()
-        }
-        if set(by_index) != {int(atom.index) for atom in atoms}:
-            raise ValueError(
-                "source_atom_ids mapping must cover every input Atom exactly once"
-            )
-        values = tuple(by_index[int(atom.index)] for atom in atoms)
-    else:
-        values = tuple(str(value) for value in source_atom_ids)
-        if len(values) != len(atoms):
-            raise ValueError(
-                "source_atom_ids must contain one ID for every input Atom"
-            )
-    if len(set(values)) != len(values):
-        raise ValueError("source_atom_ids must be unique")
     return target, tuple(
         {"simulation_index": index, "source_atom_id": source_id}
         for index, source_id in enumerate(values)
