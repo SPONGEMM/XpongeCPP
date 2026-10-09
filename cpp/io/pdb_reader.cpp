@@ -249,10 +249,11 @@ struct MmcifAtomInfo {
 };
 
 struct MmcifResidueInfo {
-    char chain_id{' '};
+    std::string chain_id{" "};
     int resseq{0};
     char insertion_code{' '};
     std::string base_name;
+    std::string source_name;
     std::string name;
     std::string label_asym;
     std::string label_seq;
@@ -416,7 +417,8 @@ Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options) {
             chain = ' ';
         }
         last_chain = char_at(line, 21);
-        std::string residue_name = pdb_upper_copy(pdb_string(line, 17, 3));
+        const std::string source_residue_name = pdb_upper_copy(pdb_string(line, 17, 3));
+        std::string residue_name = source_residue_name;
         if (const auto alias = pdb_alias_map().find(residue_name); alias != pdb_alias_map().end()) {
             residue_name = alias->second;
         }
@@ -441,7 +443,7 @@ Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options) {
             current_residue_id = static_cast<ResidueId>(molecule.residues.size());
             Residue residue;
             residue.name = residue_name.empty() ? "UNK" : residue_name;
-            residue.original_name = residue.name;
+            residue.original_name = source_residue_name.empty() ? "UNK" : source_residue_name;
             const bool should_map_head =
                 explicit_terminal.first || (options.infer_terminals && !segment_has_residue && !skip_terminal);
             if (should_map_head && pdb_head_map().count(residue.name) != 0) {
@@ -634,7 +636,7 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
         throw std::invalid_argument("mmCIF contains multiple models; pass model_id explicitly");
     }
     const auto selected_model = options.model_id;
-    const auto unterminal = parse_unterminal_residues(options.unterminal_residues);
+    const auto unterminal = parse_unterminal_residues(options.unterminal_residues, true);
 
     std::vector<MmcifResidueInfo> residues;
     std::string current_key;
@@ -658,6 +660,7 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
         }
         std::string residue_name =
             pdb_upper_copy(mmcif_first(row, {"_atom_site.auth_comp_id", "_atom_site.label_comp_id"}));
+        const std::string source_residue_name = residue_name;
         if (const auto alias = pdb_alias_map().find(residue_name); alias != pdb_alias_map().end()) {
             residue_name = alias->second;
         }
@@ -671,9 +674,9 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
             resseq = static_cast<int>(residues.size()) + 1;
         }
         const std::string auth_asym = mmcif_first(row, {"_atom_site.auth_asym_id", "_atom_site.label_asym_id"});
-        const char chain_id = mmcif_char(auth_asym);
+        const std::string chain_id = auth_asym.empty() ? " " : auth_asym;
         const char insertion = mmcif_char(mmcif_first(row, {"_atom_site.pdbx_pdb_ins_code"}));
-        const auto key = residue_key(0, chain_id, *resseq, insertion, residue_name);
+        const auto key = mmcif_atom_key(chain_id, std::to_string(*resseq), residue_name, "", insertion);
         if (key != current_key) {
             current_key = key;
             MmcifResidueInfo info;
@@ -681,6 +684,7 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
             info.resseq = *resseq;
             info.insertion_code = insertion;
             info.base_name = residue_name;
+            info.source_name = source_residue_name;
             info.name = residue_name;
             info.label_asym = mmcif_first(row, {"_atom_site.label_asym_id"});
             info.label_seq = label_seq;
@@ -734,7 +738,7 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
     for (ResidueId i = 0; i < residues.size(); ++i) {
         label_residue_to_id[mmcif_atom_key(residues[i].label_asym, residues[i].label_seq,
                                            residues[i].label_comp, "", residues[i].insertion_code)] = i;
-        auth_residue_to_id[mmcif_atom_key(std::string(1, residues[i].chain_id), std::to_string(residues[i].resseq),
+        auth_residue_to_id[mmcif_atom_key(residues[i].chain_id, std::to_string(residues[i].resseq),
                                           residues[i].base_name, "", residues[i].insertion_code)] = i;
     }
     for (const auto& row : mmcif_rows(data, "struct_conn")) {
@@ -784,8 +788,8 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
         mark_disulfide(auth_key2, label_key2);
     }
 
-    std::unordered_map<char, ResidueId> chain_first;
-    std::unordered_map<char, ResidueId> chain_last;
+    std::unordered_map<std::string, ResidueId> chain_first;
+    std::unordered_map<std::string, ResidueId> chain_last;
     for (ResidueId i = 0; i < residues.size(); ++i) {
         chain_first.emplace(residues[i].chain_id, i);
         chain_last[residues[i].chain_id] = i;
@@ -828,10 +832,11 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
         Residue residue;
         residue.name = info.name.empty() ? "UNK" : info.name;
         residue.type_name = residue.name;
-        residue.original_name = info.base_name;
-        residue.chain_id = info.chain_id;
-        residue.effective_chain_id = info.chain_id;
-        residue.segment_id = static_cast<std::uint32_t>(info.chain_id);
+        residue.original_name = info.source_name;
+        residue.chain_id = info.chain_id.front();
+        residue.mmcif_chain_id = info.chain_id;
+        residue.effective_chain_id = info.chain_id.front();
+        residue.segment_id = static_cast<std::uint32_t>(chain_first.at(info.chain_id));
         residue.pdb_resseq = info.resseq;
         residue.insertion_code = info.insertion_code;
         residue.is_hetero = false;
@@ -875,14 +880,14 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
             }
             atom_by_label[atom_info.label_key] = atom_id;
             atom_by_auth[atom_info.auth_key] = atom_id;
-            atom_by_external[std::string(1, info.chain_id) + "|" + std::to_string(info.resseq) + "|" +
+            atom_by_external[info.chain_id + "|" + std::to_string(info.resseq) + "|" +
                              std::string(1, info.insertion_code) + "|" + pdb_upper_copy(info.base_name) + "|" +
                              pdb_upper_copy(molecule.atoms[atom_id].name)] = atom_id;
         }
     }
 
     for (ResidueId residue_id = 1; residue_id < molecule.residues.size(); ++residue_id) {
-        if (molecule.residues[residue_id - 1].chain_id == molecule.residues[residue_id].chain_id) {
+        if (residues[residue_id - 1].chain_id == residues[residue_id].chain_id) {
             add_template_residue_link(molecule, residue_id - 1, residue_id);
         }
     }
@@ -978,10 +983,10 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
     }
 
     for (const auto& link : options.residue_links) {
-        const auto key1 = std::string(1, link.atom1.chain_id) + "|" + std::to_string(link.atom1.resseq) + "|" +
+        const auto key1 = link.atom1.chain_id + "|" + std::to_string(link.atom1.resseq) + "|" +
                           std::string(1, link.atom1.insertion_code) + "|" +
                           pdb_upper_copy(link.atom1.residue_name) + "|" + pdb_upper_copy(link.atom1.atom_name);
-        const auto key2 = std::string(1, link.atom2.chain_id) + "|" + std::to_string(link.atom2.resseq) + "|" +
+        const auto key2 = link.atom2.chain_id + "|" + std::to_string(link.atom2.resseq) + "|" +
                           std::string(1, link.atom2.insertion_code) + "|" +
                           pdb_upper_copy(link.atom2.residue_name) + "|" + pdb_upper_copy(link.atom2.atom_name);
         const auto it1 = atom_by_external.find(key1);

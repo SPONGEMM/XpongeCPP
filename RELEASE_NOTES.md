@@ -1,3 +1,34 @@
+# XpongeCPP 0.2.12
+
+Add official Amber OL24 DNA parameters and reproducible OFF-derived residue
+templates, including HOP3-bearing 5-prime monophosphate templates. OL3 and OL24
+register their own RNA/DNA terminal templates without an additional user import.
+Preserve default hydroxyl termini and document parameter provenance and citations.
+
+Fix nucleic polymer anchors and water-specific atomic ion aliases. This release
+also includes full mmCIF chain identity and contiguous bundle component ordering
+with source-atom and protocol remapping.
+
+# XpongeCPP 0.2.11
+
+Preserve full mmCIF chain identifiers in residue grouping, chain-end inference,
+explicit terminal selectors and external residue links. Distinct chains such as
+ML1 and ML2 no longer collapse to M or acquire unintended cross-chain bonds.
+Python residue identities and template replacement retain the full chain name.
+PDB reading and writing behavior is unchanged.
+
+# XpongeCPP 0.2.10
+
+Fix bundled SPONGE input export to group linked residue components in contiguous
+atom order, matching the existing raw-text exporter. Both Python and native
+bundle entry points validate molecular component continuity before writing topology.
+
+Source atom mappings, collective variables (including typed virtual atoms),
+distance constraints, positional reference coordinates and SITS selections follow
+the reordered atoms. Selection weights and named virtual-atom references retain
+their original meaning. Regression tests cover raw/native/Python bundle export,
+covalent and coordination links, source mappings and protocol remapping.
+
 # XpongeCPP 0.2.8
 
 Compatibility target: Xponge-origin 1.7.1.

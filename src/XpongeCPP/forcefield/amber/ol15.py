@@ -10,3 +10,9 @@ from . import data_path
 register_amber_parmdat_file(str(data_path("parm10.dat")))
 register_amber_frcmod_file(str(data_path("OL15.frcmod")))
 register_residue_templates_from_mol2_file(str(data_path("ol15.mol2")))
+
+from ._nucleic import configure_nucleic_templates
+
+configure_nucleic_templates(("DA", "DC", "DG", "DT"))
+
+CITATIONS = ("10.1021/acs.jctc.5b00716",)

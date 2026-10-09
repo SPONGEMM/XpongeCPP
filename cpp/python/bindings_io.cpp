@@ -1,5 +1,6 @@
 #include "bindings_internal.hpp"
 #include "pdb_internal.hpp"
+#include <type_traits>
 
 namespace xpongecpp {
 namespace {
@@ -29,8 +30,13 @@ void add_terminal_selector(Options& options, py::object chain, py::object resseq
     if (resseq.is_none()) {
         throw std::invalid_argument("terminal residue selector requires a residue sequence number");
     }
-    PdbLoadOptions::TerminalResidue selector;
-    selector.chain_id = selector_char(chain, ' ');
+    typename Options::TerminalResidue selector;
+    if constexpr (std::is_same_v<Options, MmcifLoadOptions>) {
+        selector.chain_id = pdb_trimmed_copy(py::cast<std::string>(py::str(chain)));
+        if (selector.chain_id.empty()) selector.chain_id = " ";
+    } else {
+        selector.chain_id = selector_char(chain, ' ');
+    }
     selector.resseq = py::cast<int>(resseq);
     selector.insertion_code = selector_char(insertion, ' ');
     selector.n_terminal = n_terminal;
@@ -113,7 +119,8 @@ MmcifResidueLinkAtom parse_mmcif_residue_link_atom(py::object item) {
         throw std::invalid_argument("mmCIF residue link atom selector requires residue_seq and atom_name");
     }
     MmcifResidueLinkAtom atom;
-    atom.chain_id = selector_char(chain, ' ');
+    atom.chain_id = pdb_trimmed_copy(py::cast<std::string>(py::str(chain)));
+    if (atom.chain_id.empty()) atom.chain_id = " ";
     atom.resseq = py::cast<int>(resseq);
     atom.insertion_code = selector_char(insertion, ' ');
     atom.residue_name = residue_name.is_none() ? std::string{} : py::cast<std::string>(py::str(residue_name));

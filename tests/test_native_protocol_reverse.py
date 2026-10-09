@@ -71,6 +71,7 @@ def test_native_protocol_roundtrip_without_sidecars(tmp_path, policy):
     assert bias["start_step"] == "0 1"
     assert bias["stop_step"] == "0 4"
     assert _sections(legacy / commands["steer_cv_in_file"])["steer"] == {"CV": "distance_cv", "weight": "0.25"}
+    assert _sections(legacy / commands["cv_in_file"])["steer"] == {"CV": "distance_cv", "weight": "0.25"}
     converted = tmp_path / "converted"
     convert_legacy_to_bundle(legacy, converted, mdin="mdin.legacy.spg.toml")
     assert not (converted / "bundle/legacy_sidecars").exists()

@@ -60,6 +60,21 @@ def export_cv(contract, reader, context) -> list[LegacyPayload]:
         if reader.contains(contract.bundle_file, "/cv/config") else []
     )
     native = [(name, list(items.items())) for name, items in native_cv_sections(reader)]
+    # Legacy SPONGE reads steering sections from cv_in_file; some versions
+    # ignore steer_cv_in_file. Keep the standalone payload for round trips,
+    # and include its validated sections in the runtime's CV entry point.
+    from .native_protocol_exporters import config_sections, merge_sections
+    steering = []
+    if reader.contains(contract.bundle_file, "/steer/cv_refs"):
+        from .cv_exporters import _enabled, _tokens
+        if _enabled(reader, "/steer"):
+            steering = merge_sections(config_sections(reader, "/steer"), [("steer", {
+                "CV": _tokens(reader.read(contract.bundle_file, "/steer/cv_refs"), "/steer/cv_refs"),
+                "weight": _tokens(reader.read(contract.bundle_file, "/steer/weight"), "/steer/weight"),
+            })])
+        else:
+            steering = []
+    native.extend((name, list(items.items())) for name, items in steering)
     for name, items in legacy + native:
         target = sections.setdefault(name, {})
         for key, value in items:

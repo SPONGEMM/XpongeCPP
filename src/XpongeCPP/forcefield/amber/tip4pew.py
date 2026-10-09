@@ -21,3 +21,7 @@ register_amber_frcmod_file(str(data_path("ions1lm_126_tip4pew.frcmod")))
 register_amber_frcmod_file(str(data_path("ionsjc_tip4pew.frcmod")))
 register_amber_frcmod_file(str(data_path("ions234lm_126_tip4pew.frcmod")))
 register_template_molecule_from_mol2_file(str(data_path("atomic_ions.mol2")))
+
+from XpongeCPP.forcefield.amber import register_atomic_ion_pdb_aliases
+
+register_atomic_ion_pdb_aliases()

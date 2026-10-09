@@ -400,18 +400,20 @@ def test_optimize_runs_real_engine_when_available(monkeypatch):
         mol.box_length = [20.0, 20.0, 20.0]
         mol.box_angle = [90.0, 90.0, 90.0]
 
-    original_load_coordinate = Xponge.load_coordinate
+    import XpongeCPP.process as process
+    original_load_coordinate = process.load_coordinate
     loaded = {}
 
     def tracking_load_coordinate(path, molecule):
         loaded["path"] = path
+        loaded["existed_when_loaded"] = os.path.exists(path)
         return original_load_coordinate(path, molecule)
 
-    monkeypatch.setattr(Xponge, "load_coordinate", tracking_load_coordinate)
+    monkeypatch.setattr(process, "load_coordinate", tracking_load_coordinate)
     Xponge.optimize(mol, step=1, only_bad_coordinate=False, pbc=pbc)
 
     assert loaded["path"].endswith("_coordinate.txt")
-    assert os.path.exists(loaded["path"])
+    assert loaded["existed_when_loaded"]
     assert all(math.isfinite(atom.x + atom.y + atom.z) for atom in mol.atoms)
     assert mol.validate()
 

@@ -42,14 +42,19 @@ void set_atom_defaults(Atom& atom, const std::string& residue_name);
 
 struct ResidueSelectorSets {
     std::unordered_set<int> all_resseq;
-    std::set<std::pair<char, int>> chain_resseq;
-    std::set<std::tuple<char, int, char>> chain_resseq_ins;
+    std::set<std::pair<std::string, int>> chain_resseq;
+    std::set<std::tuple<std::string, int, char>> chain_resseq_ins;
 };
 
 std::vector<std::string> pdb_split_ws(const std::string& line);
 std::optional<std::tuple<char, int, char>> ssbond_ref(const std::string& line, bool second);
-ResidueSelectorSets parse_unterminal_residues(const std::vector<std::string>& selectors);
-bool is_unterminal(const ResidueSelectorSets& selectors, char chain_id, int resseq, char insertion_code);
+ResidueSelectorSets parse_unterminal_residues(const std::vector<std::string>& selectors, bool full_chain_id = false);
+bool is_unterminal(const ResidueSelectorSets& selectors, const std::string& chain_id, int resseq, char insertion_code);
+inline bool is_unterminal(const ResidueSelectorSets& selectors, char chain_id, int resseq, char insertion_code) {
+    return is_unterminal(selectors, std::string(1, chain_id), resseq, insertion_code);
+}
+std::pair<bool, bool> terminal_residue_flags(const std::vector<MmcifLoadOptions::TerminalResidue>& selectors,
+                                          const std::string& chain_id, int resseq, char insertion_code);
 std::pair<bool, bool> terminal_residue_flags(const std::vector<PdbLoadOptions::TerminalResidue>& selectors,
                                              char chain_id, int resseq, char insertion_code);
 std::string tail_mapped_residue_name(const std::string& residue_name);
