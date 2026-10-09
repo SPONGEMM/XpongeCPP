@@ -290,6 +290,8 @@ std::vector<AtomId> reorder_residues_by_linked_components(Molecule& molecule) {
     return new_to_old_atom_order;
 }
 
+}  // namespace
+
 void check_sponge_atom_components_are_contiguous(const Molecule& molecule, const Topology& topology) {
     if (molecule.atoms.empty()) {
         return;
@@ -328,8 +330,6 @@ void check_sponge_atom_components_are_contiguous(const Molecule& molecule, const
         }
     }
 }
-
-}  // namespace
 
 std::vector<AtomId> prepare_sponge_atom_order(Molecule& molecule) {
     return reorder_residues_by_linked_components(molecule);

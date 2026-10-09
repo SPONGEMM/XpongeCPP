@@ -5,8 +5,10 @@ from io import StringIO
 import pytest
 
 import Xponge
-import Xponge.forcefield.amber.bsc1  # noqa: F401
-import Xponge.forcefield.amber.tip3p  # noqa: F401
+@pytest.fixture(autouse=True)
+def load_forcefields():
+    import Xponge.forcefield.amber.bsc1  # noqa: F401
+    import Xponge.forcefield.amber.tip3p  # noqa: F401
 
 
 MOL2 = """@<TRIPOS>MOLECULE

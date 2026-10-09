@@ -37,3 +37,16 @@ def configure_proline_like_terminal_mapping(resname, cterm_name, nterm_name=None
 
 
 Load_Parameters_From_Frcmod = load_parameters_from_frcmod
+
+
+def register_atomic_ion_pdb_aliases():
+    """Bind common fixed-charge PDB ion names after loading water-specific ions."""
+    from ... import has_template, register_pdb_residue_alias_mapping
+    aliases = {
+        "BE": "BE2", "CA": "CA2", "CD": "CD2", "CO": "CO2",
+        "HG": "HG2", "MG": "MG2", "NI": "NI2", "PB": "PB2",
+        "PD": "PD2", "PT": "PT2", "SN": "SN2", "ZN": "ZN2",
+    }
+    for source, target in aliases.items():
+        if has_template(target):
+            register_pdb_residue_alias_mapping(source, target)

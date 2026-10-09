@@ -48,6 +48,7 @@ struct Residue {
     std::string original_name;
     char chain_id{' '};
     char effective_chain_id{' '};
+    std::string mmcif_chain_id;
     std::uint32_t segment_id{0};
     std::int32_t pdb_resseq{0};
     char insertion_code{' '};
@@ -340,7 +341,7 @@ struct PdbLoadOptions {
 };
 
 struct MmcifResidueLinkAtom {
-    char chain_id{' '};
+    std::string chain_id{" "};
     int resseq{0};
     char insertion_code{' '};
     std::string residue_name;
@@ -360,7 +361,14 @@ struct MmcifLoadOptions {
     bool ignore_seqres{true};
     bool read_cell{true};
     std::vector<std::string> unterminal_residues;
-    std::vector<PdbLoadOptions::TerminalResidue> terminal_residues;
+    struct TerminalResidue {
+        std::string chain_id{" "};
+        int resseq{0};
+        char insertion_code{' '};
+        bool n_terminal{false};
+        bool c_terminal{false};
+    };
+    std::vector<TerminalResidue> terminal_residues;
     bool infer_terminals{true};
     std::optional<std::string> model_id;
     std::vector<MmcifResidueLink> residue_links;
@@ -582,11 +590,12 @@ void add_solvent_box(Molecule& molecule, const Molecule& solvent, const std::arr
 void add_ions(Molecule& molecule, const std::unordered_map<std::string, std::int64_t>& counts,
               std::uint64_t seed = 0, const std::string& solvent_residue = "WAT");
 std::vector<AtomId> prepare_sponge_atom_order(Molecule& molecule);
+void check_sponge_atom_components_are_contiguous(const Molecule& molecule, const Topology& topology);
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecule& molecule,
                                                                          const std::string& prefix,
                                                                          const std::filesystem::path& dirname);
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input_bundle(
-    const Molecule& molecule, const std::string& prefix, const std::filesystem::path& dirname,
+    Molecule& molecule, const std::string& prefix, const std::filesystem::path& dirname,
     const std::unordered_map<std::string, std::string>& listed_force_payloads = {});
 void save_pdb(const Molecule& molecule, const std::filesystem::path& filename);
 void save_mol2(const Molecule& molecule, const std::filesystem::path& filename);

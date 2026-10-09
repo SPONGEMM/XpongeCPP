@@ -676,6 +676,7 @@ void write_native_topology(
     H5File &file, const Molecule &molecule,
     const std::unordered_map<std::string, std::string> &listed_payloads) {
   const auto topology = build_topology(molecule);
+  check_sponge_atom_components_are_contiguous(molecule, topology);
   const auto atom_count = molecule.atoms.size();
   std::vector<float> mass, charge;
   std::vector<std::int32_t> residue_index;
@@ -1221,10 +1222,11 @@ public:
 } // namespace
 
 std::unordered_map<std::string, std::filesystem::path>
-save_sponge_input_bundle(const Molecule &input_molecule,
+save_sponge_input_bundle(Molecule &input_molecule,
                          const std::string &prefix,
                          const std::filesystem::path &dirname,
                          const std::unordered_map<std::string, std::string> &listed_payloads) {
+  prepare_sponge_atom_order(input_molecule);
   std::optional<Molecule> molecule_with_generated_cmaps;
   if (input_molecule.cmaps.empty() && has_amber_cmap_parameters()) {
     molecule_with_generated_cmaps = input_molecule;
