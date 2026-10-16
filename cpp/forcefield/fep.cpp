@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <iomanip>
+#include <map>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -20,7 +23,7 @@ std::uint64_t pair_key(AtomId atom1, AtomId atom2) {
 }
 
 bool is_zero_lj(const Atom& atom) {
-    return atom.type == kZeroLJ;
+    return atom.type == kZeroLJ && !atom.fep_preserve_bonded;
 }
 
 bool all_active(const Molecule& molecule, const std::vector<AtomId>& atoms) {
@@ -43,14 +46,21 @@ std::pair<double, double> bond_parameters_or_distance(const Atom& atom1, const A
     return {300.0, distance(atom1, atom2)};
 }
 
+std::string exact_number(double value) {
+    if (!std::isfinite(value)) throw std::invalid_argument("non-finite FEP parameter");
+    std::ostringstream out;
+    out << std::hexfloat << (value == 0.0 ? 0.0 : value);
+    return out.str();
+}
+
 std::string bond_key(const Bond& bond) {
-    return std::to_string(std::min(bond.atom1, bond.atom2)) + ":" + std::to_string(std::max(bond.atom1, bond.atom2));
+    return std::to_string(std::min(bond.atom1, bond.atom2)) + ":" + std::to_string(std::max(bond.atom1, bond.atom2)) + ":" + exact_number(bond.length);
 }
 
 std::string angle_key(const Angle& angle) {
     const auto atom1 = std::min(angle.atom1, angle.atom3);
     const auto atom3 = std::max(angle.atom1, angle.atom3);
-    return std::to_string(atom1) + ":" + std::to_string(angle.atom2) + ":" + std::to_string(atom3);
+    return std::to_string(atom1) + ":" + std::to_string(angle.atom2) + ":" + std::to_string(atom3) + ":" + exact_number(angle.theta);
 }
 
 std::string dihedral_key(const Dihedral& dihedral) {
@@ -59,7 +69,7 @@ std::string dihedral_key(const Dihedral& dihedral) {
     const auto& atoms = reverse < forward ? reverse : forward;
     return std::to_string(atoms[0]) + ":" + std::to_string(atoms[1]) + ":" + std::to_string(atoms[2]) + ":" +
            std::to_string(atoms[3]) + ":" + std::to_string(dihedral.periodicity) + ":" +
-           std::to_string(dihedral.phase);
+           exact_number(dihedral.phase);
 }
 
 std::string nb14_key(const NB14& nb14) {
@@ -80,7 +90,17 @@ std::unordered_map<std::string, T> active_force_map(const std::vector<T>& forces
         } else if constexpr (std::is_same_v<T, NB14>) {
             if (!all_active(molecule, {force.atom1, force.atom2})) continue;
         }
-        out.insert_or_assign(key_fn(force), force);
+        // A force is a sum of terms, not a last-value parameter registry.
+        // Only identical functions may be coalesced (never arbitrary improper permutations).
+        auto [it, inserted] = out.emplace(key_fn(force), force);
+        if (!inserted) {
+            if constexpr (std::is_same_v<T, NB14>) {
+                it->second.k_lj += force.k_lj;
+                it->second.k_ee += force.k_ee;
+            } else {
+                it->second.k += force.k;
+            }
+        }
     }
     return out;
 }
@@ -244,6 +264,81 @@ void add_unique_bond(std::vector<ResidueLink>& bonds, std::unordered_set<std::ui
     }
 }
 
+std::pair<double, double> fep_lj_ab(const Molecule& molecule, AtomId i, AtomId j) {
+    const auto li = resolve_molecule_lj_parameter(molecule, resolve_molecule_lj_type(molecule, molecule.atoms.at(i).type));
+    const auto lj = resolve_molecule_lj_parameter(molecule, resolve_molecule_lj_type(molecule, molecule.atoms.at(j).type));
+    if (!li || !lj) throw std::runtime_error("missing LJ parameter in FEP NB14 conversion");
+    if (li->first < 0.0 || lj->first < 0.0) throw std::invalid_argument("negative FEP LJ epsilon");
+    const double epsilon = std::sqrt(li->first * lj->first);
+    const double r6 = lj_combining_rule() == LJCombiningRule::GoodHope
+        ? std::pow(4.0 * li->second * lj->second, 3.0)
+        : std::pow(li->second + lj->second, 6.0);
+    return {epsilon * r6 * r6, 2.0 * epsilon * r6};
+}
+
+void exclude_pair(Topology& topology, AtomId i, AtomId j, std::size_t count) {
+    if (i >= count || j >= count || i == j) throw std::invalid_argument("invalid FEP explicit pair");
+    topology.exclusions.resize(count);
+    for (const auto& pair : {std::make_pair(i,j), std::make_pair(j,i)}) {
+        auto& row = topology.exclusions[pair.first];
+        row.push_back(pair.second);
+        std::sort(row.begin(), row.end());
+        row.erase(std::unique(row.begin(), row.end()), row.end());
+    }
+}
+
+std::vector<NB14Extra> endpoint_pairs(const Molecule& molecule) {
+    std::vector<NB14Extra> pairs = molecule.nb14_extras;
+    for (auto& pair : pairs) {
+        if (pair.atom1 >= molecule.atoms.size() || pair.atom2 >= molecule.atoms.size() || pair.atom1 == pair.atom2)
+            throw std::invalid_argument("invalid FEP NB14-extra atom index");
+        if (!pair.ee_factor) pair.ee_factor = pair.kee * molecule.atoms[pair.atom1].charge * molecule.atoms[pair.atom2].charge;
+    }
+    for (const auto& pair : build_topology(molecule).nb14s) {
+        if (!all_active(molecule, {pair.atom1, pair.atom2})) continue;
+        const auto [a,b] = fep_lj_ab(molecule, pair.atom1, pair.atom2);
+        pairs.push_back({pair.atom1, pair.atom2, pair.k_lj*a, pair.k_lj*b, pair.k_ee,
+                        pair.k_ee*molecule.atoms[pair.atom1].charge*molecule.atoms[pair.atom2].charge});
+    }
+    return pairs;
+}
+
+void merge_explicit_pairs(Molecule& out, const Molecule& a, const Molecule& b, double lambda) {
+    struct Coefficients { double a=0., b=0., ee=0., fallback_kee=0.; };
+    std::map<std::uint64_t, Coefficients> coefficients;
+    const auto append = [&](const Molecule& endpoint, double weight) {
+        for (const auto& pair : endpoint_pairs(endpoint)) {
+            if (!std::isfinite(pair.a) || !std::isfinite(pair.b) || !std::isfinite(pair.kee) || !std::isfinite(*pair.ee_factor))
+                throw std::invalid_argument("non-finite FEP NB14-extra coefficient");
+            auto& c = coefficients[pair_key(pair.atom1, pair.atom2)];
+            c.a += weight*pair.a; c.b += weight*pair.b;
+            c.ee += weight*(*pair.ee_factor); c.fallback_kee += weight*pair.kee;
+        }
+    };
+    append(a,1.0-lambda); append(b,lambda);
+    out.nb14_extras.clear();
+    out.topology_override->nb14s.clear(); // Converted exactly once, not double counted.
+    for (const auto& [key,c] : coefficients) {
+        const AtomId i=static_cast<AtomId>(key>>32U), j=static_cast<AtomId>(key&0xffffffffU);
+        const double product=out.atoms[i].charge*out.atoms[j].charge;
+        // No silent tiny-charge/chemical-state modification. A nonzero physical
+        // pair with exactly zero current charge needs another engine representation.
+        if (product == 0.0 && c.ee != 0.0)
+            throw std::domain_error("FEP NB14 Coulomb coefficient cannot be represented at zero charge product");
+        const double kee=product == 0.0 ? c.fallback_kee : c.ee/product;
+        if (!std::isfinite(kee)) throw std::domain_error("non-finite FEP NB14 charge compensation");
+        out.nb14_extras.push_back({i,j,c.a,c.b,kee,c.ee});
+        exclude_pair(*out.topology_override,i,j,out.atoms.size());
+    }
+}
+
+void require_supported_fep_forces(const Molecule& molecule) {
+    if (!molecule.harmonic_impropers.empty() || !molecule.cmaps.empty() || !molecule.urey_bradleys.empty() ||
+        !molecule.ryckaert_bellemans.empty() || !molecule.virtual_atoms.empty() || !molecule.listed_force_definitions.empty() ||
+        !molecule.sw_parameters.empty() || !molecule.edip_parameters.empty() || molecule.has_gb_parameters)
+        throw std::invalid_argument("unsupported force group in FEP merge (ordinary modeling is unaffected)");
+}
+
 Molecule build_dual_state(const Molecule& molecule, ResidueId residue_index, const Molecule& residue_b_molecule,
                           const std::vector<int>& a_to_b, const std::vector<int>& b_to_a, bool from_a) {
     const auto invalid = std::numeric_limits<AtomId>::max();
@@ -365,6 +460,10 @@ std::pair<Molecule, Molecule> merge_dual_topology(
     if (!molecule.validate() || !residue_b_molecule.validate()) {
         throw std::invalid_argument("cannot merge invalid molecule");
     }
+    require_supported_fep_forces(molecule);
+    require_supported_fep_forces(residue_b_molecule);
+    if (!molecule.nb14_extras.empty() || !residue_b_molecule.nb14_extras.empty())
+        throw std::invalid_argument("dual topology of pre-existing explicit pairs is not supported; convert after dual assembly");
     if (residue_index >= molecule.residues.size()) {
         throw std::out_of_range("FEP residue index out of range");
     }
@@ -402,6 +501,18 @@ Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_
         molecule_a.residues.size() != molecule_b.residues.size()) {
         throw std::invalid_argument("FEP molecules should have matching atom and residue counts");
     }
+    require_supported_fep_forces(molecule_a);
+    require_supported_fep_forces(molecule_b);
+    const auto validate_lambda = [](double value) {
+        if (!std::isfinite(value) || value < 0.0 || value > 1.0)
+            throw std::invalid_argument("FEP lambda must be finite and in [0,1]");
+    };
+    validate_lambda(default_lambda);
+    for (const auto& [name,value] : specific_lambda) {
+        if (name!="charge" && name!="mass" && name!="bond_base" && name!="angle" && name!="dihedral")
+            throw std::invalid_argument("unsupported FEP specific_lambda key: "+name);
+        validate_lambda(value);
+    }
     const auto lambda_for = [&](const std::string& key) {
         const auto it = specific_lambda.find(key);
         return it == specific_lambda.end() ? default_lambda : it->second;
@@ -423,6 +534,7 @@ Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_
     }
     out.enable_lj_soft_core();
     out.topology_override = merge_topology_for_fep(molecule_a, molecule_b, default_lambda, specific_lambda);
+    merge_explicit_pairs(out, molecule_a, molecule_b, lambda_for("dihedral"));
 
     std::unordered_set<std::uint64_t> seen_soft_bonds;
     out.soft_bonds.clear();
@@ -444,6 +556,55 @@ Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_
         }
     }
 
+    return out;
+}
+
+void fep_intramolecule_nb_to_nb14(Molecule& molecule, const std::vector<ResidueId>& residues) {
+    if (!molecule.validate()) throw std::invalid_argument("invalid FEP molecule");
+    require_supported_fep_forces(molecule);
+    std::set<AtomId> selected;
+    for (const auto rid : residues) {
+        const auto& residue=molecule.residue(rid); // bounds checked, never silently ignore
+        for (AtomId i=residue.atom_begin;i<residue.atom_begin+residue.atom_count;++i) selected.insert(i);
+    }
+    // Transactional: construct on a copy and replace only after every parameter was found.
+    Molecule out=molecule;
+    out.topology_override=build_topology(molecule);
+    out.topology_override->exclusions.resize(molecule.atoms.size());
+    for (auto i=selected.begin();i!=selected.end();++i) {
+        for (auto j=std::next(i);j!=selected.end();++j) {
+            const auto& x=out.topology_override->exclusions[*i];
+            const auto& y=out.topology_override->exclusions[*j];
+            const bool explicit_pair=std::any_of(out.nb14_extras.begin(),out.nb14_extras.end(),[&](const NB14Extra& p){return pair_key(p.atom1,p.atom2)==pair_key(*i,*j);});
+            if (std::find(x.begin(),x.end(),*j)!=x.end() || std::find(y.begin(),y.end(),*i)!=y.end() || explicit_pair) continue;
+            const auto [a,b]=fep_lj_ab(molecule,*i,*j);
+            out.nb14_extras.push_back({*i,*j,a,b,1.0,molecule.atoms[*i].charge*molecule.atoms[*j].charge});
+            exclude_pair(*out.topology_override,*i,*j,out.atoms.size());
+        }
+    }
+    molecule=std::move(out);
+}
+
+Molecule fep_get_free_molecule(const Molecule& molecule, const std::vector<ResidueId>& residues) {
+    if (!molecule.validate()) throw std::invalid_argument("invalid FEP molecule");
+    require_supported_fep_forces(molecule);
+    Molecule out=molecule;
+    out.topology_override=build_topology(molecule);
+    out.nb14_extras=endpoint_pairs(molecule);
+    out.topology_override->nb14s.clear();
+    for (const auto rid : residues) {
+        const auto& residue=out.residue(rid);
+        for (AtomId i=residue.atom_begin;i<residue.atom_begin+residue.atom_count;++i) {
+            out.atoms[i].fep_preserve_bonded = !is_zero_lj(out.atoms[i]);
+            out.atoms[i].charge=0.0; out.atoms[i].type=kZeroLJ; out.atoms[i].subsys=1;
+        }
+    }
+    // Direct export cannot silently lose stored intramolecular Coulomb energy.
+    for (const auto& pair : out.nb14_extras) {
+        const double product=out.atoms[pair.atom1].charge*out.atoms[pair.atom2].charge;
+        if (product==0.0 && *pair.ee_factor!=0.0)
+            throw std::domain_error("decoupled NB14 Coulomb pair at zero charge product is not representable");
+    }
     return out;
 }
 

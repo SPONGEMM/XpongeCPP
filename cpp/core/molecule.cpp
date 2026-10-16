@@ -278,7 +278,7 @@ void Molecule::add_molecule_linked(const Molecule& other, bool link) {
                          cmap.atom3 + atom_offset, cmap.atom4 + atom_offset, cmap.type + cmap_type_offset});
     }
     for (const auto& nb14 : other.nb14_extras) {
-        nb14_extras.push_back({nb14.atom1 + atom_offset, nb14.atom2 + atom_offset, nb14.a, nb14.b, nb14.kee});
+        nb14_extras.push_back({nb14.atom1 + atom_offset, nb14.atom2 + atom_offset, nb14.a, nb14.b, nb14.kee, nb14.ee_factor});
     }
     for (const auto& angle : other.urey_bradleys) {
         urey_bradleys.push_back({angle.atom0 + atom_offset, angle.atom1 + atom_offset, angle.atom2 + atom_offset,

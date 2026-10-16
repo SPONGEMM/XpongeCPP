@@ -5,6 +5,8 @@ from ... import (
     merge_force_field as _merge_force_field,
     register_amber_lj_parameter,
 )
+from ..._core import fep_intramolecule_nb_to_nb14 as _intramolecule_nb_to_nb14
+from ..._core import fep_get_free_molecule as _get_free_molecule
 
 register_amber_lj_parameter("ZERO_LJ_ATOM", "ZERO_LJ_ATOM", 0.0, 0.0)
 
@@ -47,31 +49,34 @@ def merge_dual_topology(molecule, residue, residue_b, assign_a=None, assign_b=No
 
 def merge_force_field(molecule_a, molecule_b, default_lambda, specific_lambda=None, intra_fep=False):
     """Merge A/B force-field states at a lambda value."""
-    del intra_fep
+    if intra_fep:
+        raise NotImplementedError("intra_fep=True has no validated compatibility contract")
     return _merge_force_field(molecule_a, molecule_b, float(default_lambda), specific_lambda or {})
 
 
 def get_free_molecule(molecule, perturbating_residues, intra_fep=False):
     """Return a copy whose selected residues are decoupled with zero LJ and zero charge."""
-    del intra_fep
-    if not isinstance(perturbating_residues, (list, tuple, set)):
-        perturbating_residues = [perturbating_residues]
-    residue_indices = {int(getattr(residue, "index", residue)) for residue in perturbating_residues}
-    free = molecule.copy()
-    for residue_index, residue in enumerate(free.residues):
-        if residue_index not in residue_indices:
-            continue
-        for atom in residue.atoms:
-            atom.charge = 0.0
-            atom.type = "ZERO_LJ_ATOM"
-            atom.subsys = 1
-    return free
+    if intra_fep:
+        raise NotImplementedError("intra_fep=True has no validated compatibility contract")
+    return _get_free_molecule(molecule, _residue_indices(molecule, perturbating_residues))
 
 
 def intramolecule_nb_to_nb14(molecule, perturbating_residues):
-    """Compatibility hook; XpongeCPP builds exclusions from topology during export."""
-    del perturbating_residues
-    return molecule
+    """Replace selected ordinary intramolecular pairs by explicit LJ/Coulomb pairs.
+
+    Updates exclusions transactionally. Existing 1-2/1-3/1-4 and explicit pairs
+    are not duplicated, and repeated calls are idempotent.
+    """
+    return _intramolecule_nb_to_nb14(molecule, _residue_indices(molecule, perturbating_residues))
+
+
+def _residue_indices(molecule, residues):
+    if not isinstance(residues, (list, tuple, set)):
+        residues = [residues]
+    indices = sorted({int(getattr(residue, "index", residue)) for residue in residues})
+    if any(i < 0 or i >= molecule.residue_count for i in indices):
+        raise IndexError("FEP residue index out of range")
+    return indices
 
 
 def save_soft_core_lj(molecule=None):

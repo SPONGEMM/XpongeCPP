@@ -40,6 +40,8 @@ struct Atom {
     int subsys{0};
     bool bad_coordinate{false};
     bool zero_lj_atom{false};
+    // A decoupled physical atom retains bonded terms; a dual-topology ghost does not.
+    bool fep_preserve_bonded{false};
 };
 
 struct Residue {
@@ -157,6 +159,9 @@ struct NB14Extra {
     double a{0.0};
     double b{0.0};
     double kee{0.0};
+    // FEP-only physical Coulomb coefficient, before division by current q_i*q_j.
+    // Ordinary explicit pairs keep their historical five-field representation.
+    std::optional<double> ee_factor;
 };
 
 struct UreyBradley {
@@ -673,6 +678,8 @@ std::pair<Molecule, Molecule> merge_dual_topology(const Molecule& molecule, Resi
                                                   const std::unordered_map<std::uint32_t, std::uint32_t>& match_b_to_a);
 Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_b, double default_lambda,
                            const std::unordered_map<std::string, double>& specific_lambda);
+void fep_intramolecule_nb_to_nb14(Molecule& molecule, const std::vector<ResidueId>& residues);
+Molecule fep_get_free_molecule(const Molecule& molecule, const std::vector<ResidueId>& residues);
 void register_residue_templates_from_mol2_text(const std::string& text);
 void register_residue_templates_from_mol2_file(const std::filesystem::path& filename);
 void register_new_residue_templates_from_mol2_text(const std::string& text);

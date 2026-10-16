@@ -578,6 +578,15 @@ void bind_core_module(py::module_& m) {
           py::arg("residue_b_molecule"), py::arg("match_b_to_a"));
     m.def("merge_force_field", &merge_force_field_object, py::arg("molecule_a"), py::arg("molecule_b"),
           py::arg("default_lambda"), py::arg("specific_lambda") = std::unordered_map<std::string, double>{});
+    m.def("fep_intramolecule_nb_to_nb14", [](const std::shared_ptr<Molecule>& molecule,
+                                           const std::vector<ResidueId>& residues) {
+        fep_intramolecule_nb_to_nb14(*molecule, residues);
+        return molecule;
+    }, py::arg("molecule"), py::arg("residues"));
+    m.def("fep_get_free_molecule", [](const std::shared_ptr<Molecule>& molecule,
+                                    const std::vector<ResidueId>& residues) {
+        return std::make_shared<Molecule>(fep_get_free_molecule(*molecule, residues));
+    }, py::arg("molecule"), py::arg("residues"));
     m.def("get_template_molecule", &get_template_molecule_object);
     m.def("molecule_from_residuetype", [](const ResidueType& residue_type) {
         auto molecule = std::make_shared<Molecule>(residue_type.name());

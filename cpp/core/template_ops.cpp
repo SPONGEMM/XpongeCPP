@@ -76,7 +76,7 @@ void append_internal_structures(Molecule& target, const Molecule& source, AtomId
     target.nb14_extras.reserve(target.nb14_extras.size() + source.nb14_extras.size());
     for (const auto& nb14 : source.nb14_extras) {
         target.nb14_extras.push_back({nb14.atom1 + atom_offset, nb14.atom2 + atom_offset,
-                                      nb14.a, nb14.b, nb14.kee});
+                                      nb14.a, nb14.b, nb14.kee, nb14.ee_factor});
     }
     target.urey_bradleys.reserve(target.urey_bradleys.size() + source.urey_bradleys.size());
     for (const auto& angle : source.urey_bradleys) {
@@ -207,7 +207,7 @@ void remap_internal_structures(const Molecule& source, Molecule& target, const s
         if (atom1 == invalid_atom_id || atom2 == invalid_atom_id) {
             continue;
         }
-        target.nb14_extras.push_back({atom1, atom2, nb14.a, nb14.b, nb14.kee});
+        target.nb14_extras.push_back({atom1, atom2, nb14.a, nb14.b, nb14.kee, nb14.ee_factor});
     }
     target.urey_bradleys.reserve(target.urey_bradleys.size() + source.urey_bradleys.size());
     for (const auto& angle : source.urey_bradleys) {

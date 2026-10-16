@@ -248,15 +248,19 @@ USER_CHARGES
     Xponge.Save_SPONGE_Input(merged_1, prefix="nb14_1", dirname=str(tmp_path))
     Xponge.Save_SPONGE_Input(merged_02, prefix="nb14_02", dirname=str(tmp_path))
 
-    lines1 = (tmp_path / "nb14_1_nb14.txt").read_text().splitlines()
-    lines02 = (tmp_path / "nb14_02_nb14.txt").read_text().splitlines()
+    # Match the original FEP contract: standard 1-4 is converted to explicit
+    # endpoint LJ coefficients, not merely a scale on interpolated atom types.
+    lines1 = (tmp_path / "nb14_1_nb14_extra.txt").read_text().splitlines()
+    lines02 = (tmp_path / "nb14_02_nb14_extra.txt").read_text().splitlines()
     assert lines1[0] == "1"
     assert lines02[0] == "1"
 
-    _, _, k_lj_1, k_ee_1 = lines1[1].split()
-    _, _, k_lj_02, k_ee_02 = lines02[1].split()
-    assert float(k_lj_02) == pytest.approx(float(k_lj_1) * 0.2)
-    assert float(k_ee_02) == pytest.approx(float(k_ee_1) * 0.2, abs=1e-6)
+    _, _, a1, b1, kee1 = lines1[1].split()
+    _, _, a02, b02, kee02 = lines02[1].split()
+    assert float(a02) == pytest.approx(float(a1) * 0.2, rel=2e-6)
+    assert float(b02) == pytest.approx(float(b1) * 0.2, rel=2e-6)
+    assert float(kee02) == pytest.approx(float(kee1) * 0.2, abs=1e-6)
+    assert (tmp_path / "nb14_1_nb14.txt").read_text().strip() == "0"
 
 
 def test_fep_compatibility_helpers_free_selected_residue_and_expose_xponge_names(tmp_path):

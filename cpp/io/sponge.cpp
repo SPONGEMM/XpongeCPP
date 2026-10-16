@@ -401,6 +401,12 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
         std::ostringstream out;
         out << molecule.atoms.size() << "\n";
         out << std::fixed << std::setprecision(6);
+        // FEP charge-compensated pairs must use the same nonzero charges in
+        // memory and in the engine. Preserve ordinary-model export formatting.
+        if (std::any_of(molecule.nb14_extras.begin(), molecule.nb14_extras.end(),
+                        [](const NB14Extra& pair) { return pair.ee_factor.has_value(); })) {
+            out << std::scientific << std::setprecision(std::numeric_limits<double>::max_digits10);
+        }
         for (const auto& atom : molecule.atoms) {
             out << atom.charge * 18.2223 << "\n";
         }
