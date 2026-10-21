@@ -359,7 +359,9 @@ void add_bond(std::vector<Bond>& bonds, std::unordered_set<std::uint64_t>& seen,
     if (term) {
         bonds.push_back({lo, hi, term->k, term->length});
     } else {
-        bonds.push_back({lo, hi, 300.0, distance(molecule.atoms[lo], molecule.atoms[hi])});
+        throw std::runtime_error("missing bond parameter: " + molecule.atoms[lo].type + "-" +
+                                 molecule.atoms[hi].type + " (" + molecule.atoms[lo].name + "-" +
+                                 molecule.atoms[hi].name + ")");
     }
 }
 
@@ -655,7 +657,8 @@ Topology build_topology(const Molecule& molecule) {
                     if (term && term->k != 0.0) {
                         local.push_back({neighbors[i], center, neighbors[k], term->k, term->theta});
                     } else if (!term) {
-                        local.push_back({neighbors[i], center, neighbors[k], 40.0, 1.91});
+                        throw std::runtime_error("missing angle parameter: " + molecule.atoms[neighbors[i]].type +
+                            "-" + molecule.atoms[center].type + "-" + molecule.atoms[neighbors[k]].type);
                     }
                 }
             }

@@ -4,6 +4,14 @@ import pytest
 import XpongeCPP as Xponge
 
 
+@pytest.fixture(autouse=True)
+def gaff_parameters(isolate_forcefield_registries):
+    # Export requires real bonded parameters for every physical endpoint.
+    from XpongeCPP.forcefield.amber import data_path
+
+    Xponge.register_amber_parmdat_file(str(data_path("gaff.dat")))
+
+
 def test_fep_module_prepares_softcore_state_and_exports_expected_files(tmp_path):
     import XpongeCPP.forcefield.special.fep as fep
 
@@ -42,6 +50,7 @@ def test_fep_bonded_merge_helpers_follow_xponge_soft_bond_shape(tmp_path):
     import XpongeCPP.forcefield.special.fep as fep
 
     Xponge.register_amber_lj_parameter("A", "A", 0.1, 1.0)
+    Xponge.register_amber_bond_parameter("A", "A", 10.0, 1.5)
     mol = Xponge.load_mol2(
         StringIO(
             """@<TRIPOS>MOLECULE
@@ -168,6 +177,11 @@ USER_CHARGES
 """
         )
     )
+    # Use physical endpoint parameters; another test may have loaded GAFF.
+    Xponge.Save_SPONGE_Input(mol_a, prefix="endpoint_a", dirname=str(tmp_path))
+    Xponge.Save_SPONGE_Input(mol_b, prefix="endpoint_b", dirname=str(tmp_path))
+    endpoint_a = (tmp_path / "endpoint_a_bond.txt").read_text().splitlines()[1].split()[2:]
+    endpoint_b = (tmp_path / "endpoint_b_bond.txt").read_text().splitlines()[1].split()[2:]
     merged_from, merged_to, _ = fep.merge_dual_topology(mol_a, 0, mol_b, {0: 0})
     merged = fep.merge_force_field(merged_from, merged_to, 0.25, {"charge": 0.5})
 
@@ -186,10 +200,11 @@ USER_CHARGES
     assert (tmp_path / "merged_bond_soft.txt").is_file()
     assert not (tmp_path / "merged_LJ.txt").exists()
     assert (tmp_path / "merged_subsys_division.txt").read_text().splitlines() == ["3", "0", "1", "2"]
-    assert (tmp_path / "merged_bond.txt").read_text().splitlines() == [
-        "2",
-        "0 1 225.000000 1.000000",
-        "0 2 75.000000 1.000000",
+    # One-sided bonds are already in bond_soft. Ordinary lambda-weighted
+    # copies would double count those physical interactions.
+    assert (tmp_path / "merged_bond.txt").read_text().strip() == "0"
+    assert (tmp_path / "merged_bond_soft.txt").read_text().splitlines() == [
+        "2", "0 1 " + " ".join(endpoint_a) + " 0", "0 2 " + " ".join(endpoint_b) + " 1",
     ]
 
 
@@ -214,7 +229,7 @@ USER_CHARGES
 @<TRIPOS>ATOM
 1 C1 0.0 0.0 0.0 c3 1 ETH 0.0
 2 C2 1.5 0.0 0.0 c3 1 ETH 0.0
-3 H1 3.0 0.0 0.0 hc 1 ETH 0.0
+3 C3 3.0 0.0 0.0 c3 1 ETH 0.0
 @<TRIPOS>BOND
 1 1 2 1
 2 2 3 1
@@ -231,7 +246,7 @@ USER_CHARGES
 @<TRIPOS>ATOM
 1 C1 0.0 0.0 0.0 c3 1 EOH 0.0
 2 C2 1.5 0.0 0.0 c3 1 EOH 0.0
-3 H1 3.0 0.0 0.0 hc 1 EOH 0.0
+3 C3 3.0 0.0 0.0 c3 1 EOH 0.0
 4 O1 4.5 0.0 0.0 oh 1 EOH 0.0
 @<TRIPOS>BOND
 1 1 2 1
@@ -260,7 +275,7 @@ USER_CHARGES
     assert float(a02) == pytest.approx(float(a1) * 0.2, rel=2e-6)
     assert float(b02) == pytest.approx(float(b1) * 0.2, rel=2e-6)
     assert float(kee02) == pytest.approx(float(kee1) * 0.2, abs=1e-6)
-    assert (tmp_path / "nb14_1_nb14.txt").read_text().strip() == "0"
+    assert not (tmp_path / "nb14_1_nb14.txt").exists()
 
 
 def test_fep_compatibility_helpers_free_selected_residue_and_expose_xponge_names(tmp_path):

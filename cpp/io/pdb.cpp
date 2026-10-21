@@ -281,11 +281,15 @@ void apply_template_atom_properties(Molecule& molecule, bool ignore_unknown_name
                     atom.element = template_atom.element;
                     atom.charge = template_atom.charge;
                     atom.mass = template_atom.mass;
-                } catch (const std::exception&) {
+                } catch (const std::exception& error) {
                     if (ignore_unknown_name) {
                         continue;
                     }
-                    throw;
+                    const auto chain = residue.mmcif_chain_id.empty()
+                        ? std::string(1, residue.chain_id) : residue.mmcif_chain_id;
+                    throw std::out_of_range(std::string(error.what()) + " (residue " +
+                        residue.original_name + " " + chain + ":" + std::to_string(residue.pdb_resseq) +
+                        ", selected template " + residue_type->name() + ")");
                 }
             }
             atom.residue = static_cast<ResidueId>(&residue - molecule.residues.data());

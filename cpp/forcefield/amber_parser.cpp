@@ -307,6 +307,9 @@ void register_amber_parmdat_file(const std::filesystem::path& filename) {
         const auto words = split_ws(line);
         if (!words.empty()) {
             upsert_lj_atom_type(words[0], words[0]);
+            if (words.size() >= 2) {
+                upsert_mass(words[0], std::stod(words[1]));
+            }
         }
     }
     std::getline(input, line);

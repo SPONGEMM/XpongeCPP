@@ -173,8 +173,9 @@ std::shared_ptr<Molecule> load_mmcif_object(py::object source, bool judge_histon
                                             bool ignore_hydrogen, bool ignore_unknown_name, bool ignore_seqres,
                                             bool read_cell, py::object unterminal_residues,
                                             py::object terminal_residues, bool infer_terminals, py::object model_id,
-                                            py::object residue_links) {
+                                            py::object residue_links, bool ignore_conect) {
     MmcifLoadOptions options;
+    options.ignore_conect = ignore_conect;
     options.judge_histone = judge_histone;
     options.position_need = position_need.empty() ? 'A' : position_need[0];
     options.ignore_hydrogen = ignore_hydrogen;
@@ -293,7 +294,8 @@ void bind_io_module(py::module_& m) {
           py::arg("ignore_unknown_name") = false, py::arg("ignore_seqres") = true,
           py::arg("read_cell") = true, py::arg("unterminal_residues") = py::none(),
           py::arg("terminal_residues") = py::none(), py::arg("infer_terminals") = true,
-          py::arg("model_id") = py::none(), py::arg("residue_links") = py::none());
+          py::arg("model_id") = py::none(), py::arg("residue_links") = py::none(),
+          py::arg("ignore_conect") = false);
     m.def("load_mol2", &load_mol2_object);
     m.def("load_molpsf", &load_molpsf_object, py::arg("source"), py::arg("split_by") = "connectivity");
     m.def("save_pdb", &save_pdb_object, py::arg("molecule"), py::arg("filename"), py::arg("write_cryst1") = true);

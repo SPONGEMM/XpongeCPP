@@ -1,3 +1,74 @@
+# XpongeCPP 0.2.13
+
+Compatibility target: Xponge-origin 1.7.4.
+
+Disjoint molecule assembly now preserves materialized physical topologies from
+either operand and appends all offset force/exclusion indices, including newly
+added solvent. Ordinary uncached assembly remains lazy. A requested covalent
+link between cached topologies without an explicit combined physical topology
+is rejected before mutation rather than silently retaining stale force tables.
+
+Soft-core legacy export omits the empty ordinary NB14 table, whose native
+loader requires ordinary LJ tables that soft-core mode intentionally omits.
+Explicit NB14-extra coefficients are retained. Nonempty ordinary NB14 terms
+are exported as explicit coefficients using exactly their ordinary A-state LJ
+parameters and scales, preserving legacy manual softcore-helper behavior without
+mutating the input molecule. Already interpolated FEP extras are not reweighted;
+ordinary non-FEP LJ/NB14 export is unchanged.
+
+FEP dual-state construction now projects materialized physical endpoint force
+entities and exclusions into union atom IDs, preserving ordered improper terms
+instead of selecting them again from a union bond graph. The unchanged
+environment is projected separately for the B state. Covalently linked target
+or replacement residues without an explicit physical B environment topology
+are rejected rather than assigned an invented endpoint. This safety boundary
+only affects FEP dual construction; ordinary modeling is unchanged.
+
+Materialized FEP export now groups ordinary hard-bond components within each
+residue, returning the full atom-identity permutation. Ghost/soft bonds are not
+used to bypass the SPONGE continuity contract. Pure atom/residue permutations
+preserve and remap cached bonds, angles, ordered periodic torsions, exclusions
+and NB14 terms, rather than dropping the materialized topology. Non-FEP default
+atom ordering and the continuity rejection guard are unchanged.
+
+FEP bonds present in only one physical endpoint now occur only in the soft-bond
+table, matching Xponge's bond merge partition. They are no longer duplicated as
+lambda-weighted ordinary harmonic bonds. Soft parameters come from the actual
+endpoint topology, including overrides, rather than a parameter/distance lookup.
+Pairs present in both endpoints with different equilibrium lengths retain their
+ordinary lambda-weighted terms. Ordinary non-FEP topology/export is unchanged.
+
+Amber parmdat registration now stores the atom-section masses in the native
+parameter registry, matching Xponge rather than silently relying on a partial
+element fallback. MOL2 loading and template registration use the supplied mass;
+later parmdat registrations and explicit frcmod MASS overrides retain their
+normal precedence. No element-specific output correction is applied.
+
+PDB and mmCIF loading now gives file-declared inter-residue connections
+precedence over an additional implicit template link between two connection
+sites that already have explicit partners. This prevents branched multi-residue
+structures from acquiring unintended head/tail cycles. The rule does not use
+residue names, coordinate distances, or ATOM/HETATM classification. Implicit
+polymer and multi-residue lipid links remain enabled when the two connection
+sites are not both explicitly assigned; explicitly declared neighbor links and
+ring closures are retained. PDB `ignore_conect=True` still ignores CONECT.
+
+Xponge-origin 1.7.4 uses the same explicit-link precedence. mmCIF edit operations
+still run after inference, and external residue-link overrides keep their
+final-overlay semantics. Missing connectivity still requires explicit records
+or suitable templates.
+
+mmCIF loading now accepts `ignore_conect=True` and filters noncovalent
+`struct_conn`, Mokda semantic, and bond-edit records. The ignore option bypasses
+file bond declarations and edits while retaining template bonds and separately
+supplied residue links. PDB and mmCIF therefore support the same Mokda-controlled
+connection policy without requiring a complete-graph interface.
+
+The read-only `amber_parameter_exists` query checks registered Amber parameter
+coverage without mutating the registry. Missing bond and angle parameters now
+raise an error instead of generating arbitrary defaults. Bare TIP3P registration
+supplies its actual model bond parameters and zero-strength angle entries.
+
 # XpongeCPP 0.2.12
 
 Add official Amber OL24 DNA parameters and reproducible OFF-derived residue

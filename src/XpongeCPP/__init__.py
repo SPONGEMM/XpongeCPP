@@ -39,6 +39,7 @@ from ._core import (
     molecule_from_residuetype,
     reorder_atoms_by_template,
     register_ff14sb,
+    amber_parameter_exists,
     clear_amber_dihedral_parameters,
     clear_amber_improper_parameters,
     register_amber_frcmod_file,
@@ -194,7 +195,7 @@ from .process import (
 from .legacy_types import _LegacyResidueTypeHandle
 from .template_ops import load_mol2
 
-__version__ = "0.2.12"
+__version__ = "0.2.13"
 __mokda_backend__ = "xpongecpp"
 __implementation_version__ = __version__
 pi = np.pi

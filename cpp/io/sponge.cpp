@@ -332,7 +332,48 @@ void check_sponge_atom_components_are_contiguous(const Molecule& molecule, const
 }
 
 std::vector<AtomId> prepare_sponge_atom_order(Molecule& molecule) {
-    return reorder_residues_by_linked_components(molecule);
+    auto new_to_original = reorder_residues_by_linked_components(molecule);
+    // FEP can split one residue's ordinary hard-bond graph into a common core
+    // and ghost singleton components. Residue-only sorting cannot make those
+    // blocks contiguous. Soft bonds must NOT be used as ordinary connectivity.
+    // Ordinary non-FEP input keeps its existing atom order and guard behavior.
+    if (!molecule.write_lj_soft_core || !molecule.topology_override) return new_to_original;
+    const auto& topology = *molecule.topology_override;
+    IndexDisjointSet components(molecule.atoms.size());
+    for (const auto& bond : topology.bonds) {
+        if (bond.atom1 >= molecule.atoms.size() || bond.atom2 >= molecule.atoms.size())
+            throw std::invalid_argument("FEP hard bond atom index out of range");
+        if (bond.k != 0.0) components.unite(bond.atom1, bond.atom2);
+    }
+    std::vector<AtomId> first(molecule.atoms.size(), std::numeric_limits<AtomId>::max());
+    for (AtomId atom = 0; atom < molecule.atoms.size(); ++atom) {
+        const auto root = components.find(atom);
+        first[root] = std::min(first[root], atom);
+    }
+    Molecule order_template = molecule;
+    std::vector<AtomId> permutation(molecule.atoms.size());
+    bool changed = false;
+    for (const auto& residue : molecule.residues) {
+        std::vector<AtomId> local;
+        local.reserve(residue.atom_count);
+        for (AtomId atom = residue.atom_begin; atom < residue.atom_begin + residue.atom_count; ++atom)
+            local.push_back(atom);
+        std::stable_sort(local.begin(), local.end(), [&](AtomId a, AtomId b) {
+            return first[components.find(a)] < first[components.find(b)];
+        });
+        for (std::size_t offset = 0; offset < local.size(); ++offset) {
+            const AtomId index = residue.atom_begin + static_cast<AtomId>(offset);
+            permutation[index] = local[offset];
+            changed = changed || index != local[offset];
+            order_template.atoms[index] = molecule.atoms[local[offset]];
+        }
+    }
+    if (!changed) return new_to_original;
+    molecule.reorder_atoms_by_template(order_template);
+    std::vector<AtomId> composed(permutation.size());
+    for (AtomId index = 0; index < permutation.size(); ++index)
+        composed[index] = new_to_original[permutation[index]];
+    return composed;
 }
 
 std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecule& input_molecule,
@@ -349,6 +390,19 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
         throw std::invalid_argument("cannot export invalid molecule");
     }
     const auto topology = build_topology(molecule);
+    auto export_nb14_extras = molecule.nb14_extras;
+    if (molecule.write_lj_soft_core) {
+        // Preserve precisely the ordinary NB14 loader's A-state LJ scaling.
+        // This is an export-only representation change, not another FEP
+        // interpolation: merged FEP states already carry their weighted extras.
+        for (const auto& pair : topology.nb14s) {
+            const auto type1 = resolve_molecule_lj_type(molecule, molecule.atoms.at(pair.atom1).type);
+            const auto type2 = resolve_molecule_lj_type(molecule, molecule.atoms.at(pair.atom2).type);
+            const auto [a, b] = amber_lj_ab(molecule, type1, type2);
+            export_nb14_extras.push_back({pair.atom1, pair.atom2,
+                pair.k_lj * a, pair.k_lj * b, pair.k_ee, std::nullopt});
+        }
+    }
     check_sponge_atom_components_are_contiguous(molecule, topology);
     const std::string actual_prefix = prefix.empty() ? molecule.name : prefix;
     std::filesystem::create_directories(dirname);
@@ -577,6 +631,10 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
         return OutputBuffer{"exclude", out.str()};
     }));
     futures.emplace_back("nb14", std::async(std::launch::async, [&]() -> std::optional<OutputBuffer> {
+        // Native NB14 loading requires ordinary LJ tables even for an empty
+        // NB14 file. Soft-core export uses explicit coefficients above instead
+        // of requesting that incompatible ordinary loader.
+        if (molecule.write_lj_soft_core) return std::nullopt;
         std::ostringstream out;
         out << topology.nb14s.size() << "\n";
         out << std::fixed << std::setprecision(6);
@@ -634,7 +692,7 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
             remember(outputs, "improper_dihedral", path);
         }
     }
-    if (!molecule.nb14_extras.empty()) {
+    if (!export_nb14_extras.empty()) {
         struct NB14ExtraRow {
             AtomId atom1{0};
             AtomId atom2{0};
@@ -643,8 +701,8 @@ std::unordered_map<std::string, std::filesystem::path> save_sponge_input(Molecul
             double kee{0.0};
         };
         std::vector<NB14ExtraRow> rows;
-        rows.reserve(molecule.nb14_extras.size());
-        for (const auto& nb14 : molecule.nb14_extras) {
+        rows.reserve(export_nb14_extras.size());
+        for (const auto& nb14 : export_nb14_extras) {
             if (nb14.a != 0.0 || nb14.b != 0.0 || nb14.kee != 0.0) {
                 const auto atom1 = std::min(nb14.atom1, nb14.atom2);
                 const auto atom2 = std::max(nb14.atom1, nb14.atom2);

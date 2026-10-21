@@ -188,6 +188,20 @@ void bind_forcefield_module(py::module_& m) {
     m.def("add_ions", &add_ions_object, py::arg("molecule"), py::arg("counts"), py::arg("seed") = 0,
           py::arg("solvent") = "WAT");
 
+    // Query the same live registry and wildcard matchers as topology assembly.
+    // The legacy Python type dictionaries are not mirrors of this registry.
+    m.def("amber_parameter_exists", [](const std::string& section, const std::vector<std::string>& types) {
+        if (section == "BOND" && types.size() == 2)
+            return find_amber_bond_term(types[0], types[1]).has_value();
+        if (section == "ANGLE" && types.size() == 3)
+            return find_amber_angle_term({types[0], types[1], types[2]}).has_value();
+        if (section == "DIHE" && types.size() == 4)
+            return !find_amber_proper_terms({types[0], types[1], types[2], types[3]}).empty();
+        if (section == "IMPROPER" && types.size() == 4)
+            return find_amber_improper_match({types[0], types[1], types[2], types[3]}).has_value();
+        throw py::value_error("unsupported Amber section or atom-type count");
+    }, py::arg("section"), py::arg("atom_types"));
+
     m.def("register_ff14sb", &register_ff14sb);
     m.def("register_tip3p", &register_tip3p);
     m.def("register_amber_parmdat_file", [](const std::string& filename) { register_amber_parmdat_file(filename); });

@@ -5,6 +5,14 @@ import pytest
 import XpongeCPP as Xponge
 
 
+@pytest.fixture
+def artificial_water_link_parameters():
+    # Ordering fixtures deliberately connect water oxygens. These test-only
+    # parameters are not part of TIP3P and must not rely on missing-term defaults.
+    Xponge.register_amber_bond_parameter("OW", "OW", 100.0, 2.0)
+    Xponge.register_amber_angle_parameter(["HW", "OW", "OW"], 30.0, 110.0)
+
+
 PDB_TEXT = """\
 ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N
 ATOM      2  CA  ALA A   1       1.450   0.000   0.000  1.00  0.00           C
@@ -1131,7 +1139,7 @@ def test_add_molecule_preserves_source_explicit_bonds(tmp_path):
 
 
 @pytest.mark.parametrize("format", ["raw", "bundle", "native_bundle"])
-def test_save_sponge_input_reorders_linked_residue_components_for_export(tmp_path, format):
+def test_save_sponge_input_reorders_linked_residue_components_for_export(tmp_path, format, artificial_water_link_parameters):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
 
@@ -1155,7 +1163,7 @@ def test_save_sponge_input_reorders_linked_residue_components_for_export(tmp_pat
 
 @pytest.mark.parametrize("format", ["raw", "bundle"])
 @pytest.mark.parametrize("mapping_kind", ["sequence", "atoms"])
-def test_save_sponge_input_mapping_tracks_reordered_linked_components(tmp_path, format, mapping_kind):
+def test_save_sponge_input_mapping_tracks_reordered_linked_components(tmp_path, format, mapping_kind, artificial_water_link_parameters):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
 
@@ -1190,7 +1198,7 @@ def test_save_sponge_input_mapping_tracks_reordered_linked_components(tmp_path, 
 
 
 @pytest.mark.parametrize("format", ["raw", "bundle"])
-def test_save_sponge_input_reorders_coordination_components_for_export(tmp_path, format):
+def test_save_sponge_input_reorders_coordination_components_for_export(tmp_path, format, artificial_water_link_parameters):
     Xponge.register_tip3p()
     mol = Xponge.load_mol2(StringIO(CUSTOM_MOL2_TEXT)) | Xponge.load_mol2(StringIO(MOL2_TEXT))
 

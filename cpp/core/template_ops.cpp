@@ -18,6 +18,48 @@ AtomId remap_atom_id(const std::vector<AtomId>& old_to_new_atom, AtomId old_atom
     return old_to_new_atom[old_atom_id];
 }
 
+// A pure serialization permutation must preserve materialized force entities,
+// including their ordered dihedral tuples. Never rebuild them from a registry.
+void remap_materialized_topology(const Molecule& source, Molecule& target,
+                                 const std::vector<AtomId>& old_to_new) {
+    if (!source.topology_override) return;
+    if (old_to_new.size() != target.atoms.size())
+        throw std::invalid_argument("materialized topology requires a complete atom permutation");
+    std::vector<bool> seen(target.atoms.size(), false);
+    for (const AtomId index : old_to_new) {
+        if (index >= seen.size() || seen[index])
+            throw std::invalid_argument("invalid materialized topology atom permutation");
+        seen[index] = true;
+    }
+    const auto map = [&](AtomId index) {
+        if (index >= old_to_new.size())
+            throw std::invalid_argument("materialized topology atom index out of range");
+        return old_to_new[index];
+    };
+    Topology topology = *source.topology_override;
+    for (auto& term : topology.bonds) {
+        term.atom1 = map(term.atom1); term.atom2 = map(term.atom2);
+    }
+    for (auto& term : topology.angles) {
+        term.atom1 = map(term.atom1); term.atom2 = map(term.atom2); term.atom3 = map(term.atom3);
+    }
+    for (auto& term : topology.dihedrals) {
+        term.atom1 = map(term.atom1); term.atom2 = map(term.atom2);
+        term.atom3 = map(term.atom3); term.atom4 = map(term.atom4);
+    }
+    for (auto& term : topology.nb14s) {
+        term.atom1 = map(term.atom1); term.atom2 = map(term.atom2);
+    }
+    std::vector<std::vector<AtomId>> exclusions(target.atoms.size());
+    for (AtomId atom = 0; atom < topology.exclusions.size(); ++atom) {
+        auto& row = exclusions[map(atom)];
+        for (const AtomId other : topology.exclusions[atom]) row.push_back(map(other));
+        std::sort(row.begin(), row.end());
+    }
+    topology.exclusions = std::move(exclusions);
+    target.topology_override = std::move(topology);
+}
+
 void append_internal_structures(Molecule& target, const Molecule& source, AtomId atom_offset) {
     target.explicit_bonds.reserve(target.explicit_bonds.size() + source.explicit_bonds.size());
     for (const auto& bond : source.explicit_bonds) {
@@ -349,6 +391,7 @@ void Molecule::replace_residues(const std::unordered_map<ResidueId, Molecule>& r
     }
 
     remap_internal_structures(*this, rebuilt, old_to_new_atom);
+    if (replacements.empty()) remap_materialized_topology(*this, rebuilt, old_to_new_atom);
     *this = std::move(rebuilt);
     if (!validate()) {
         throw std::runtime_error("internal error: invalid molecule after residue replacement");
@@ -420,6 +463,7 @@ void Molecule::reorder_atoms_by_template(const Molecule& template_molecule) {
     rebuilt.listed_force_definitions = listed_force_definitions;
     rebuilt.sw_parameters = sw_parameters;
     rebuilt.edip_parameters = edip_parameters;
+    remap_materialized_topology(*this, rebuilt, old_to_new_atom);
     *this = std::move(rebuilt);
     if (!validate()) {
         throw std::runtime_error("internal error: invalid molecule after atom reordering");

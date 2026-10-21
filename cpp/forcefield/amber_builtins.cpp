@@ -44,6 +44,13 @@ void register_tip3p() {
     wat.add_connectivity("H1", "H2");
     put_template(std::move(wat));
 
+    // TIP3P uses three distance constraints; these are model parameters,
+    // including the H-H pseudo-bond, rather than geometry-derived defaults.
+    register_amber_bond_parameter("OW", "HW", 553.0, 0.9572);
+    register_amber_bond_parameter("HW", "HW", 553.0, 1.5136);
+    register_amber_angle_parameter({"HW", "OW", "HW"}, 0.0, 0.0);
+    register_amber_angle_parameter({"OW", "HW", "HW"}, 0.0, 0.0);
+
     ResidueType na("NA");
     na.add_atom("NA", "Na+", 0.0, 0.0, 0.0, 1.0, 22.99);
     put_template(std::move(na));

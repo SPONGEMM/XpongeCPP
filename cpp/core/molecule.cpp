@@ -20,6 +20,26 @@ void ensure_residue_id(const Molecule& molecule, ResidueId id) {
     }
 }
 
+void append_disjoint_topology(Topology& target, const Topology& source, AtomId offset) {
+    for (auto term : source.bonds) {
+        term.atom1 += offset; term.atom2 += offset; target.bonds.push_back(term);
+    }
+    for (auto term : source.angles) {
+        term.atom1 += offset; term.atom2 += offset; term.atom3 += offset;
+        target.angles.push_back(term);
+    }
+    for (auto term : source.dihedrals) {
+        term.atom1 += offset; term.atom2 += offset; term.atom3 += offset; term.atom4 += offset;
+        target.dihedrals.push_back(term);
+    }
+    for (auto term : source.nb14s) {
+        term.atom1 += offset; term.atom2 += offset; target.nb14s.push_back(term);
+    }
+    for (AtomId id = 0; id < source.exclusions.size(); ++id)
+        for (const auto other : source.exclusions[id])
+            target.exclusions[id + offset].push_back(other + offset);
+}
+
 std::array<double, 3> molecule_min(const Molecule& molecule) {
     std::array<double, 3> minv{
         std::numeric_limits<double>::infinity(),
@@ -200,6 +220,22 @@ void Molecule::add_molecule_linked(const Molecule& other, bool link) {
     }
     const AtomId atom_offset = static_cast<AtomId>(atoms.size());
     const ResidueId residue_offset = static_cast<ResidueId>(residues.size());
+    std::optional<Topology> combined_topology;
+    if (topology_override || other.topology_override) {
+        if (link_atom1 && link_atom2) {
+            throw std::invalid_argument(
+                "Covalently linked assembly requires an explicit combined materialized topology");
+        }
+        // A cached physical FEP topology must neither disappear nor keep an
+        // old exclusion/atom count when solvent or another molecule is added.
+        // Ordinary uncached assembly retains its existing lazy graph behavior.
+        const auto left_topology = build_topology(*this);
+        const auto right_topology = build_topology(other);
+        combined_topology.emplace();
+        combined_topology->exclusions.resize(atoms.size() + other.atoms.size());
+        append_disjoint_topology(*combined_topology, left_topology, 0);
+        append_disjoint_topology(*combined_topology, right_topology, atom_offset);
+    }
 
     atoms.reserve(atoms.size() + other.atoms.size());
     residues.reserve(residues.size() + other.residues.size());
@@ -310,6 +346,7 @@ void Molecule::add_molecule_linked(const Molecule& other, bool link) {
     if (link_atom1 && link_atom2) {
         add_residue_link(*link_atom1, *link_atom2 + atom_offset);
     }
+    if (combined_topology) topology_override = std::move(combined_topology);
 }
 
 void Molecule::add_residue_link(AtomId atom1, AtomId atom2) {

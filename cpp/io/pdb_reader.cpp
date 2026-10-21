@@ -324,6 +324,55 @@ std::string mmcif_histidine_name(const std::string& residue_name, const std::uno
     return delta ? (epsilon ? it->second.hip : it->second.hid) : it->second.hie;
 }
 
+// File-declared inter-residue connections take precedence over an additional
+// inferred connection between two already-declared head/tail sites.  This is
+// deliberately narrower than disabling implicit links for all hetero residues:
+// ordinary polymers and multi-residue lipids still use their template links.
+void add_implicit_template_links(Molecule& molecule, bool use_segments,
+                                 const std::vector<ResidueLink>& external = {}) {
+    const auto key = [](AtomId a, AtomId b) {
+        return (static_cast<std::uint64_t>(std::min(a, b)) << 32U) | std::max(a, b);
+    };
+    std::unordered_set<AtomId> declared_sites;
+    std::unordered_set<std::uint64_t> declared_pairs;
+    const auto remember = [&](const ResidueLink& link) {
+        declared_sites.insert(link.atom1);
+        declared_sites.insert(link.atom2);
+        declared_pairs.insert(key(link.atom1, link.atom2));
+    };
+    for (const auto& link : molecule.residue_links) remember(link);
+    for (const auto& link : external) remember(link);
+    const auto explicit_links = molecule.residue_links;
+    std::vector<ResidueLink> ordered_links;
+    std::unordered_set<std::uint64_t> inserted;
+    // Keep this snapshot fixed: inferred links must not suppress later members
+    // of a chain whose head and tail use the same atom (e.g. a custom polymer).
+    for (ResidueId i = 0; i + 1 < molecule.residues.size(); ++i) {
+        const auto& left = molecule.residues[i];
+        const auto& right = molecule.residues[i + 1];
+        const bool adjacent = use_segments ? left.segment_id == right.segment_id
+            : left.chain_id == right.chain_id && left.mmcif_chain_id == right.mmcif_chain_id;
+        if (!adjacent || !has_template(left.name) || !has_template(right.name)) continue;
+        const auto& a = get_residue_template(left.name);
+        const auto& b = get_residue_template(right.name);
+        if (a.tail().empty() || b.head().empty()) continue;
+        const auto tail = find_atom(molecule, left, a.tail());
+        const auto head = find_atom(molecule, right, b.head());
+        if (tail >= molecule.atoms.size() || head >= molecule.atoms.size()) continue;
+        if (declared_sites.count(tail) && declared_sites.count(head) &&
+            !declared_pairs.count(key(tail, head))) continue;
+        if (inserted.insert(key(tail, head)).second) {
+            ordered_links.push_back({std::min(tail, head), std::max(tail, head)});
+        }
+    }
+    // Preserve the historical public ordering: accepted template neighbors
+    // first, followed by file-declared links, without introducing duplicates.
+    for (const auto& link : explicit_links) {
+        if (inserted.insert(key(link.atom1, link.atom2)).second) ordered_links.push_back(link);
+    }
+    molecule.residue_links = std::move(ordered_links);
+}
+
 }  // namespace
 
 Molecule load_pdb_text(const std::string& text) {
@@ -543,12 +592,6 @@ Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options) {
 
     apply_template_atom_properties(molecule, options.ignore_unknown_name);
 
-    for (ResidueId residue_id = 0; residue_id + 1 < molecule.residues.size(); ++residue_id) {
-        if (molecule.residues[residue_id].segment_id == molecule.residues[residue_id + 1].segment_id) {
-            add_template_residue_link(molecule, residue_id, residue_id + 1);
-        }
-    }
-
     for (const auto& ssbond : ssbond_lines) {
         const auto ref_a = ssbond_ref(ssbond, false);
         const auto ref_b = ssbond_ref(ssbond, true);
@@ -613,6 +656,7 @@ Molecule load_pdb_text(const std::string& text, const PdbLoadOptions& options) {
         }
     }
 
+    add_implicit_template_links(molecule, true);
     return molecule;
 }
 
@@ -886,14 +930,9 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
         }
     }
 
-    for (ResidueId residue_id = 1; residue_id < molecule.residues.size(); ++residue_id) {
-        if (residues[residue_id - 1].chain_id == residues[residue_id].chain_id) {
-            add_template_residue_link(molecule, residue_id - 1, residue_id);
-        }
-    }
-
     std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> chem_comp_bonds;
     for (const auto& row : mmcif_rows(data, "chem_comp_bond")) {
+        if (options.ignore_conect) continue;
         const auto comp = pdb_upper_copy(mmcif_first(row, {"_chem_comp_bond.comp_id"}));
         const auto atom1 = pdb_upper_copy(mmcif_first(row, {"_chem_comp_bond.atom_id_1"}));
         const auto atom2 = pdb_upper_copy(mmcif_first(row, {"_chem_comp_bond.atom_id_2"}));
@@ -959,29 +998,21 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
         return label_it == atom_by_label.end() ? static_cast<AtomId>(molecule.atoms.size()) : label_it->second;
     };
     for (const auto& row : mmcif_rows(data, "struct_conn")) {
+        const auto type = mmcif_lower_copy(mmcif_value(row, "_struct_conn.conn_type_id"));
+        if (options.ignore_conect || (type != "covale" && type != "disulf" && type != "modres" &&
+            type != "covale_base" && type != "covale_phosphate" && type != "covale_sugar")) continue;
         mmcif_add_connection(molecule, resolve_struct_conn_atom(row, "ptnr1"), resolve_struct_conn_atom(row, "ptnr2"));
     }
     for (const auto& row : mmcif_rows(data, "mokda_bond_semantic")) {
+        const auto semantic = mmcif_lower_copy(mmcif_value(row, "_mokda_bond_semantic.connection_semantic"));
+        if (options.ignore_conect || (semantic != "covalent" && semantic != "disulfide")) continue;
         const auto it1 = atom_by_site.find(mmcif_first(row, {"_mokda_bond_semantic.atom_site_id_1"}));
         const auto it2 = atom_by_site.find(mmcif_first(row, {"_mokda_bond_semantic.atom_site_id_2"}));
         if (it1 != atom_by_site.end() && it2 != atom_by_site.end()) {
             mmcif_add_connection(molecule, it1->second, it2->second);
         }
     }
-    for (const auto& row : mmcif_rows(data, "mokda_edit_operation")) {
-        const auto op = mmcif_lower_copy(mmcif_first(row, {"_mokda_edit_operation.operation_type"}));
-        const auto it1 = atom_by_site.find(mmcif_first(row, {"_mokda_edit_operation.atom_site_id_1"}));
-        const auto it2 = atom_by_site.find(mmcif_first(row, {"_mokda_edit_operation.atom_site_id_2"}));
-        if (it1 == atom_by_site.end() || it2 == atom_by_site.end()) {
-            continue;
-        }
-        if (op == "delete_bond") {
-            mmcif_remove_connection(molecule, it1->second, it2->second);
-        } else if (op == "add_bond" || op == "create_bond" || op == "update_bond") {
-            mmcif_add_connection(molecule, it1->second, it2->second);
-        }
-    }
-
+    std::vector<ResidueLink> external_links;
     for (const auto& link : options.residue_links) {
         const auto key1 = link.atom1.chain_id + "|" + std::to_string(link.atom1.resseq) + "|" +
                           std::string(1, link.atom1.insertion_code) + "|" +
@@ -994,7 +1025,31 @@ Molecule load_mmcif_text(const std::string& text, const MmcifLoadOptions& option
         if (it1 == atom_by_external.end() || it2 == atom_by_external.end()) {
             throw std::invalid_argument("external residue link selector did not match mmCIF atoms");
         }
-        mmcif_add_connection(molecule, it1->second, it2->second);
+        external_links.push_back({it1->second, it2->second});
+    }
+    add_implicit_template_links(molecule, false, external_links);
+
+    // Explicit edits remain last relative to inference; external links retain
+    // their existing final-overlay behavior, including after a delete operation.
+    for (const auto& row : mmcif_rows(data, "mokda_edit_operation")) {
+        if (options.ignore_conect) continue;
+        const auto op = mmcif_lower_copy(mmcif_first(row, {"_mokda_edit_operation.operation_type"}));
+        const auto semantic = mmcif_lower_copy(mmcif_value(row, "_mokda_edit_operation.connection_semantic"));
+        const auto it1 = atom_by_site.find(mmcif_first(row, {"_mokda_edit_operation.atom_site_id_1"}));
+        const auto it2 = atom_by_site.find(mmcif_first(row, {"_mokda_edit_operation.atom_site_id_2"}));
+        if (it1 == atom_by_site.end() || it2 == atom_by_site.end()) {
+            continue;
+        }
+        if (op == "delete_bond") {
+            mmcif_remove_connection(molecule, it1->second, it2->second);
+        } else if ((op == "add_bond" || op == "create_bond" || op == "update_bond") &&
+                   (semantic.empty() || semantic == "covalent" || semantic == "disulfide")) {
+            mmcif_add_connection(molecule, it1->second, it2->second);
+        }
+    }
+
+    for (const auto& link : external_links) {
+        mmcif_add_connection(molecule, link.atom1, link.atom2);
     }
 
     if (options.read_cell) {

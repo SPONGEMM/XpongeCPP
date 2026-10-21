@@ -359,6 +359,7 @@ struct MmcifResidueLink {
 };
 
 struct MmcifLoadOptions {
+    bool ignore_conect{false};
     bool judge_histone{true};
     char position_need{'A'};
     bool ignore_hydrogen{false};

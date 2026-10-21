@@ -106,7 +106,8 @@ std::unordered_map<std::string, T> active_force_map(const std::vector<T>& forces
 }
 
 Topology merge_topology_for_fep(const Molecule& molecule_a, const Molecule& molecule_b,
-                                double default_lambda, const std::unordered_map<std::string, double>& specific_lambda) {
+                                double default_lambda, const std::unordered_map<std::string, double>& specific_lambda,
+                                std::vector<SoftBond>& soft_bonds) {
     const auto lambda_for = [&](const std::string& key) {
         const auto it = specific_lambda.find(key);
         return it == specific_lambda.end() ? default_lambda : it->second;
@@ -121,12 +122,29 @@ Topology merge_topology_for_fep(const Molecule& molecule_a, const Molecule& mole
 
     const auto bonds_a = active_force_map(topo_a.bonds, molecule_a, bond_key);
     const auto bonds_b = active_force_map(topo_b.bonds, molecule_b, bond_key);
+    std::unordered_set<std::uint64_t> pairs_a, pairs_b;
+    for (const auto& [key, force] : bonds_a) pairs_a.insert(pair_key(force.atom1, force.atom2));
+    for (const auto& [key, force] : bonds_b) pairs_b.insert(pair_key(force.atom1, force.atom2));
     std::unordered_set<std::string> keys;
     for (const auto& [key, force] : bonds_a) keys.insert(key);
     for (const auto& [key, force] : bonds_b) keys.insert(key);
     for (const auto& key : keys) {
         const auto ia = bonds_a.find(key);
         const auto ib = bonds_b.find(key);
+        // A bond that exists in only one physical state is evaluated by
+        // SPONGE's soft-bond force. Do not also add a lambda-weighted ordinary
+        // harmonic term: that would double count it and leave spurious hard
+        // components at the endpoints. Preserve the actual endpoint parameters.
+        if (ia != bonds_a.end() && !pairs_b.count(pair_key(ia->second.atom1, ia->second.atom2))) {
+            const auto& force = ia->second;
+            soft_bonds.push_back({force.atom1, force.atom2, force.k, force.length, 0});
+            continue;
+        }
+        if (ib != bonds_b.end() && !pairs_a.count(pair_key(ib->second.atom1, ib->second.atom2))) {
+            const auto& force = ib->second;
+            soft_bonds.push_back({force.atom1, force.atom2, force.k, force.length, 1});
+            continue;
+        }
         if (ia != bonds_a.end() && ib != bonds_b.end() && std::abs(ia->second.length - ib->second.length) < 1e-5) {
             auto force = ia->second;
             force.k = ia->second.k * (1.0 - bond_lambda) + ib->second.k * bond_lambda;
@@ -339,6 +357,57 @@ void require_supported_fep_forces(const Molecule& molecule) {
         throw std::invalid_argument("unsupported force group in FEP merge (ordinary modeling is unaffected)");
 }
 
+// Project materialized physical entities, not their union graph. Re-running
+// parameter matching after B atoms acquire A/union IDs can choose a different
+// ordered improper even when every atom type and parameter is unchanged.
+void append_projected_topology(Topology& target, const Topology& source,
+                               const std::vector<AtomId>& map) {
+    const auto invalid = std::numeric_limits<AtomId>::max();
+    const auto mapped = [&](AtomId id) { return id < map.size() && map[id] != invalid; };
+    for (auto term : source.bonds) {
+        if (!mapped(term.atom1) || !mapped(term.atom2)) continue;
+        term.atom1 = map[term.atom1]; term.atom2 = map[term.atom2];
+        target.bonds.push_back(term);
+    }
+    for (auto term : source.angles) {
+        if (!mapped(term.atom1) || !mapped(term.atom2) || !mapped(term.atom3)) continue;
+        term.atom1 = map[term.atom1]; term.atom2 = map[term.atom2]; term.atom3 = map[term.atom3];
+        target.angles.push_back(term);
+    }
+    for (auto term : source.dihedrals) {
+        if (!mapped(term.atom1) || !mapped(term.atom2) || !mapped(term.atom3) || !mapped(term.atom4)) continue;
+        term.atom1 = map[term.atom1]; term.atom2 = map[term.atom2];
+        term.atom3 = map[term.atom3]; term.atom4 = map[term.atom4];
+        target.dihedrals.push_back(term);
+    }
+    for (auto term : source.nb14s) {
+        if (!mapped(term.atom1) || !mapped(term.atom2)) continue;
+        term.atom1 = map[term.atom1]; term.atom2 = map[term.atom2];
+        target.nb14s.push_back(term);
+    }
+    for (AtomId id = 0; id < source.exclusions.size(); ++id) {
+        if (!mapped(id)) continue;
+        for (const auto other : source.exclusions[id])
+            if (mapped(other)) target.exclusions[map[id]].push_back(map[other]);
+    }
+}
+
+void require_disjoint_endpoint(const Topology& topology,
+                               const std::function<bool(AtomId)>& inside,
+                               const char* message) {
+    const auto check = [&](std::initializer_list<AtomId> atoms) {
+        const bool first = inside(*atoms.begin());
+        for (const auto id : atoms)
+            if (inside(id) != first) throw std::invalid_argument(message);
+    };
+    for (const auto& term : topology.bonds) check({term.atom1, term.atom2});
+    for (const auto& term : topology.angles) check({term.atom1, term.atom2, term.atom3});
+    for (const auto& term : topology.dihedrals) check({term.atom1, term.atom2, term.atom3, term.atom4});
+    for (const auto& term : topology.nb14s) check({term.atom1, term.atom2});
+    for (AtomId id = 0; id < topology.exclusions.size(); ++id)
+        for (const auto other : topology.exclusions[id]) check({id, other});
+}
+
 Molecule build_dual_state(const Molecule& molecule, ResidueId residue_index, const Molecule& residue_b_molecule,
                           const std::vector<int>& a_to_b, const std::vector<int>& b_to_a, bool from_a) {
     const auto invalid = std::numeric_limits<AtomId>::max();
@@ -449,6 +518,37 @@ Molecule build_dual_state(const Molecule& molecule, ResidueId residue_index, con
     if (!out.validate()) {
         throw std::runtime_error("internal error: invalid dual topology molecule");
     }
+    Topology physical;
+    physical.exclusions.resize(out.atoms.size());
+    const auto original_a = build_topology(molecule);
+    if (from_a) {
+        append_projected_topology(physical, original_a, old_to_new);
+    } else {
+        auto environment_map = old_to_new;
+        const auto in_target = [&](AtomId id) {
+            return id >= residue_a.atom_begin && id < residue_a.atom_begin + residue_a.atom_count;
+        };
+        // A standalone replacement residue has no information to reconstruct
+        // covalent environment terms. Fail explicitly rather than invent a B
+        // Hamiltonian from the union graph; ordinary modeling is unaffected.
+        require_disjoint_endpoint(original_a, in_target,
+            "covalently linked FEP target requires explicit physical B environment topology");
+        for (AtomId id = residue_a.atom_begin; id < residue_a.atom_begin + residue_a.atom_count; ++id)
+            environment_map[id] = invalid;
+        append_projected_topology(physical, original_a, environment_map);
+        std::vector<AtomId> target_map(residue_b_molecule.atoms.size(), invalid);
+        for (std::uint32_t local = 0; local < residue_b.atom_count; ++local)
+            target_map[residue_b.atom_begin + local] = combined_b_to_new[local];
+        const auto original_b = build_topology(residue_b_molecule);
+        require_disjoint_endpoint(original_b, [&](AtomId id) { return target_map[id] != invalid; },
+            "covalently linked FEP replacement requires explicit physical B environment topology");
+        append_projected_topology(physical, original_b, target_map);
+    }
+    for (auto& excluded : physical.exclusions) {
+        std::sort(excluded.begin(), excluded.end());
+        excluded.erase(std::unique(excluded.begin(), excluded.end()), excluded.end());
+    }
+    out.topology_override = std::move(physical);
     return out;
 }
 
@@ -533,28 +633,9 @@ Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_
         atom.subsys = atom_a.subsys != 0 ? atom_a.subsys : atom_b.subsys;
     }
     out.enable_lj_soft_core();
-    out.topology_override = merge_topology_for_fep(molecule_a, molecule_b, default_lambda, specific_lambda);
-    merge_explicit_pairs(out, molecule_a, molecule_b, lambda_for("dihedral"));
-
-    std::unordered_set<std::uint64_t> seen_soft_bonds;
     out.soft_bonds.clear();
-    for (const auto& bond : out.explicit_bonds) {
-        const bool active_a = !is_zero_lj(molecule_a.atoms[bond.atom1]) && !is_zero_lj(molecule_a.atoms[bond.atom2]);
-        const bool active_b = !is_zero_lj(molecule_b.atoms[bond.atom1]) && !is_zero_lj(molecule_b.atoms[bond.atom2]);
-        if (active_a == active_b) {
-            continue;
-        }
-        if (!seen_soft_bonds.insert(pair_key(bond.atom1, bond.atom2)).second) {
-            continue;
-        }
-        if (active_a) {
-            const auto [k, b] = bond_parameters_or_distance(molecule_a.atoms[bond.atom1], molecule_a.atoms[bond.atom2]);
-            out.add_bond_soft(bond.atom1, bond.atom2, k, b, 0);
-        } else {
-            const auto [k, b] = bond_parameters_or_distance(molecule_b.atoms[bond.atom1], molecule_b.atoms[bond.atom2]);
-            out.add_bond_soft(bond.atom1, bond.atom2, k, b, 1);
-        }
-    }
+    out.topology_override = merge_topology_for_fep(molecule_a, molecule_b, default_lambda, specific_lambda, out.soft_bonds);
+    merge_explicit_pairs(out, molecule_a, molecule_b, lambda_for("dihedral"));
 
     return out;
 }

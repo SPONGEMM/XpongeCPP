@@ -5,8 +5,8 @@ from ... import (
     merge_force_field as _merge_force_field,
     register_amber_lj_parameter,
 )
-from ..._core import fep_intramolecule_nb_to_nb14 as _intramolecule_nb_to_nb14
-from ..._core import fep_get_free_molecule as _get_free_molecule
+from XpongeCPP._core import fep_intramolecule_nb_to_nb14 as _intramolecule_nb_to_nb14
+from XpongeCPP._core import fep_get_free_molecule as _get_free_molecule
 
 register_amber_lj_parameter("ZERO_LJ_ATOM", "ZERO_LJ_ATOM", 0.0, 0.0)
 

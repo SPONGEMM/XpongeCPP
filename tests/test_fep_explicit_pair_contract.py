@@ -7,6 +7,14 @@ import XpongeCPP as x
 from XpongeCPP.forcefield.special import fep
 
 
+@pytest.mark.parametrize('namespace',['XpongeCPP','Xponge'])
+def test_native_fep_helpers_resolve_in_both_public_namespaces(namespace):
+    import importlib
+    module=importlib.import_module(namespace+'.forcefield.special.fep')
+    a=chain(5)
+    assert module.intramolecule_nb_to_nb14(a,0) is a
+
+
 def chain(count=5, charge=.2, label='FEPREG'):
     x.register_amber_lj_parameter(label, label, .1, 1.8)
     x.register_amber_bond_parameter(label, label, 100., 1.5)
@@ -41,7 +49,7 @@ def test_explicit_pair_endpoint_and_charge_squared_interpolation(tmp_path):
         expected=(1-lam)*.4*.2**2+lam*.8*.6**2
         assert row[4]*q*q==pytest.approx(expected,rel=2e-6,abs=1e-12)
         # Standard 1-4 also converts to extra: no duplicate ordinary NB14.
-        assert files['nb14.txt'].strip()=='0'
+        assert 'nb14.txt' not in files
         assert save(a,tmp_path,'a')==before_a and save(b,tmp_path,'b')==before_b
         if lam in stored: assert files==stored[lam]
         stored[lam]=files
