@@ -63,3 +63,27 @@ def test_local_patch_inplace_is_a_copy_then_commit():
     assert molecule.atoms[mapping[metal_id]].charge == (
         patch.parameterization_result.metal_overlay.charges[metal_id]
     )
+
+
+def test_patch_link_validation_accepts_public_atom_object_endpoints():
+    from types import SimpleNamespace
+    import pytest
+    from XpongeCPP.metal_assignment import ValidationError
+    from XpongeCPP.metal_assignment.molecule_api import _validate_patch_links
+
+    patch = _local_patch()
+    molecule, mapping = _ordinary_molecule(patch)
+    atom_count = len(molecule.atoms)
+    molecule = molecule + molecule
+    external_ids = ["first-residue-atom", "second-residue-atom"]
+    indices = [0, atom_count]
+    mapping = dict(zip(external_ids, indices))
+    molecule.set_residue_links([tuple(indices)])
+    assert molecule.residue_links[0].atom1.index == indices[0]
+    required = SimpleNamespace(required_links=[SimpleNamespace(
+        atom_ids=tuple(external_ids), external_id="required-public-link",
+    )])
+    _validate_patch_links(molecule, required, mapping)
+    molecule.set_residue_links([])
+    with pytest.raises(ValidationError, match="missing_molecule_residue_link"):
+        _validate_patch_links(molecule, required, mapping)

@@ -229,25 +229,26 @@ def _normalized_patch_mapping(
     ))
 
 
+def _atom_index(atom: Any) -> int:
+    if isinstance(atom, int):
+        return atom
+    index = getattr(atom, "index", None)
+    if index is None:
+        raise TypeError("molecule topology contains an unsupported atom reference")
+    return int(index)
+
+
 def _topology_fingerprint(molecule: Any) -> tuple[Any, ...]:
     molecule.get_atoms()
 
-    def atom_index(atom: Any) -> int:
-        if isinstance(atom, int):
-            return atom
-        index = getattr(atom, "index", None)
-        if index is None:
-            raise TypeError("molecule topology contains an unsupported atom reference")
-        return int(index)
-
     residue_rows = tuple(
-        (residue.name, tuple(atom_index(atom) for atom in residue.atoms))
+        (residue.name, tuple(_atom_index(atom) for atom in residue.atoms))
         for residue in molecule.residues
     )
     links = tuple(sorted(
         tuple(sorted((
-            atom_index(link.atom1 if hasattr(link, "atom1") else link[0]),
-            atom_index(link.atom2 if hasattr(link, "atom2") else link[1]),
+            _atom_index(link.atom1 if hasattr(link, "atom1") else link[0]),
+            _atom_index(link.atom2 if hasattr(link, "atom2") else link[1]),
         )))
         for link in molecule.residue_links
     ))
@@ -266,8 +267,8 @@ def _validate_patch_links(
 ) -> None:
     existing_links = {
         tuple(sorted((
-            int(link.atom1 if hasattr(link, "atom1") else link[0]),
-            int(link.atom2 if hasattr(link, "atom2") else link[1]),
+            _atom_index(link.atom1 if hasattr(link, "atom1") else link[0]),
+            _atom_index(link.atom2 if hasattr(link, "atom2") else link[1]),
         )))
         for link in molecule.residue_links
     }
