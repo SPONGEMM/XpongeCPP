@@ -1,6 +1,12 @@
-# XpongeCPP 0.2.13
+# XpongeCPP 0.2.14
 
-## Unreleased candidate: deterministic AMBER impropers (2026-10-23)
+Compatibility target: Xponge-origin 1.7.5.
+
+Metal patch link validation now accepts public ResidueLink Atom endpoints as
+well as integer atom indices. Missing required links are still rejected; a
+regression test covers both cases.
+
+## deterministic AMBER impropers (2026-10-23)
 
 Native periodic improper matching retains original parameter slots and all
 selected periodicities, with latest per-period override and stable
@@ -10,7 +16,7 @@ endpoints continue to bypass rematching. See AMBER_IMPROPER_POLICY.md; this
 does not emulate LEaP's ambiguous unit-cache ordering or change harmonic
 improper definitions. No frozen input or trajectory is automatically migrated.
 
-## Unreleased candidate: retained dummy bonded scaffolds (2026-10-23)
+## retained dummy bonded scaffolds (2026-10-23)
 
 Dual construction retains opposite-branch source bond, angle and ordered
 periodic torsion entities touching non-MCS atoms at both endpoints. Ghosts still
@@ -25,6 +31,8 @@ endpoint contamination. It is not a globally validated replacement. CDK2
 historical ligand-subset tables match at seven step2 states; CDK8 still has
 historical parameter-provenance and cross-backend ordered-improper discrepancies.
 Do not reuse old trajectory acceptance or claim full engine/MD equivalence.
+
+# XpongeCPP 0.2.13
 
 Compatibility target: Xponge-origin 1.7.4.
 
