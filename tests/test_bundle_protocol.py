@@ -5,6 +5,7 @@ import pytest
 
 import XpongeCPP as Xponge
 from XpongeCPP.io_bundle.errors import BundlePathError, BundleValidationError
+from test_xpongecpp_api import artificial_water_link_parameters
 
 
 def _peptide():
@@ -131,7 +132,7 @@ def _text(dataset):
     return value.decode("utf-8") if isinstance(value, bytes) else str(value)
 
 
-def test_bundle_saver_remaps_protocol_with_reordered_atoms(tmp_path):
+def test_bundle_saver_remaps_protocol_with_reordered_atoms(tmp_path, artificial_water_link_parameters):
     from io import StringIO
     from test_xpongecpp_api import CUSTOM_MOL2_TEXT, MOL2_TEXT
 

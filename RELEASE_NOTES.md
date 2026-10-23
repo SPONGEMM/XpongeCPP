@@ -1,4 +1,17 @@
-# XpongeCPP 0.2.14
+# XpongeCPP 0.2.15
+
+Compatibility target: Xponge-origin 1.7.6.
+
+Includes the public metal-patch Atom endpoint fix, deterministic AMBER improper
+ordering and retained dummy bonded scaffolds described below. Complete the
+synthetic CMAP and water-link test parameters and use NALA + internal ALA for
+the cross-component peptide fixture. Missing production parameters still fail
+strictly; no default force-field terms are introduced.
+
+The CDK8 parameter-provenance and cross-backend ordered-improper limitations
+below remain; full-engine/MD equivalence is not claimed.
+
+# XpongeCPP 0.2.14 (unpublished candidate)
 
 Compatibility target: Xponge-origin 1.7.5.
 

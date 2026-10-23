@@ -273,6 +273,12 @@ ALA
     for atom_type, rmin, epsilon in [("C", 1.7, 0.1), ("N", 1.5, 0.1), ("XC", 1.8, 0.1)]:
         Xponge.register_amber_lj_parameter(atom_type, atom_type, epsilon, rmin)
 
+    # Synthetic bonded parameters complete this CMAP serialization fixture.
+    for atom1, atom2 in [("C", "N"), ("N", "XC"), ("XC", "C")]:
+        Xponge.register_amber_bond_parameter(atom1, atom2, 100.0, 1.3)
+    for types in [("C", "N", "XC"), ("N", "XC", "C"), ("XC", "C", "N")]:
+        Xponge.register_amber_angle_parameter(list(types), 30.0, 180.0)
+
     mol = Xponge.load_mol2(
         StringIO(
             """@<TRIPOS>MOLECULE

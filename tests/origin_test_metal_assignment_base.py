@@ -187,6 +187,13 @@ class NativeBaseAssignmentTests(unittest.TestCase):
     def test_standard_worker_materializes_cross_component_link_terms(self):
         payload = _nala_payload()
         second = deepcopy(payload["components"][0])
+        # The acceptor is internal ALA, not a second protonated N-terminus.
+        second["polymer_position"] = "internal"
+        second["atoms"] = [atom for atom in second["atoms"] if atom["atom_name"] not in {"H2", "H3"}]
+        second["bonds"] = [bond for bond in second["bonds"] if not {"atom:H2", "atom:H3"}.intersection(bond["atom_ids"])]
+        for atom in second["atoms"]:
+            if atom["atom_name"] == "H1":
+                atom["atom_name"] = "H"
         second["external_id"] = "assignment:ALA:2"
         second["proof_hash"] = "7" * 64
         second["artifact_hash"] = "8" * 64
@@ -207,6 +214,7 @@ class NativeBaseAssignmentTests(unittest.TestCase):
 
         response = _invoke_standard_worker(payload, timeout_seconds=30.0)
 
+        self.assertEqual([component["template_name"] for component in response["components"]], ["NALA", "ALA"])
         terms = response["cross_component_bonded_parameters"].values()
         self.assertTrue(terms)
         self.assertEqual(
