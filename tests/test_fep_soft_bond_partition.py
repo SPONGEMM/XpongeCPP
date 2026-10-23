@@ -1,4 +1,4 @@
-"""One-sided FEP bonds belong only to the soft table, not twice to energy."""
+"""Dummy scaffolds stay ordinary; explicitly one-sided bonds are not doubled."""
 from io import StringIO
 import pytest
 import XpongeCPP as x
@@ -17,14 +17,13 @@ def rows(folder,name):
     return [list(map(float,r.split())) for r in (folder/name).read_text().splitlines()[1:] if r.strip()]
 
 @pytest.mark.parametrize('lam',[0.,.25,1.])
-def test_one_sided_bonds_are_not_also_ordinary_bonds(tmp_path,lam):
+def test_dual_branch_bonds_remain_ordinary_at_both_endpoints(tmp_path,lam):
     a=chain(2);b=chain(2)
     left,right,_=fep.merge_dual_topology(a,0,b,{0:0})
     mixed=fep.merge_force_field(left,right,lam)
     x.Save_SPONGE_Input(mixed,prefix='TMP',dirname=str(tmp_path))
-    assert rows(tmp_path,'TMP_bond.txt')==[]
-    soft=rows(tmp_path,'TMP_bond_soft.txt')
-    assert sorted(soft)==[[0.,1.,100.,1.5,0.],[0.,2.,100.,1.5,1.]]
+    assert rows(tmp_path,'TMP_bond.txt')==[[0.,1.,100.,1.5],[0.,2.,100.,1.5]]
+    assert not (tmp_path/'TMP_bond_soft.txt').exists()
 
 @pytest.mark.parametrize('lam',[0.,.25,1.])
 def test_interleaved_dual_atoms_export_without_changing_atom_identity(tmp_path,lam):
@@ -34,9 +33,9 @@ def test_interleaved_dual_atoms_export_without_changing_atom_identity(tmp_path,l
     mixed=fep.merge_force_field(left,right,lam)
     x.Save_SPONGE_Input(mixed,prefix='TMP',dirname=str(tmp_path))
     assert [v.name for v in mixed.atoms]==names
-    assert rows(tmp_path,'TMP_bond.txt')==[[2.,3.,100.,1.5]]
-    soft=rows(tmp_path,'TMP_bond_soft.txt')
-    assert len(soft)==4 and all(r[2:4]==[100.,1.5] for r in soft)
+    assert rows(tmp_path,'TMP_bond.txt')==[[0.,1.,100.,1.5],[0.,4.,100.,1.5],
+        [1.,2.,100.,1.5],[2.,3.,100.,1.5],[4.,2.,100.,1.5]]
+    assert not (tmp_path/'TMP_bond_soft.txt').exists()
     assert [v.name for v in left.atoms]==names
 
 def test_both_active_changed_length_stays_harmonic_and_lambda_weighted(tmp_path):
@@ -46,3 +45,13 @@ def test_both_active_changed_length_stays_harmonic_and_lambda_weighted(tmp_path)
     x.Save_SPONGE_Input(mixed,prefix='TMP',dirname=str(tmp_path))
     assert sorted(rows(tmp_path,'TMP_bond.txt'))==[[0.,1.,50.,1.6],[0.,1.,75.,1.5]]
     assert not (tmp_path/'TMP_bond_soft.txt').exists()
+
+@pytest.mark.parametrize('lam',[0.,.25,1.])
+def test_explicitly_one_sided_physical_bond_is_not_double_counted(tmp_path,lam):
+    a=chain(2)
+    b=x.load_mol2(StringIO('@<TRIPOS>MOLECULE\nDISCONNECTED\n2 0 1\nSMALL\nUSER_CHARGES\n'
+        '@<TRIPOS>ATOM\n1 C0 0 0 .2 FEPSOFTPART 1 DIS 0\n2 C1 20 1 .2 FEPSOFTPART 1 DIS 0\n@<TRIPOS>BOND\n'))
+    mixed=fep.merge_force_field(a,b,lam)
+    x.Save_SPONGE_Input(mixed,prefix='TMP',dirname=str(tmp_path))
+    assert rows(tmp_path,'TMP_bond.txt')==[]
+    assert rows(tmp_path,'TMP_bond_soft.txt')==[[0.,1.,100.,1.5,0.]]

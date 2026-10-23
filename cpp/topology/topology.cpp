@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <mutex>
+#include <map>
 #include <queue>
 #include <stdexcept>
 #include <string>
@@ -247,7 +248,7 @@ public:
         return proper_terms_.emplace(key, result).first->second;
     }
 
-    std::optional<AmberImproperMatch> improper(AtomId atom1, AtomId atom2, AtomId atom3, AtomId atom4) {
+    std::vector<AmberImproperMatch> improper(AtomId atom1, AtomId atom2, AtomId atom3, AtomId atom4) {
         const auto key = ordered_improper_key(atom_type_ids_[atom1], atom_type_ids_[atom2], atom_type_ids_[atom3],
                                               atom_type_ids_[atom4]);
         {
@@ -257,7 +258,7 @@ public:
                 return it->second;
             }
         }
-        const auto result = find_amber_improper_match(
+        const auto result = find_amber_improper_matches(
             {molecule_.atoms[atom1].type, molecule_.atoms[atom2].type, molecule_.atoms[atom3].type, molecule_.atoms[atom4].type});
         std::lock_guard<std::mutex> lock(improper_mutex_);
         return improper_terms_.emplace(key, result).first->second;
@@ -294,7 +295,7 @@ private:
     std::unordered_map<PairTypeKey, std::optional<BondTerm>, PairTypeKeyHash> bond_terms_;
     std::unordered_map<TripleTypeKey, std::optional<AngleTerm>, TripleTypeKeyHash> angle_terms_;
     std::unordered_map<QuadTypeKey, std::vector<DihedralTerm>, QuadTypeKeyHash> proper_terms_;
-    std::unordered_map<QuadTypeKey, std::optional<AmberImproperMatch>, QuadTypeKeyHash> improper_terms_;
+    std::unordered_map<QuadTypeKey, std::vector<AmberImproperMatch>, QuadTypeKeyHash> improper_terms_;
     std::unordered_map<QuadTypeKey, std::optional<NB14Scale>, QuadTypeKeyHash> nb14_scales_;
 };
 
@@ -539,30 +540,53 @@ void add_xponge_impropers(const Molecule& molecule, const std::vector<std::vecto
         while (end < grouped_candidates.size() && grouped_candidates[end].first == grouped_candidates[begin].first) {
             ++end;
         }
-        std::optional<std::pair<std::array<AtomId, 4>, AmberImproperMatch>> selected;
+        // amber-deterministic-v1: retain parameter slots. Ambiguous slots use
+        // actual type, residue position and unique local name, never export IDs.
+        using Identity = std::tuple<std::string, ResidueId, std::string>;
+        const auto identity = [&](AtomId id) {
+            const auto& atom = molecule.atoms[id];
+            return Identity{atom.type, atom.residue, atom.name};
+        };
+        const auto key = [&](const std::array<AtomId, 4>& atoms) {
+            return std::array<Identity, 4>{identity(atoms[0]), identity(atoms[1]), identity(atoms[2]), identity(atoms[3])};
+        };
+        std::map<int, std::pair<std::array<AtomId, 4>, AmberImproperMatch>> selected;
+        std::optional<std::pair<std::array<AtomId, 4>, AmberImproperMatch>> legacy;
+        int least_x = 999;
         for (std::size_t index = begin; index < end; ++index) {
             const auto& candidate = grouped_candidates[index].second;
-            const auto match = lookup_cache.improper(candidate[0], candidate[1], candidate[2], candidate[3]);
-            if (match && match->exact) {
-                selected = std::make_pair(candidate, *match);
-                break;
-            }
-        }
-        if (!selected) {
-            int least_x = 999;
-            for (std::size_t index = begin; index < end; ++index) {
-                const auto& candidate = grouped_candidates[index].second;
-                const auto match = lookup_cache.improper(candidate[0], candidate[1], candidate[2], candidate[3]);
-                if (!match || match->exact || match->wildcard_count > least_x) {
+            for (const auto& match : lookup_cache.improper(candidate[0], candidate[1], candidate[2], candidate[3])) {
+                if (!match.deterministic) {
+                    if ((!legacy || !legacy->second.exact) &&
+                        (match.exact || !legacy || match.wildcard_count <= legacy->second.wildcard_count))
+                        legacy = {candidate, match};
                     continue;
                 }
-                selected = std::make_pair(candidate, *match);
-                least_x = match->wildcard_count;
+                if (match.wildcard_count > least_x) continue;
+                if (match.wildcard_count < least_x) { selected.clear(); least_x = match.wildcard_count; }
+                auto previous = selected.find(match.term.periodicity);
+                if (previous == selected.end() || match.parameter_order > previous->second.second.parameter_order ||
+                    (match.parameter_order == previous->second.second.parameter_order && key(candidate) < key(previous->second.first))) {
+                    selected[match.term.periodicity] = {candidate, match};
+                }
             }
         }
-        if (selected && selected->second.term.k != 0.0) {
-            const auto& atoms = selected->first;
-            push_oriented_dihedral(dihedrals, atoms[0], atoms[1], atoms[2], atoms[3], selected->second.term);
+        if (legacy) {
+            if (!selected.empty()) throw std::runtime_error("mixed AMBER and legacy improper conventions for one group");
+            const auto& atoms = legacy->first;
+            push_oriented_dihedral(dihedrals, atoms[0], atoms[1], atoms[2], atoms[3], legacy->second.term);
+        }
+        for (const auto& [n, value] : selected) {
+            const auto& atoms = value.first;
+            for (std::size_t i = 0; i < 4; ++i) {
+                for (std::size_t j = i + 1; j < 4; ++j) {
+                    if (molecule.atoms[atoms[i]].residue == molecule.atoms[atoms[j]].residue &&
+                        molecule.atoms[atoms[i]].name == molecule.atoms[atoms[j]].name) {
+                        throw std::runtime_error("AMBER improper ordering requires unique local atom names");
+                    }
+                }
+            }
+            push_oriented_dihedral(dihedrals, atoms[0], atoms[1], atoms[2], atoms[3], value.second.term);
         }
         begin = end;
     }

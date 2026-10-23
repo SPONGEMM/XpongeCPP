@@ -1,5 +1,31 @@
 # XpongeCPP 0.2.13
 
+## Unreleased candidate: deterministic AMBER impropers (2026-10-23)
+
+Native periodic improper matching retains original parameter slots and all
+selected periodicities, with latest per-period override and stable
+type/residue/local-name ambiguity resolution. Parameter lookup caches retain
+slot metadata rather than occurrence-dependent permutations. Materialized FEP
+endpoints continue to bypass rematching. See AMBER_IMPROPER_POLICY.md; this
+does not emulate LEaP's ambiguous unit-cache ordering or change harmonic
+improper definitions. No frozen input or trajectory is automatically migrated.
+
+## Unreleased candidate: retained dummy bonded scaffolds (2026-10-23)
+
+Dual construction retains opposite-branch source bond, angle and ordered
+periodic torsion entities touching non-MCS atoms at both endpoints. Ghosts still
+have zero LJ/charge, and endpoint NB14 uses these nonbonded states. Common-only
+terms keep their physical endpoint parameters. No union-graph reparameterization
+or extra cross-branch angles/torsions is performed. Ordinary modeling and the
+explicit low-level one-sided soft-bond interface are unchanged.
+
+This corrects the physical-only projection described below: auxiliary dummy
+terms are part of the chosen dual-topology protocol, not unwanted physical
+endpoint contamination. It is not a globally validated replacement. CDK2
+historical ligand-subset tables match at seven step2 states; CDK8 still has
+historical parameter-provenance and cross-backend ordered-improper discrepancies.
+Do not reuse old trajectory acceptance or claim full engine/MD equivalence.
+
 Compatibility target: Xponge-origin 1.7.4.
 
 Disjoint molecule assembly now preserves materialized physical topologies from

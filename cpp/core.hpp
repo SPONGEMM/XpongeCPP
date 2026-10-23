@@ -253,6 +253,9 @@ struct AmberImproperMatch {
     DihedralTerm term;
     bool exact{false};
     int wildcard_count{0};
+    std::array<std::string, 4> parameter_types;
+    std::size_t parameter_order{0};
+    bool deterministic{true};
 };
 
 enum class LJCombiningRule {
@@ -647,7 +650,7 @@ void register_amber_angle_parameter(const std::array<std::string, 3>& atom_types
 void register_amber_proper_dihedral_parameter(const std::array<std::string, 4>& atom_types, int periodicity,
                                               double k, double phase, bool reset = false);
 void register_amber_improper_dihedral_parameter(const std::array<std::string, 4>& atom_types, int periodicity,
-                                                double k, double phase);
+                                                double k, double phase, bool deterministic = true);
 void register_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4, double k_lj,
                                double k_ee);
 void register_amber_cmap_parameter(const std::string& key, std::uint32_t resolution,
@@ -661,6 +664,7 @@ void apply_amber_cmaps(Molecule& molecule);
 std::vector<DihedralTerm> find_amber_proper_terms(const std::array<std::string, 4>& atom_types);
 std::optional<DihedralTerm> find_amber_improper_term(const std::array<std::string, 4>& atom_types);
 std::optional<AmberImproperMatch> find_amber_improper_match(const std::array<std::string, 4>& atom_types);
+std::vector<AmberImproperMatch> find_amber_improper_matches(const std::array<std::string, 4>& atom_types);
 std::optional<NB14Scale> find_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4);
 std::optional<NB14Scale> find_amber_nb14_dihedral_scale(
     const std::array<std::string, 4>& atom_types);

@@ -197,14 +197,12 @@ USER_CHARGES
 
     assert out is merged
     assert (tmp_path / "merged_LJ_soft_core.txt").is_file()
-    assert (tmp_path / "merged_bond_soft.txt").is_file()
+    assert not (tmp_path / "merged_bond_soft.txt").exists()
     assert not (tmp_path / "merged_LJ.txt").exists()
     assert (tmp_path / "merged_subsys_division.txt").read_text().splitlines() == ["3", "0", "1", "2"]
-    # One-sided bonds are already in bond_soft. Ordinary lambda-weighted
-    # copies would double count those physical interactions.
-    assert (tmp_path / "merged_bond.txt").read_text().strip() == "0"
-    assert (tmp_path / "merged_bond_soft.txt").read_text().splitlines() == [
-        "2", "0 1 " + " ".join(endpoint_a) + " 0", "0 2 " + " ".join(endpoint_b) + " 1",
+    # Dummy branch scaffolds retain complete source bond coefficients.
+    assert (tmp_path / "merged_bond.txt").read_text().splitlines() == [
+        "2", "0 1 " + " ".join(endpoint_a), "0 2 " + " ".join(endpoint_b),
     ]
 
 
@@ -274,7 +272,12 @@ USER_CHARGES
     _, _, a02, b02, kee02 = lines02[1].split()
     assert float(a02) == pytest.approx(float(a1) * 0.2, rel=2e-6)
     assert float(b02) == pytest.approx(float(b1) * 0.2, rel=2e-6)
-    assert float(kee02) == pytest.approx(float(kee1) * 0.2, abs=1e-6)
+    # All endpoint charges are zero: compare the physical coefficient, not the
+    # arbitrary finite kee multiplier used to serialize a zero function.
+    for prefix, kee in (("nb14_1", kee1), ("nb14_02", kee02)):
+        q = list(map(float, (tmp_path / f"{prefix}_charge.txt").read_text().splitlines()[1:]))
+        assert all(value == 0 for value in q)
+        assert float(kee) * q[0] * q[3] == 0
     assert not (tmp_path / "nb14_1_nb14.txt").exists()
 
 

@@ -22,16 +22,18 @@ def test_fep_common_component_is_contiguous_with_explicit_identity_map(tmp_path,
     before=[(v.name,v.x,v.y,v.z) for v in left.atoms]
     mixed=fep.merge_force_field(left,right,lam)
     order=_core.prepare_sponge_atom_order(mixed)
-    assert order==[0,2,3,4,1,5]
+    # Retained dummy bonds connect the complete scaffold: no artificial hard/
+    # soft partition remains and the stable exporter must not reorder it.
+    assert order==list(range(6))
     assert mixed.has_topology_override
     assert _core.prepare_sponge_atom_order(mixed)==list(range(6))
     x.Save_SPONGE_Input(mixed,prefix='TMP',dirname=str(tmp_path))
-    assert [v.name for v in mixed.atoms]==['C0','C2','C3','C4','C1','C1R2']
+    assert [v.name for v in mixed.atoms]==['C0','C1','C2','C3','C4','C1R2']
     assert [(v.name,v.x,v.y,v.z) for v in left.atoms]==before
     rows=[list(map(float,r.split())) for r in (tmp_path/'TMP_bond.txt').read_text().splitlines()[1:]]
-    assert rows==[[0.,1.,100.,1.5],[0.,2.,100.,1.5],[0.,3.,100.,1.5]]
-    soft=[list(map(float,r.split())) for r in (tmp_path/'TMP_bond_soft.txt').read_text().splitlines()[1:]]
-    assert soft==[[0.,4.,100.,1.5,0.],[0.,5.,100.,1.5,1.]]
+    assert rows==[[0.,1.,100.,1.5],[0.,2.,100.,1.5],[0.,3.,100.,1.5],
+                  [0.,4.,100.,1.5],[0.,5.,100.,1.5]]
+    assert not (tmp_path/'TMP_bond_soft.txt').exists()
 
 def test_explicit_template_permutation_preserves_materialized_topology(tmp_path):
     a=star();b=star();mixed=fep.merge_force_field(a,b,.25)

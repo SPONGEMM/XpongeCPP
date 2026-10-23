@@ -1,5 +1,7 @@
 """Amber force-field compatibility namespace."""
 
+IMPROPER_ORDERING_POLICY = "amber-deterministic-v1"
+
 from .. import package_data_path
 from ... import (
     configure_residue_template_head,

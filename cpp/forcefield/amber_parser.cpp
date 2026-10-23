@@ -119,8 +119,8 @@ void upsert_proper_parameter(const std::array<std::string, 4>& types, const Dihe
     it->terms.push_back(term);
 }
 
-void add_improper_parameter(const std::array<std::string, 4>& types, const DihedralTerm& term) {
-    improper_parameters().push_back({types, term, improper_parameters().size() + 1});
+void add_improper_parameter(const std::array<std::string, 4>& types, const DihedralTerm& term, bool deterministic = true) {
+    improper_parameters().push_back({types, term, improper_parameters().size() + 1, deterministic});
 }
 
 void upsert_nb14_parameter(const std::array<std::string, 4>& types, const NB14Scale& scale) {
@@ -527,9 +527,9 @@ void register_amber_proper_dihedral_parameter(const std::array<std::string, 4>& 
 }
 
 void register_amber_improper_dihedral_parameter(const std::array<std::string, 4>& atom_types, int periodicity,
-                                                double k, double phase) {
+                                                double k, double phase, bool deterministic) {
     std::unique_lock lock(registry_mutex());
-    add_improper_parameter(atom_types, {periodicity, k, phase});
+    add_improper_parameter(atom_types, {periodicity, k, phase}, deterministic);
 }
 
 void register_amber_nb14_scale(const std::string& atom_type1, const std::string& atom_type4, double k_lj,
@@ -652,29 +652,44 @@ std::optional<DihedralTerm> find_amber_improper_term(const std::array<std::strin
 }
 
 std::optional<AmberImproperMatch> find_amber_improper_match(const std::array<std::string, 4>& atom_types) {
-    std::shared_lock lock(registry_mutex());
-    for (auto it = improper_parameters().rbegin(); it != improper_parameters().rend(); ++it) {
-        if (it->types == atom_types) {
-            return AmberImproperMatch{it->term, true, 0};
-        }
-    }
+    const auto matches = find_amber_improper_matches(atom_types);
+    if (matches.empty()) return std::nullopt;
+    return matches.front();
+}
 
-    for (std::uint32_t mask = 0; mask < 16; ++mask) {
-        std::array<std::string, 4> candidate = atom_types;
-        int x_count = 0;
-        for (std::size_t i = 0; i < 4; ++i) {
-            if ((mask & (1U << (3U - i))) != 0U) {
-                candidate[i] = "X";
-                ++x_count;
-            }
-        }
-        for (auto it = improper_parameters().rbegin(); it != improper_parameters().rend(); ++it) {
-            if (it->types == candidate) {
-                return AmberImproperMatch{it->term, false, x_count};
-            }
-        }
+std::vector<AmberImproperMatch> find_amber_improper_matches(const std::array<std::string, 4>& atom_types) {
+    std::shared_lock lock(registry_mutex());
+    std::vector<AmberImproperMatch> out;
+    for (const auto& parameter : improper_parameters()) {
+        if (!parameter.deterministic) continue;
+        // AMBER's central slot is explicit, never a wildcard/peripheral swap.
+        if (parameter.types[2] != atom_types[2]) continue;
+        const auto score = wildcard_score(parameter.types, atom_types);
+        if (score < 0) continue;
+        out.push_back({parameter.term, score == 4, 4 - score, parameter.types, parameter.order});
     }
-    return std::nullopt;
+    // OPLS historically shares this registry, but its matching convention must
+    // not be changed by the AMBER policy. Retain its exact/mask lookup behavior.
+    for (std::uint32_t mask = 0; mask < 16; ++mask) {
+        auto candidate = atom_types;
+        int count = 0;
+        for (std::size_t i = 0; i < 4; ++i) {
+            if (mask & (1U << (3U-i))) { candidate[i] = "X"; ++count; }
+        }
+        bool found = false;
+        for (auto it = improper_parameters().rbegin(); it != improper_parameters().rend(); ++it) {
+            if (!it->deterministic && it->types == candidate) {
+                out.push_back({it->term, count == 0, count, it->types, it->order, false});
+                found = true; break;
+            }
+        }
+        if (found) break;
+    }
+    std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) {
+        if (a.wildcard_count != b.wildcard_count) return a.wildcard_count < b.wildcard_count;
+        return a.parameter_order > b.parameter_order;
+    });
+    return out;
 }
 
 std::optional<NB14Scale> find_amber_nb14_dihedral_scale(

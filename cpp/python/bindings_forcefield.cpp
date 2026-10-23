@@ -224,7 +224,8 @@ void bind_forcefield_module(py::module_& m) {
           py::arg("atom_types"), py::arg("periodicity"), py::arg("k"), py::arg("phase"),
           py::arg("reset") = false);
     m.def("register_amber_improper_dihedral_parameter", &register_amber_improper_dihedral_parameter,
-          py::arg("atom_types"), py::arg("periodicity"), py::arg("k"), py::arg("phase"));
+          py::arg("atom_types"), py::arg("periodicity"), py::arg("k"), py::arg("phase"),
+          py::arg("deterministic") = true);
     m.def("register_amber_nb14_scale", &register_amber_nb14_scale, py::arg("atom_type1"), py::arg("atom_type4"),
           py::arg("k_lj"), py::arg("k_ee"));
     m.def("register_amber_cmap_parameter", &register_amber_cmap_parameter, py::arg("key"),

@@ -361,26 +361,35 @@ void require_supported_fep_forces(const Molecule& molecule) {
 // parameter matching after B atoms acquire A/union IDs can choose a different
 // ordered improper even when every atom type and parameter is unchanged.
 void append_projected_topology(Topology& target, const Topology& source,
-                               const std::vector<AtomId>& map) {
+                               const std::vector<AtomId>& map,
+                               const std::unordered_set<AtomId>* exclusive = nullptr) {
     const auto invalid = std::numeric_limits<AtomId>::max();
     const auto mapped = [&](AtomId id) { return id < map.size() && map[id] != invalid; };
+    const auto retain = [&](std::initializer_list<AtomId> ids) {
+        return !exclusive || std::any_of(ids.begin(), ids.end(),
+            [&](AtomId id) { return exclusive->count(id) != 0; });
+    };
     for (auto term : source.bonds) {
+        if (!retain({term.atom1, term.atom2})) continue;
         if (!mapped(term.atom1) || !mapped(term.atom2)) continue;
         term.atom1 = map[term.atom1]; term.atom2 = map[term.atom2];
         target.bonds.push_back(term);
     }
     for (auto term : source.angles) {
+        if (!retain({term.atom1, term.atom2, term.atom3})) continue;
         if (!mapped(term.atom1) || !mapped(term.atom2) || !mapped(term.atom3)) continue;
         term.atom1 = map[term.atom1]; term.atom2 = map[term.atom2]; term.atom3 = map[term.atom3];
         target.angles.push_back(term);
     }
     for (auto term : source.dihedrals) {
+        if (!retain({term.atom1, term.atom2, term.atom3, term.atom4})) continue;
         if (!mapped(term.atom1) || !mapped(term.atom2) || !mapped(term.atom3) || !mapped(term.atom4)) continue;
         term.atom1 = map[term.atom1]; term.atom2 = map[term.atom2];
         term.atom3 = map[term.atom3]; term.atom4 = map[term.atom4];
         target.dihedrals.push_back(term);
     }
     for (auto term : source.nb14s) {
+        if (!retain({term.atom1, term.atom2})) continue;
         if (!mapped(term.atom1) || !mapped(term.atom2)) continue;
         term.atom1 = map[term.atom1]; term.atom2 = map[term.atom2];
         target.nb14s.push_back(term);
@@ -462,6 +471,7 @@ Molecule build_dual_state(const Molecule& molecule, ResidueId residue_index, con
                     atom.type = kZeroLJ;
                     atom.charge = 0.0;
                     atom.subsys = 1;
+                    atom.fep_preserve_bonded = true;
                 }
             } else if (matched_b < 0) {
                 atom.subsys = 1;
@@ -486,6 +496,7 @@ Molecule build_dual_state(const Molecule& molecule, ResidueId residue_index, con
             if (from_a) {
                 atom.type = kZeroLJ;
                 atom.charge = 0.0;
+                atom.fep_preserve_bonded = true;
             }
             atom.residue = new_residue_id;
             combined_b_to_new[local] = static_cast<AtomId>(out.atoms.size());
@@ -521,8 +532,18 @@ Molecule build_dual_state(const Molecule& molecule, ResidueId residue_index, con
     Topology physical;
     physical.exclusions.resize(out.atoms.size());
     const auto original_a = build_topology(molecule);
+    const auto original_b = build_topology(residue_b_molecule);
+    std::vector<AtomId> target_map(residue_b_molecule.atoms.size(), invalid);
+    std::unordered_set<AtomId> exclusive_a, exclusive_b;
+    for (std::uint32_t local = 0; local < residue_a.atom_count; ++local)
+        if (a_to_b[local] < 0) exclusive_a.insert(residue_a.atom_begin + local);
+    for (std::uint32_t local = 0; local < residue_b.atom_count; ++local) {
+        target_map[residue_b.atom_begin + local] = combined_b_to_new[local];
+        if (b_to_a[local] < 0) exclusive_b.insert(residue_b.atom_begin + local);
+    }
     if (from_a) {
         append_projected_topology(physical, original_a, old_to_new);
+        append_projected_topology(physical, original_b, target_map, &exclusive_b);
     } else {
         auto environment_map = old_to_new;
         const auto in_target = [&](AtomId id) {
@@ -536,14 +557,17 @@ Molecule build_dual_state(const Molecule& molecule, ResidueId residue_index, con
         for (AtomId id = residue_a.atom_begin; id < residue_a.atom_begin + residue_a.atom_count; ++id)
             environment_map[id] = invalid;
         append_projected_topology(physical, original_a, environment_map);
-        std::vector<AtomId> target_map(residue_b_molecule.atoms.size(), invalid);
-        for (std::uint32_t local = 0; local < residue_b.atom_count; ++local)
-            target_map[residue_b.atom_begin + local] = combined_b_to_new[local];
-        const auto original_b = build_topology(residue_b_molecule);
         require_disjoint_endpoint(original_b, [&](AtomId id) { return target_map[id] != invalid; },
             "covalently linked FEP replacement requires explicit physical B environment topology");
         append_projected_topology(physical, original_b, target_map);
+        // Retain exactly the source A branch scaffold, including boundary terms.
+        // Do not rebuild from the union graph or weaken any auxiliary coefficient.
+        append_projected_topology(physical, original_a, old_to_new, &exclusive_a);
     }
+    // Mutually exclusive branches never interact, including through NB14.
+    for (const auto a : exclusive_a)
+        for (const auto b : exclusive_b)
+            exclude_pair(physical, old_to_new[a], target_map[b], out.atoms.size());
     for (auto& excluded : physical.exclusions) {
         std::sort(excluded.begin(), excluded.end());
         excluded.erase(std::unique(excluded.begin(), excluded.end()), excluded.end());

@@ -114,6 +114,7 @@ def load_parameter_from_ffitp(filename, folder, reset=True):
             int(words[3]),
             _kj_to_kcal(float(words[2])),
             _degrees_to_radians(float(words[1])),
+            deterministic=False,
         )
 
     for words in _iter_parameter_rows(output["nb14"]):

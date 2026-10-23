@@ -20,6 +20,7 @@ struct ImproperParameter {
     std::array<std::string, 4> types;
     DihedralTerm term;
     std::size_t order{0};
+    bool deterministic{true};
 };
 
 struct NB14Parameter {
