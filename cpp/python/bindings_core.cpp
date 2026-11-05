@@ -1,6 +1,7 @@
 #include "bindings_internal.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 
 namespace xpongecpp {
@@ -445,6 +446,73 @@ void bind_core_module(py::module_& m) {
                 }
                 return py::make_tuple(lj_type, parameters->first, parameters->second);
             }, py::arg("atom_type"))
+        .def("_get_explicit_topology", [](const Molecule& self) {
+            const auto top = build_topology(self);
+            py::dict out;
+            py::list bonds, angles, dihedrals, nb14s;
+            for (const auto& t : top.bonds)
+                bonds.append(py::make_tuple(t.atom1, t.atom2, t.k, t.length));
+            for (const auto& t : top.angles)
+                angles.append(py::make_tuple(t.atom1, t.atom2, t.atom3, t.k, t.theta));
+            for (const auto& t : top.dihedrals)
+                dihedrals.append(py::make_tuple(t.atom1, t.atom2, t.atom3, t.atom4, t.periodicity, t.k, t.phase));
+            for (const auto& t : top.nb14s)
+                nb14s.append(py::make_tuple(t.atom1, t.atom2, t.k_lj, t.k_ee));
+            out["bonds"] = bonds;
+            out["angles"] = angles;
+            out["dihedrals"] = dihedrals;
+            out["nb14s"] = nb14s;
+            out["exclusions"] = py::cast(top.exclusions);
+            return out;
+        })
+        .def("_set_explicit_topology", [](Molecule& self, const py::dict& input) {
+            if (input.size() != 5)
+                throw py::value_error("Expected exactly bonds, angles, dihedrals, nb14s and exclusions");
+            Topology top;
+            auto index = [&](const py::handle& value) {
+                auto i = py::cast<long long>(value);
+                if (i < 0 || static_cast<std::size_t>(i) >= self.atom_count())
+                    throw py::value_error("Topology atom index out of range");
+                return static_cast<AtomId>(i);
+            };
+            auto number = [](const py::handle& value) {
+                double v = py::cast<double>(value);
+                if (!std::isfinite(v)) throw py::value_error("Nonfinite topology parameter");
+                return v;
+            };
+            for (auto value : input["bonds"]) {
+                auto r = py::cast<py::sequence>(value);
+                if (r.size() != 4) throw py::value_error("Invalid bond row");
+                top.bonds.push_back({index(r[0]), index(r[1]), number(r[2]), number(r[3])});
+            }
+            for (auto value : input["angles"]) {
+                auto r = py::cast<py::sequence>(value);
+                if (r.size() != 5) throw py::value_error("Invalid angle row");
+                top.angles.push_back({index(r[0]), index(r[1]), index(r[2]), number(r[3]), number(r[4])});
+            }
+            for (auto value : input["dihedrals"]) {
+                auto r = py::cast<py::sequence>(value);
+                if (r.size() != 7) throw py::value_error("Invalid dihedral row");
+                top.dihedrals.push_back({index(r[0]), index(r[1]), index(r[2]), index(r[3]),
+                                         py::cast<int>(r[4]), number(r[5]), number(r[6])});
+            }
+            for (auto value : input["nb14s"]) {
+                auto r = py::cast<py::sequence>(value);
+                if (r.size() != 4) throw py::value_error("Invalid nb14 row");
+                top.nb14s.push_back({index(r[0]), index(r[1]), number(r[2]), number(r[3])});
+            }
+            auto exclusions = py::cast<py::sequence>(input["exclusions"]);
+            if (static_cast<std::size_t>(exclusions.size()) != self.atom_count())
+                throw py::value_error("Invalid exclusion table size");
+            for (auto row : exclusions) {
+                std::vector<AtomId> ids;
+                for (auto value : py::cast<py::sequence>(row)) ids.push_back(index(value));
+                top.exclusions.push_back(std::move(ids));
+            }
+            // Commit only after the complete input validates. Ordered periodic
+            // torsion rows are retained, including repeated improper terms.
+            self.topology_override = std::move(top);
+        }, py::arg("topology"))
         .def("_replace_from", &Molecule::replace_from, py::arg("other"))
         .def_property_readonly(
             "has_topology_override", &Molecule::has_topology_override)

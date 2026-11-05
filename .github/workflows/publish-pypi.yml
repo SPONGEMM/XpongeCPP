@@ -13,7 +13,7 @@ env:
   CIBW_TEST_COMMAND: >-
     python -c "import importlib.util, XpongeCPP, Xponge,
     XpongeCPP.io_bundle, XpongeCPP.metal_assignment;
-    assert XpongeCPP.__version__ == '0.2.15';
+    assert XpongeCPP.__version__ == '0.2.16';
     assert not hasattr(XpongeCPP, 'MC' + 'PB');
     assert importlib.util.find_spec('XpongeCPP.' + ('MC' + 'PB').lower()) is None"
     && python -m pytest {project}/tests/test_mmcif_chain_identity.py
@@ -21,7 +21,10 @@ env:
     {project}/tests/test_amber_parameter_lookup.py
     {project}/tests/test_explicit_residue_link_precedence.py
     {project}/tests/test_mmcif_connection_semantics.py
-    {project}/tests/test_missing_bonded_parameters.py -q -k "not reproducible"
+    {project}/tests/test_missing_bonded_parameters.py
+    {project}/tests/test_explicit_topology.py
+    {project}/tests/test_fep_parameter_isolation.py
+    {project}/tests/test_fep_explicit_pair_contract.py -q -k "not reproducible"
   CIBW_BEFORE_ALL_LINUX: >-
     if command -v dnf >/dev/null 2>&1; then dnf install -y hdf5-devel;
     elif command -v yum >/dev/null 2>&1; then yum install -y hdf5-devel;

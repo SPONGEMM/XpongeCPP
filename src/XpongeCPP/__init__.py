@@ -195,7 +195,7 @@ from .process import (
 from .legacy_types import _LegacyResidueTypeHandle
 from .template_ops import load_mol2
 
-__version__ = "0.2.15"
+__version__ = "0.2.16"
 __mokda_backend__ = "xpongecpp"
 __implementation_version__ = __version__
 pi = np.pi
@@ -421,3 +421,6 @@ __all__ = [
     "Load_EDIP_Parameter_File",
     "LoadEDIPParameterFile",
 ]
+
+from .explicit_topology import get_explicit_topology, set_explicit_topology, set_atom_lj
+__all__ += ["get_explicit_topology", "set_explicit_topology", "set_atom_lj"]

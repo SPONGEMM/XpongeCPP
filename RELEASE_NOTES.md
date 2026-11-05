@@ -1,3 +1,18 @@
+# XpongeCPP 0.2.16
+
+Compatibility target: Xponge-origin 1.7.7.
+
+Add public `get_explicit_topology`, `set_explicit_topology`, and `set_atom_lj`
+interfaces for validated external parameters, including precomputed ByteFF
+topologies. Preserve ordered periodic rows, explicit 1-4 scales and exclusions;
+use content-addressed LJ types to isolate molecule parameters. The native FEP
+interpolation algorithm is unchanged in this release.
+
+Installed-wheel release tests now cover the API, materialized topology copies,
+disjoint assembly, full/partial MCS projection, and FEP energy interpolation.
+See `docs/explicit-topology.md` for units, subset scope and limitations.
+No ByteFF model inference, real FEP or full-engine force validation is claimed.
+
 # XpongeCPP 0.2.15
 
 Compatibility target: Xponge-origin 1.7.6.

@@ -221,3 +221,8 @@ package layout and the minimal-vs-full smoke split easy to audit.
 
 `cibuildwheel` is still a good future option once the wheel matrix and release
 policy stabilize further, but it is not the current default.
+
+## Explicit external parameters
+
+See [the explicit topology API](docs/explicit-topology.md) for validated
+materialized parameters, per-atom LJ, and FEP replacement-molecule semantics.
