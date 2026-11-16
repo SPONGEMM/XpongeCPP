@@ -167,3 +167,20 @@ def test_dual_topology_rejects_unsupported_force_loss():
     with pytest.raises(ValueError,match='explicit pairs'): fep.merge_dual_topology(a,0,b,{i:i for i in range(4)})
     c=chain(4,0.);c.add_improper_dihedral(0,1,2,3,10.,0.)
     with pytest.raises(ValueError,match='unsupported force group'): fep.merge_dual_topology(c,0,b,{i:i for i in range(4)})
+
+
+def test_native_branch_lj_weight_leaves_charge_and_ordinary_lj_unchanged(tmp_path):
+    a, b = chain(6, .2), chain(6, .2)
+    x.register_amber_nb14_scale("FEPREG", "FEPREG", .4, .7)
+    left, right, _ = fep.merge_dual_topology(a, 0, b, {0: 0, 1: 1})
+    baseline = save(fep.merge_force_field(left, right, .5), tmp_path, "baseline")
+    settings = {"nb14_junction_lj_a": 1., "nb14_internal_lj_a": .75}
+    changed = save(fep.merge_force_field(left, right, .5, settings), tmp_path, "changed")
+    before = {tuple(row[:2]): row[2:] for row in rows(baseline, "nb14_extra.txt")}
+    after = {tuple(row[:2]): row[2:] for row in rows(changed, "nb14_extra.txt")}
+    assert before.keys() == after.keys()
+    assert after[(0., 3.)][:2] == pytest.approx([2 * value for value in before[(0., 3.)][:2]])
+    assert after[(2., 5.)][:2] == pytest.approx([1.5 * value for value in before[(2., 5.)][:2]], rel=2e-6)
+    assert [after[k][2] for k in after] == [before[k][2] for k in after]
+    for name in ("charge.txt", "LJ_soft_core.txt", "bond.txt", "angle.txt", "dihedral.txt", "exclude.txt"):
+        assert changed[name] == baseline[name]

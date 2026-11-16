@@ -321,7 +321,8 @@ std::vector<NB14Extra> endpoint_pairs(const Molecule& molecule) {
     return pairs;
 }
 
-void merge_explicit_pairs(Molecule& out, const Molecule& a, const Molecule& b, double lambda) {
+void merge_explicit_pairs(Molecule& out, const Molecule& a, const Molecule& b, double lambda,
+                          const std::unordered_map<std::string, double>& specific_lambda) {
     struct Coefficients { double a=0., b=0., ee=0., fallback_kee=0.; };
     std::map<std::uint64_t, Coefficients> coefficients;
     const auto append = [&](const Molecule& endpoint, double weight) {
@@ -334,6 +335,33 @@ void merge_explicit_pairs(Molecule& out, const Molecule& a, const Molecule& b, d
         }
     };
     append(a,1.0-lambda); append(b,lambda);
+    // Override only native cross-core LJ pairs owned by this physical endpoint.
+    // Charge compensation and pre-existing explicit pairs retain their own path.
+    const auto override_native_lj = [&](const Molecule& endpoint, int branch,
+                                          const char* setting, double baseline, bool junction) {
+        const auto requested = specific_lambda.find(setting);
+        if (requested == specific_lambda.end() || requested->second == baseline) return;
+        const double delta = requested->second - baseline;
+        for (const auto& pair : build_topology(endpoint).nb14s) {
+            const auto& i = endpoint.atoms[pair.atom1];
+            const auto& j = endpoint.atoms[pair.atom2];
+            if (i.type == kZeroLJ || j.type == kZeroLJ) continue;
+            const bool matches = junction
+                ? ((i.subsys == branch && j.subsys == 0) ||
+                   (j.subsys == branch && i.subsys == 0))
+                : (i.subsys == branch && j.subsys == branch);
+            if (!matches) continue;
+            if (i.residue != j.residue) continue;
+            const auto [lj_a, lj_b] = fep_lj_ab(endpoint, pair.atom1, pair.atom2);
+            auto& value = coefficients.at(pair_key(pair.atom1, pair.atom2));
+            value.a += delta * pair.k_lj * lj_a;
+            value.b += delta * pair.k_lj * lj_b;
+        }
+    };
+    override_native_lj(a, 1, "nb14_junction_lj_a", 1.0 - lambda, true);
+    override_native_lj(b, 2, "nb14_junction_lj_b", lambda, true);
+    override_native_lj(a, 1, "nb14_internal_lj_a", 1.0 - lambda, false);
+    override_native_lj(b, 2, "nb14_internal_lj_b", lambda, false);
     out.nb14_extras.clear();
     out.topology_override->nb14s.clear(); // Converted exactly once, not double counted.
     for (const auto& [key,c] : coefficients) {
@@ -633,7 +661,9 @@ Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_
     };
     validate_lambda(default_lambda);
     for (const auto& [name,value] : specific_lambda) {
-        if (name!="charge" && name!="mass" && name!="bond_base" && name!="angle" && name!="dihedral")
+        if (name!="charge" && name!="mass" && name!="bond_base" && name!="angle" && name!="dihedral" &&
+            name!="nb14_junction_lj_a" && name!="nb14_junction_lj_b" &&
+            name!="nb14_internal_lj_a" && name!="nb14_internal_lj_b")
             throw std::invalid_argument("unsupported FEP specific_lambda key: "+name);
         validate_lambda(value);
     }
@@ -659,7 +689,7 @@ Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_
     out.enable_lj_soft_core();
     out.soft_bonds.clear();
     out.topology_override = merge_topology_for_fep(molecule_a, molecule_b, default_lambda, specific_lambda, out.soft_bonds);
-    merge_explicit_pairs(out, molecule_a, molecule_b, lambda_for("dihedral"));
+    merge_explicit_pairs(out, molecule_a, molecule_b, lambda_for("dihedral"), specific_lambda);
 
     return out;
 }
