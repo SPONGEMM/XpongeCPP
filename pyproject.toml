@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "XpongeCPP"
-version = "0.2.17a1"
+version = "0.2.17"
 description = "C++ core rewrite of Xponge workflows, compatible with Xponge-origin 1.7.7"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"

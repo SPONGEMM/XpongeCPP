@@ -15,14 +15,17 @@ def test_native_fep_helpers_resolve_in_both_public_namespaces(namespace):
     assert module.intramolecule_nb_to_nb14(a,0) is a
 
 
-def chain(count=5, charge=.2, label='FEPREG'):
+def chain(count=5, charge=.2, label='FEPREG', extra_bond=None):
     x.register_amber_lj_parameter(label, label, .1, 1.8)
     x.register_amber_bond_parameter(label, label, 100., 1.5)
     x.register_amber_angle_parameter([label]*3, 50., 1.9)
     x.register_amber_proper_dihedral_parameter([label]*4, 2, 2., 0., reset=True)
     atoms='\n'.join(f'{i+1} C{i} {i*1.5} {i%2} .2 {label} 1 LIG {charge}' for i in range(count))
-    bonds='\n'.join(f'{i+1} {i+1} {i+2} 1' for i in range(count-1))
-    return x.load_mol2(StringIO(f'@<TRIPOS>MOLECULE\nREG\n{count} {count-1} 1\nSMALL\nUSER_CHARGES\n@<TRIPOS>ATOM\n{atoms}\n@<TRIPOS>BOND\n{bonds}\n'))
+    edges = [(i, i + 1) for i in range(1, count)]
+    if extra_bond is not None:
+        edges.append(extra_bond)
+    bonds='\n'.join(f'{i} {j} {k} 1' for i, (j, k) in enumerate(edges, 1))
+    return x.load_mol2(StringIO(f'@<TRIPOS>MOLECULE\nREG\n{count} {len(edges)} 1\nSMALL\nUSER_CHARGES\n@<TRIPOS>ATOM\n{atoms}\n@<TRIPOS>BOND\n{bonds}\n'))
 
 
 def save(molecule, directory, name):
@@ -69,6 +72,31 @@ def test_intramolecular_conversion_excludes_once_and_is_idempotent(tmp_path):
     assert 4 in list(map(int,exclusions[0].split()[1:]))
     fep.intramolecule_nb_to_nb14(a,[0,0])
     assert save(a,tmp_path,'second')==first
+
+
+def test_core_pair_transition_categories_are_read_from_endpoints():
+    a = chain(6)
+    b = a.deepcopy()
+    topology = b._get_explicit_topology()
+    assert any(row[:2] == (1, 4) for row in topology["nb14s"])
+    topology["nb14s"] = [row for row in topology["nb14s"] if row[:2] != (1, 4)]
+    topology["nb14s"].append((0, 4, .5, .8))
+    topology["exclusions"][0].extend([4, 5])
+    b._set_explicit_topology(topology)
+    assert fep.core_pair_transitions(a, b, 0) == [
+        (0, 4, "ordinary", "native14"), (0, 5, "ordinary", "excluded"),
+        (1, 4, "native14", "excluded"),
+    ]
+    assert fep.core_pair_transitions(a, a, 0) == []
+
+
+def test_dual_assembly_preserves_each_endpoint_core_exclusions():
+    a, b = chain(6), chain(6, extra_bond=(2, 5))
+    left, right, _ = fep.merge_dual_topology(a, 0, b, {i: i for i in range(6)})
+    assert fep.core_pair_transitions(left, right, 0) == [
+        (0, 4, "ordinary", "excluded"), (0, 5, "ordinary", "native14"),
+        (1, 4, "native14", "excluded"), (1, 5, "ordinary", "excluded"),
+    ]
 
 
 @pytest.mark.parametrize('selector',[-1,1,99])

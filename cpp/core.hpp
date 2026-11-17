@@ -683,6 +683,8 @@ std::pair<Molecule, Molecule> merge_dual_topology(const Molecule& molecule, Resi
                                                   const std::unordered_map<std::uint32_t, std::uint32_t>& match_b_to_a);
 Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_b, double default_lambda,
                            const std::unordered_map<std::string, double>& specific_lambda);
+std::vector<std::tuple<AtomId, AtomId, std::string, std::string>> fep_core_pair_transitions(
+    const Molecule& molecule_a, const Molecule& molecule_b, ResidueId residue_index);
 void fep_intramolecule_nb_to_nb14(Molecule& molecule, const std::vector<ResidueId>& residues);
 Molecule fep_get_free_molecule(const Molecule& molecule, const std::vector<ResidueId>& residues);
 void register_residue_templates_from_mol2_text(const std::string& text);

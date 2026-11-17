@@ -5,6 +5,7 @@ from ... import (
     merge_force_field as _merge_force_field,
     register_amber_lj_parameter,
 )
+from XpongeCPP._core import fep_core_pair_transitions as core_pair_transitions
 from XpongeCPP._core import fep_intramolecule_nb_to_nb14 as _intramolecule_nb_to_nb14
 from XpongeCPP._core import fep_get_free_molecule as _get_free_molecule
 
@@ -45,6 +46,9 @@ def merge_dual_topology(molecule, residue, residue_b, assign_a=None, assign_b=No
     residue_index = int(getattr(residue, "index", residue))
     match_b_to_a = _match_map_from_inputs(assign_a, assign_b, tmcs, image_path, similarity_limit, imcs)
     return _merge_dual_topology(molecule, residue_index, residue_b, match_b_to_a)
+
+
+SUPPORTS_BRANCH_NB14_LJ_WEIGHTS = True
 
 
 def merge_force_field(molecule_a, molecule_b, default_lambda, specific_lambda=None, intra_fep=False):

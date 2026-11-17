@@ -646,6 +646,8 @@ void bind_core_module(py::module_& m) {
           py::arg("residue_b_molecule"), py::arg("match_b_to_a"));
     m.def("merge_force_field", &merge_force_field_object, py::arg("molecule_a"), py::arg("molecule_b"),
           py::arg("default_lambda"), py::arg("specific_lambda") = std::unordered_map<std::string, double>{});
+    m.def("fep_core_pair_transitions", &fep_core_pair_transitions,
+          py::arg("molecule_a"), py::arg("molecule_b"), py::arg("residue_index"));
     m.def("fep_intramolecule_nb_to_nb14", [](const std::shared_ptr<Molecule>& molecule,
                                            const std::vector<ResidueId>& residues) {
         fep_intramolecule_nb_to_nb14(*molecule, residues);

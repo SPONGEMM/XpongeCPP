@@ -425,7 +425,8 @@ void append_projected_topology(Topology& target, const Topology& source,
     for (AtomId id = 0; id < source.exclusions.size(); ++id) {
         if (!mapped(id)) continue;
         for (const auto other : source.exclusions[id])
-            if (mapped(other)) target.exclusions[map[id]].push_back(map[other]);
+            if (mapped(other) && retain({id, other}))
+                target.exclusions[map[id]].push_back(map[other]);
     }
 }
 
@@ -692,6 +693,55 @@ Molecule merge_force_field(const Molecule& molecule_a, const Molecule& molecule_
     merge_explicit_pairs(out, molecule_a, molecule_b, lambda_for("dihedral"), specific_lambda);
 
     return out;
+}
+
+std::vector<std::tuple<AtomId, AtomId, std::string, std::string>> fep_core_pair_transitions(
+    const Molecule& a, const Molecule& b, ResidueId residue_index) {
+    const auto& ra = a.residue(residue_index);
+    const auto& rb = b.residue(residue_index);
+    if (ra.atom_begin != rb.atom_begin || ra.atom_count != rb.atom_count ||
+        a.atoms.size() != b.atoms.size()) {
+        throw std::invalid_argument("FEP core pair classification requires shared union indexing");
+    }
+    std::vector<AtomId> core;
+    for (AtomId i = ra.atom_begin; i < ra.atom_begin + ra.atom_count; ++i) {
+        if (a.atoms[i].name != b.atoms[i].name || a.atoms[i].subsys != b.atoms[i].subsys) {
+            throw std::invalid_argument("FEP core pair classification requires aligned dual topology endpoints");
+        }
+        if (a.atoms[i].subsys == 0) core.push_back(i);
+    }
+    const auto ta = build_topology(a);
+    const auto tb = build_topology(b);
+    const auto pair_keys = [](const auto& pairs) {
+        std::unordered_set<std::uint64_t> keys;
+        for (const auto& pair : pairs) keys.insert(pair_key(pair.atom1, pair.atom2));
+        return keys;
+    };
+    const auto native_a = pair_keys(ta.nb14s);
+    const auto native_b = pair_keys(tb.nb14s);
+    const auto listed_a = pair_keys(a.nb14_extras);
+    const auto listed_b = pair_keys(b.nb14_extras);
+    const auto mode = [](const Topology& topology, const auto& native, const auto& listed, AtomId i, AtomId j) {
+        const auto key = pair_key(i, j);
+        if (native.count(key)) return listed.count(key) ? "native14+explicit" : "native14";
+        if (listed.count(key)) return "explicit";
+        const auto excluded = [&](AtomId first, AtomId second) {
+            if (first >= topology.exclusions.size()) return false;
+            const auto& row = topology.exclusions[first];
+            return std::find(row.begin(), row.end(), second) != row.end();
+        };
+        return (excluded(i, j) || excluded(j, i)) ? "excluded" : "ordinary";
+    };
+    std::vector<std::tuple<AtomId, AtomId, std::string, std::string>> rows;
+    for (const auto i : core) {
+        for (const auto j : core) {
+            if (i >= j) continue;
+            const std::string mode_a = mode(ta, native_a, listed_a, i, j);
+            const std::string mode_b = mode(tb, native_b, listed_b, i, j);
+            if (mode_a != mode_b) rows.emplace_back(i, j, mode_a, mode_b);
+        }
+    }
+    return rows;
 }
 
 void fep_intramolecule_nb_to_nb14(Molecule& molecule, const std::vector<ResidueId>& residues) {
